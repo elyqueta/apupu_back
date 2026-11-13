@@ -1,0 +1,32 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+
+# Uploads locais
+files/
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cobertura de testes
+coverage/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/*
+!.vscode/extensions.json
+
+# Temporários
+tmp/
+.tmp/
