@@ -2,37 +2,26 @@ import app from './app';
 import { env } from './config/env';
 import { closePool } from './database/pool';
 import { logger } from './config/logger';
-import { processCloudinaryDeletionQueue } from './services/cloudinaryDeletionQueue.service';
+import { startOutboxScheduler, stopOutboxScheduler } from './services/outbox.service';
 
 const server = app.listen(env.PORT, () => {
-  logger.info(`QD Store Backend rodando em http://localhost:${env.PORT} [${env.NODE_ENV}]`);
+  logger.info(`Apupu Backend a correr em http://localhost:${env.PORT} [${env.NODE_ENV}]`);
 });
 
-const cloudinaryDeletionInterval = setInterval(() => {
-  void processCloudinaryDeletionQueue().catch((error: unknown) => {
-    logger.error({ err: error }, 'Falha ao consultar a fila de remoção do Cloudinary.');
-  });
-}, 60_000);
-cloudinaryDeletionInterval.unref();
-void processCloudinaryDeletionQueue().catch((error: unknown) => {
-  logger.error({ err: error }, 'Falha ao consultar a fila de remoção do Cloudinary.');
-});
+if (env.OUTBOX_ENABLED) {
+  startOutboxScheduler();
+}
 
 /**
  * Shutdown gracioso.
  *
- * Importante: esta função é SÍNCRONA (retorna void), não async.
- * O motivo é o contrato do server.close(callback) do Node — ele
- * espera um callback (err?: Error) => void, e passar uma função
- * async ali criaria uma Promise "solta" (floating promise) cuja
- * rejeição ninguém captura.
- *
- * Por isso, tratamos a parte assíncrona (closePool) manualmente
- * com .then()/.catch(), em vez de usar await dentro do callback.
+ * A função é síncrona porque `server.close` espera um callback. A
+ * parte assíncrona (fechar o pool) é tratada com `.then/.catch` para
+ * não deixar promises soltas.
  */
 function shutdown(signal: string): void {
-  logger.info(`${signal} recebido. Encerrando graciosamente...`);
-  clearInterval(cloudinaryDeletionInterval);
+  logger.info(`${signal} recebido. A encerrar graciosamente...`);
+  stopOutboxScheduler();
 
   server.close((err) => {
     if (err) {

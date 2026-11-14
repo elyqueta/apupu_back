@@ -50,10 +50,10 @@ pool.on('error', (err) => {
  * retorno. O generic <T> permite que quem chama especifique o
  * formato esperado das linhas, em vez de receber "any".
  *
- * Exemplo de uso futuro (em um repository):
- *   const result = await query<{ id: string; nome: string }>(
- *     'SELECT id, nome FROM produto WHERE id = $1',
- *     [produtoId]
+ * Exemplo de uso (em um repository):
+ *   const result = await query<{ id: string; title: string }>(
+ *     'SELECT id, title FROM events WHERE id = $1',
+ *     [eventId]
  *   );
  */
 export async function query<T extends QueryResultRow = QueryResultRow>(
@@ -75,6 +75,34 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
  */
 export async function getClient(): Promise<PoolClient> {
   return pool.connect();
+}
+
+/**
+ * Executa uma função dentro de uma transação.
+ *
+ * O `COMMIT` só acontece se a função terminar sem erro; qualquer
+ * exceção provoca `ROLLBACK`. Isto é essencial para operações como
+ * o claim atómico e a recusa de RSVP, em que o estado do convite e o
+ * cancelamento de entregas têm de mudar juntos.
+ */
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      logger.error({ err: rollbackError }, 'Falha no ROLLBACK da transação');
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**

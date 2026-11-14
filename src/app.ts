@@ -1,6 +1,7 @@
 import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { pool } from './database/pool';
 import { env } from './config/env';
 import { corsOptions } from './config/cors';
@@ -9,7 +10,9 @@ import { asyncHandler } from './middlewares/asyncHandler';
 import { notFoundHandler } from './middlewares/notFoundHandler';
 import { errorHandler } from './middlewares/errorHandler';
 import { apiLimiter } from './middlewares/rateLimiter';
-import { privateNoStore } from './middlewares/apiCachePolicy';
+import { noStore } from './middlewares/noStore';
+import { requestId } from './middlewares/requestId';
+import { logger } from './config/logger';
 import v1Routes from './routes/v1';
 
 const app: Application = express();
@@ -17,34 +20,31 @@ const app: Application = express();
 app.set('trust proxy', env.TRUST_PROXY);
 app.set('etag', 'weak');
 
+app.use(requestId);
 app.use(
   helmet({
-    // O Scalar usa script inline em desenvolvimento; em produção a documentação não é servida.
+    // A documentação usa um script inline em desenvolvimento; em
+    // produção a documentação não é servida.
     contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false,
   })
 );
 app.use(cors(corsOptions));
+app.use(cookieParser());
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Dados pessoais e links secretos nunca devem ser guardados em caches.
+app.use('/api/v1', noStore);
 
-// O limitador protege as rotas versionadas em produção e deixa /health
-// disponível para os health checks. Em desenvolvimento fica desativado
-// para permitir testes repetidos do front-end sem bloqueios artificiais.
-app.use('/api/v1', privateNoStore);
-if (env.NODE_ENV === 'production') {
-  app.use('/api/v1', apiLimiter);
-}
+// O limite global aplica-se em todos os ambientes: a superfície de
+// ataque (tokens, criação de eventos) existe mesmo em desenvolvimento
+// exposto. Endpoints com tokens têm limites adicionais nas rotas.
+app.use('/api/v1', apiLimiter);
 
 /**
- * Documentação interativa, disponível SOMENTE fora de produção.
+ * Documentação interativa, disponível apenas fora de produção.
  *
- * Em vez do pacote @scalar/express-api-reference (ESM puro,
- * incompatível com nosso projeto CommonJS), servimos uma página HTML
- * estática que carrega a UI do Scalar via CDN diretamente no
- * navegador. O servidor Node nunca importa código do Scalar — só
- * entrega o JSON do spec (/openapi.json) e o HTML que aponta pra ele.
- * Isso elimina o conflito de módulos por completo.
+ * O HTML carrega o Scalar UI via CDN; o spec fica em `/openapi.json`.
  */
 if (env.NODE_ENV !== 'production') {
   app.get('/openapi.json', (_req: Request, res: Response) => {
@@ -56,7 +56,7 @@ if (env.NODE_ENV !== 'production') {
       <!doctype html>
       <html>
         <head>
-          <title>QD Store API Docs</title>
+          <title>Apupu API Docs</title>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
         </head>
@@ -74,13 +74,10 @@ if (env.NODE_ENV !== 'production') {
 }
 
 /**
- * Rota de health check.
+ * Health check.
  *
- * Consulta o banco (SELECT 1) a cada chamada para confirmar não só
- * que o processo Node está de pé, mas que a conexão com o Postgres
- * também está saudável — um orquestrador (Docker, Kubernetes) que só
- * verificasse "o processo respondeu" poderia achar a aplicação
- * saudável mesmo com o banco indisponível.
+ * Consulta o banco (`SELECT 1`) para confirmar não só que o processo
+ * está de pé, mas que a dependência crítica responde.
  */
 app.get(
   '/health',
@@ -90,15 +87,15 @@ app.get(
 
       res.status(200).json({
         status: 'ok',
-        service: 'qd-store-backend',
+        service: 'apupu-backend',
         database: 'connected',
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      console.error('Falha no health check ao consultar o banco:', error);
+      logger.error({ err: error }, 'Falha no health check ao consultar o banco.');
       res.status(503).json({
         status: 'error',
-        service: 'qd-store-backend',
+        service: 'apupu-backend',
         database: 'disconnected',
         timestamp: new Date().toISOString(),
       });
@@ -107,17 +104,11 @@ app.get(
 );
 
 /**
- * Montagem das rotas da API, versionadas em /api/v1.
+ * Rotas de domínio, versionadas em `/api/v1`.
  *
- * O versionamento vive em src/routes/v1/index.ts: aquele router monta
- * os domínios (auth, categories, companies...) sem prefixo próprio, e
- * é montado AQUI sob /api/v1. Uma futura v2 (src/routes/v2/, mesmo
- * formato) encaixa-se com uma única linha nova, sem tocar na v1 —
- * clientes antigos continuam servidos sem quebra de contrato.
- *
- * /health fica FORA do prefixo versionado de propósito: health check
- * de orquestrador (Docker, Kubernetes) não deve quebrar a cada nova
- * versão da API.
+ * O router agregador em `src/routes/v1/index.ts` monta os domínios sem
+ * prefixo próprio; uma futura v2 encaixa-se criando `src/routes/v2/`
+ * e montando-a aqui, sem tocar na v1.
  */
 app.use('/api/v1', v1Routes);
 

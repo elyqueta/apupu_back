@@ -1,78 +1,75 @@
 import { AppError } from './AppError';
 
 /**
- * Cada subclasse abaixo representa uma categoria de erro HTTP comum
- * em uma API REST. A ideia é que, em qualquer controller/service
- * futuro, o código de negócio simplesmente lance a classe certa:
+ * Cada subclasse representa uma categoria de erro HTTP comum.
  *
- *   if (!produto) {
- *     throw new NotFoundError('Produto não encontrado.');
- *   }
- *
- * ...sem nunca precisar saber ou escrever manualmente o número do
- * status HTTP (404, 409, etc.) — isso fica encapsulado aqui, em um
- * único lugar. Se um dia a equipe decidir mudar a convenção (por
- * exemplo, usar 400 em vez de 422 para erros de validação), a
- * mudança acontece em UM arquivo, não espalhada pela aplicação.
+ * O código (`code`) é estável e faz parte do contrato da API; a
+ * mensagem é para humanos e pode ser traduzida no frontend. Nunca
+ * colocar detalhes internos (SQL, paths, stack) na mensagem.
  */
+
+type Fields = Record<string, string[]>;
 
 /** 400 — a requisição está malformada ou não faz sentido como veio. */
 export class BadRequestError extends AppError {
-  constructor(message = 'Requisição inválida.', details?: unknown) {
-    super(message, 400, details);
+  constructor(message = 'Requisição inválida.', code = 'bad_request', fields?: Fields) {
+    super(message, 400, code, fields);
   }
 }
 
-/** 401 — o cliente não está autenticado (token ausente/inválido/expirado). */
+/** 401 — falta uma credencial válida. */
 export class UnauthorizedError extends AppError {
-  constructor(message = 'Não autenticado.', details?: unknown) {
-    super(message, 401, details);
+  constructor(message = 'Não autenticado.', code = 'unauthenticated', fields?: Fields) {
+    super(message, 401, code, fields);
   }
 }
 
-/** 403 — o cliente está autenticado, mas não tem permissão para a ação. */
+/** 403 — a credencial existe, mas não autoriza esta ação. */
 export class ForbiddenError extends AppError {
-  constructor(message = 'Acesso negado.', details?: unknown, code?: string) {
-    super(message, 403, details, code);
+  constructor(message = 'Acesso negado.', code = 'forbidden', fields?: Fields) {
+    super(message, 403, code, fields);
   }
 }
 
-/** 404 — o recurso solicitado não existe. */
+/** 404 — o recurso não existe (ou não é visível para esta capacidade). */
 export class NotFoundError extends AppError {
-  constructor(message = 'Recurso não encontrado.', details?: unknown) {
-    super(message, 404, details);
+  constructor(message = 'Recurso não encontrado.', code = 'not_found', fields?: Fields) {
+    super(message, 404, code, fields);
   }
 }
 
-/**
- * 409 — a requisição conflita com o estado atual do recurso.
- * Exemplo típico: tentar cadastrar um NIF que já existe.
- */
+/** 409 — a requisição conflita com o estado atual do recurso. */
 export class ConflictError extends AppError {
   constructor(
     message = 'Conflito com o estado atual do recurso.',
-    details?: unknown,
-    code?: string
+    code = 'conflict',
+    fields?: Fields
   ) {
-    super(message, 409, details, code);
+    super(message, 409, code, fields);
   }
 }
 
-/** 503 — um serviço externo necessário está temporariamente indisponível. */
+/** 429 — demasiados pedidos. */
+export class TooManyRequestsError extends AppError {
+  constructor(message = 'Demasiados pedidos. Tente novamente mais tarde.', code = 'rate_limited') {
+    super(message, 429, code);
+  }
+}
+
+/** 503 — um serviço externo necessário está indisponível. */
 export class ServiceUnavailableError extends AppError {
-  constructor(message = 'Serviço temporariamente indisponível.', details?: unknown) {
-    super(message, 503, details);
+  constructor(message = 'Serviço temporariamente indisponível.', code = 'service_unavailable') {
+    super(message, 503, code);
   }
 }
 
-/**
- * 422 — a requisição está bem formada (é um JSON válido, por exemplo),
- * mas os dados nela não passam nas regras de validação de negócio.
- * É o status que o Zod (na camada de validators/) deve gerar quando
- * um schema falha.
- */
+/** 422 — dados bem formados, mas inválidos segundo as regras. */
 export class ValidationError extends AppError {
-  constructor(message = 'Dados inválidos.', details?: unknown) {
-    super(message, 422, details);
+  constructor(
+    message = 'Verifique os campos indicados.',
+    fields?: Fields,
+    code = 'validation_failed'
+  ) {
+    super(message, 422, code, fields);
   }
 }

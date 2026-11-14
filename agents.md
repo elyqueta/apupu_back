@@ -4,17 +4,28 @@
 
 Construir uma plataforma web, sem autenticação de anfitriões na primeira fase, para criar eventos, escolher um template de convite, registar convidados e enviar convites e lembretes por email. Cada convidado recebe um link individual. O convidado pode consultar os detalhes do evento e responder ao convite; uma recusa deve parar os lembretes desse convidado e notificar a anfitriã ou o anfitrião.
 
-O frontend será desenvolvido com Angular 22, TypeScript e Tailwind CSS. O backend será desenvolvido com PHP Laravel e PostgreSQL. A primeira fase não inclui contas, autenticação de utilizadores, painel administrativo, pagamentos, planos pagos nem envio automatizado por SMS ou WhatsApp.
+O frontend será desenvolvido com Angular 22, TypeScript e Tailwind CSS. O backend será desenvolvido com Node.js 20, Express, TypeScript e PostgreSQL (decisão revista: reaproveita a estrutura de API existente em vez de PHP Laravel). A primeira fase não inclui contas, autenticação de utilizadores, painel administrativo, pagamentos, planos pagos nem envio automatizado por SMS ou WhatsApp.
 
 ## 2. Fonte de verdade e ordem de leitura
 
 1. Ler este ficheiro antes de alterar código.
-2. Ler o índice em [`doc/README.md`](doc/README.md).
-3. Trabalhar apenas com os requisitos da área relevante:
-   - Frontend: [`doc/frontend/`](doc/frontend/README.md)
-   - Backend: [`doc/backend/`](doc/backend/README.md)
-4. Se dois documentos parecerem contradizer-se, seguir primeiro os contratos partilhados em `doc/backend/api-contract.md` e os fluxos de aceitação em `doc/frontend/user-flows-and-acceptance.md`. Registar a discrepância e pedir esclarecimento antes de implementar uma alteração de negócio.
-5. Não inventar requisitos ausentes. Para decisões que alterem privacidade, segurança, comportamento de convites, persistência, canais de comunicação ou âmbito do produto, parar e perguntar ao responsável.
+2. A especificação autoritária do backend está em [`backend/`](backend/README.md).
+   Em caso de conflito com qualquer outro documento, prevalece esta pasta.
+3. Ordem de leitura do backend:
+   - [`backend/api-contract.md`](backend/api-contract.md)
+   - [`backend/invitation-security.md`](backend/invitation-security.md)
+   - [`backend/architecture-and-data-model.md`](backend/architecture-and-data-model.md)
+   - [`backend/email-and-reminders.md`](backend/email-and-reminders.md)
+4. A documentação da implementação está em [`docs/README.md`](docs/README.md):
+   - [`docs/API-CONTRACT.md`](docs/API-CONTRACT.md) descreve o contrato v1 efectivamente implementado.
+   - [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) descreve o esquema real da base de dados.
+   - Frontend: os documentos do repositório `apupu_front`.
+5. Se dois documentos parecerem contradizer-se, seguir primeiro a especificação em
+   `backend/` e os fluxos de aceitação do frontend. Registar a discrepância e pedir
+   esclarecimento antes de implementar uma alteração de negócio.
+6. Não inventar requisitos ausentes. Para decisões que alterem privacidade, segurança,
+   comportamento de convites, persistência, canais de comunicação ou âmbito do produto,
+   parar e perguntar ao responsável.
 
 ## 3. Regras de trabalho
 

@@ -3,159 +3,125 @@ import { z } from 'zod';
 import { logger } from './logger';
 
 /**
- * Por que validar variáveis de ambiente com Zod?
+ * Validação das variáveis de ambiente na inicialização.
  *
- * Sem isso, um erro de digitação numa variável (ex: "PROT" em vez de
- * "PORT", ou esquecer a DATABASE_URL) só aparece como um erro genérico
- * em algum ponto aleatório da aplicação — muitas vezes em produção,
- * na primeira requisição que depende daquela variável.
- *
- * Com essa validação rodando na inicialização, a aplicação recusa
- * subir se qualquer variável obrigatória estiver ausente ou no
- * formato errado, e o erro aponta exatamente qual variável e por quê.
- * Isso é o padrão "fail fast": falhar cedo e de forma clara é sempre
- * melhor do que falhar tarde e de forma confusa.
+ * O princípio é "fail fast": se falta uma variável obrigatória ou está
+ * num formato inválido, a aplicação recusa subir e indica exatamente
+ * qual o problema — em vez de falhar mais tarde, na primeira
+ * requisição que dependa dela.
  */
-const envSchema = z
-  .object({
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
-    PORT: z.coerce.number({ error: 'PORT deve ser um número' }).int().positive().default(3000),
+  PORT: z.coerce.number({ error: 'PORT deve ser um número' }).int().positive().default(3000),
 
-    // 0 = sem proxy/local; 1 = um proxy à frente, o caso típico em cloud.
-    TRUST_PROXY: z.coerce
-      .number({ error: 'TRUST_PROXY deve ser um número' })
-      .int()
-      .min(0)
-      .default(0),
+  // 0 = sem proxy à frente; 1 = um proxy (cloud, reverse proxy).
+  TRUST_PROXY: z.coerce.number({ error: 'TRUST_PROXY deve ser um número' }).int().min(0).default(0),
 
-    // Connection string completa do PostgreSQL.
-    // Formato: postgres://usuario:senha@host:porta/nome_do_banco
-    DATABASE_URL: z
-      .string({ error: 'DATABASE_URL é obrigatória' })
-      .min(1, 'DATABASE_URL não pode ser vazia')
-      .url('DATABASE_URL deve ser uma URL de conexão válida'),
+  DATABASE_URL: z
+    .string({ error: 'DATABASE_URL é obrigatória' })
+    .min(1, 'DATABASE_URL não pode ser vazia')
+    .url('DATABASE_URL deve ser uma URL de conexão válida'),
 
-    CORS_ORIGIN: z
-      .string({ error: 'CORS_ORIGIN é obrigatória' })
-      .min(1, 'CORS_ORIGIN não pode ser vazia'),
+  CORS_ORIGIN: z.string({ error: 'CORS_ORIGIN é obrigatória' }).min(1, 'CORS_ORIGIN não pode ser vazia'),
 
-    CORS_ALLOW_LOCALHOST: z.stringbool().default(false),
+  CORS_ALLOW_LOCALHOST: z.stringbool().default(false),
 
-    RATE_LIMIT_WINDOW_MS: z.coerce
-      .number({ error: 'RATE_LIMIT_WINDOW_MS deve ser um número' })
-      .int()
-      .positive()
-      .default(900000),
+  RATE_LIMIT_WINDOW_MS: z.coerce
+    .number({ error: 'RATE_LIMIT_WINDOW_MS deve ser um número' })
+    .int()
+    .positive()
+    .default(900000),
 
-    RATE_LIMIT_MAX: z.coerce
-      .number({ error: 'RATE_LIMIT_MAX deve ser um número' })
-      .int()
-      .positive()
-      .default(100),
+  RATE_LIMIT_MAX: z.coerce
+    .number({ error: 'RATE_LIMIT_MAX deve ser um número' })
+    .int()
+    .positive()
+    .default(300),
 
-    /**
-     * Segredo usado para ASSINAR e VERIFICAR o access token (JWT).
-     *
-     * Por que exigir no mínimo 32 caracteres?
-     *
-     * Um JWT assinado com HS256 usa este valor como chave HMAC. Um
-     * segredo curto (ex: "123456") é trivialmente quebrável por força
-     * bruta offline — quem descobrir o segredo consegue forjar tokens
-     * válidos para QUALQUER utilizador, incluindo administradores. 32
-     * caracteres é o mínimo recomendado pela própria especificação
-     * JWS (RFC 7518) para chaves HMAC-SHA256; na prática, deve ser
-     * gerado com algo como `openssl rand -base64 48`, nunca digitado
-     * manualmente.
-     */
-    JWT_SECRET: z
-      .string({ error: 'JWT_SECRET é obrigatória' })
-      .min(32, 'JWT_SECRET deve ter no mínimo 32 caracteres.'),
+  PUBLIC_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
+  PUBLIC_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
 
-    /**
-     * Duração do access token. Formato aceite pela biblioteca
-     * `jsonwebtoken` (ex: "15m", "1h", "7d").
-     *
-     * Por que curto (15 minutos por padrão)?
-     *
-     * O access token NÃO é revogável — uma vez emitido, continua
-     * válido até expirar, mesmo que o utilizador faça logout, porque
-     * ele nunca é consultado no banco (essa é a vantagem de
-     * performance do JWT stateless). Se ele for roubado, o prejuízo
-     * fica limitado à janela de 15 minutos. É o refresh token
-     * (guardado em SESSAO, esse sim revogável) que permite renovar o
-     * access token sem pedir login de novo.
-     */
-    JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+  HOST_SESSION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
+  HOST_SESSION_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
 
-    /**
-     * Duração do refresh token, em dias. Usado para calcular
-     * `session.expires_at` no momento da criação da sessão.
-     */
-    JWT_REFRESH_EXPIRES_IN_DAYS: z.coerce
-      .number({ error: 'JWT_REFRESH_EXPIRES_IN_DAYS deve ser um número' })
-      .int()
-      .positive()
-      .default(7),
+  /** Base pública do frontend Angular. */
+  APP_BASE_URL: z
+    .string({ error: 'APP_BASE_URL é obrigatória' })
+    .url('APP_BASE_URL deve ser uma URL válida'),
 
-    /**
-     * Custo do algoritmo bcrypt (número de rounds).
-     *
-     * Por que 12, e por que isto precisa ser configurável?
-     *
-     * Cada incremento dobra o tempo de cálculo do hash. 12 rounds é o
-     * equilíbrio atual recomendado entre segurança (resistência a
-     * força bruta) e performance (não travar o login por 2 segundos).
-     * Mantemos como variável de ambiente, e não uma constante fixa no
-     * código, porque hardware de servidor melhora com o tempo — daqui
-     * a alguns anos, 12 rounds pode ficar barato demais de quebrar, e
-     * subir esse número não deve exigir alterar código, só configuração.
-     */
-    BCRYPT_SALT_ROUNDS: z.coerce
-      .number({ error: 'BCRYPT_SALT_ROUNDS deve ser um número' })
-      .int()
-      .min(10, 'BCRYPT_SALT_ROUNDS deve ser no mínimo 10 por segurança.')
-      .max(15, 'BCRYPT_SALT_ROUNDS acima de 15 é impraticavelmente lento.')
-      .default(12),
+  /** Base pública da própria API (usada em links diretos e no smoke test). */
+  API_BASE_URL: z
+    .string({ error: 'API_BASE_URL é obrigatória' })
+    .url('API_BASE_URL deve ser uma URL válida'),
 
-    PAYMENT_GATEWAY: z.enum(['mock']).default('mock'),
-    PAYMENT_MOCK_FAIL_PHONE: z.string().default('900000000'),
-    PAYMENT_REFERENCE_TTL_HOURS: z.coerce
-      .number({ error: 'PAYMENT_REFERENCE_TTL_HOURS deve ser um número' })
-      .int()
-      .positive()
-      .default(72),
-    PAYMENT_MULTICAIXA_ENTITY: z.string().min(1).max(10).default('00000'),
-    BANK_TRANSFER_IBAN: z.string().min(1).max(34).default('AO06000000000000000000000'),
-    BANK_TRANSFER_BANK: z.string().default('Banco Exemplo'),
-    BANK_TRANSFER_HOLDER: z.string().default('QD Solutions (DADOS FICTÍCIOS)'),
-    CLOUDINARY_CLOUD_NAME: z.string().min(1).optional(),
-    CLOUDINARY_API_KEY: z.string().min(1).optional(),
-    CLOUDINARY_API_SECRET: z.string().min(1).optional(),
-  })
-  .superRefine((config, ctx) => {
-    const cloudinaryValues = [
-      config.CLOUDINARY_CLOUD_NAME,
-      config.CLOUDINARY_API_KEY,
-      config.CLOUDINARY_API_SECRET,
-    ];
+  /**
+   * Pepper HMAC aplicado aos tokens antes de os guardar.
+   *
+   * Os tokens de gestão e de convite dão acesso direto a dados
+   * pessoais, por isso nunca são guardados em claro. Um pepper (e não
+   * apenas SHA-256 puro) garante que, mesmo com acesso à base de
+   * dados, não é possível reconstruir os tokens por dicionário.
+   */
+  TOKEN_PEPPER: z
+    .string({ error: 'TOKEN_PEPPER é obrigatória' })
+    .min(32, 'TOKEN_PEPPER deve ter no mínimo 32 caracteres.'),
 
-    if (cloudinaryValues.some(Boolean) && cloudinaryValues.some((value) => !value)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['CLOUDINARY_CLOUD_NAME'],
-        message:
-          'Configure CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY e CLOUDINARY_API_SECRET juntos.',
-      });
-    }
-  });
+  HOST_COOKIE_NAME: z.string().min(1).default('apupu_host'),
+  HOST_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(120),
 
-/**
- * z.infer extrai o tipo TypeScript diretamente do schema Zod.
- * Isso significa que o tipo "Env" abaixo NUNCA fica dessincronizado
- * do schema de validação — se alguém adicionar um campo no schema,
- * o tipo se atualiza sozinho, sem duplicar a definição manualmente.
- */
+  CSRF_COOKIE_NAME: z.string().min(1).default('apupu_csrf'),
+  CSRF_HEADER_NAME: z.string().min(1).default('x-csrf-token'),
+
+  GUEST_COOKIE_NAME: z.string().min(1).default('apupu_guest'),
+  GUEST_COOKIE_TTL_DAYS: z.coerce.number().int().positive().default(180),
+
+  EMAIL_TRANSPORT: z.enum(['json', 'smtp']).default('json'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number({ error: 'SMTP_PORT deve ser um número' }).int().positive().default(587),
+  SMTP_SECURE: z.stringbool().default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  EMAIL_FROM: z.string().min(1).default('Apupu <convites@apupu.local>'),
+
+  /**
+   * Em desenvolvimento (`EMAIL_TRANSPORT=json`) as mensagens são
+   * escritas neste diretório em vez de enviadas. Não são escritas nos
+   * logs para não expor tokens de convite/gestão.
+   */
+  EMAIL_JSON_DIR: z.string().min(1).default('tmp/outbox'),
+
+  EMAIL_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  EMAIL_RETRY_BASE_MS: z.coerce.number().int().positive().default(60000),
+
+  /**
+   * Cadência de lembretes em dias antes do evento. A regra aprovada é
+   * 14, 7, 3 e 1 — configurável para testes, mas não deve ser alterada
+   * sem decisão do produto.
+   */
+  REMINDER_OFFSETS_DAYS: z
+    .string()
+    .default('14,7,3,1')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((part) => Number(part.trim()))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+    .refine((offsets) => offsets.length > 0, {
+      message: 'REMINDER_OFFSETS_DAYS deve conter pelo menos um número inteiro positivo.',
+    }),
+
+  /** Hora local do evento a que os lembretes são enviados (0–23). */
+  REMINDER_LOCAL_HOUR: z.coerce.number().int().min(0).max(23).default(9),
+
+  /** Liga o worker que envia convites, lembretes e avisos da outbox. */
+  OUTBOX_ENABLED: z.stringbool().default(true),
+  OUTBOX_SCAN_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
+
+  MAX_INVITATIONS_PER_EVENT: z.coerce.number().int().positive().default(1000),
+});
+
 export type Env = z.infer<typeof envSchema>;
 
 function loadEnv(): Env {
@@ -169,10 +135,7 @@ function loadEnv(): Env {
       logger.warn(`  • ${campo}: ${issue.message}`);
     }
 
-    logger.error('Verifique o arquivo .env (use .env.example como referência) e tente novamente.');
-
-    // Encerra o processo imediatamente. A aplicação NUNCA deve subir
-    // com configuração inválida.
+    logger.error('Verifique o ficheiro .env (use .env.example como referência) e tente novamente.');
     process.exit(1);
   }
 

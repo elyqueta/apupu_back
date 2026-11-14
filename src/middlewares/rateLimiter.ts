@@ -3,45 +3,55 @@ import { Request, Response } from 'express';
 import { env } from '../config/env';
 
 /**
- * Rate limiter global, aplicado apenas ao prefixo `/api` (ver app.ts).
+ * Resposta de rate limit no mesmo envelope do errorHandler.
  *
- * Por que não aplicar também em `/health`?
- *
- * `/health` costuma ser chamado por ferramentas de infraestrutura
- * (load balancer, orquestrador, monitorização externa) em intervalos
- * curtos e regulares — é o tipo de tráfego que o rate limit NÃO deve
- * barrar, porque bloquear health checks pode fazer um orquestrador
- * (ex: Docker, Kubernetes) concluir erradamente que a aplicação está
- * fora do ar e reiniciá-la sem necessidade.
- *
- * Por que a resposta de erro segue o mesmo formato do errorHandler
- * global (`{ status: 'error', message }`)?
- *
- * Porque o rate limiter responde ANTES de qualquer rota ou
- * middleware de erro ser alcançado — ele intercepta a requisição e
- * responde diretamente. Se a estrutura da resposta fosse diferente
- * do resto da API, o cliente (front-end) precisaria de tratar "erro
- * de rate limit" como um caso especial, quebrando a promessa de
- * "todo erro da API tem o mesmo formato" que o errorHandler global
- * garante para os outros casos.
+ * O limiter responde antes de chegar às rotas, por isso não pode
+ * delegar no errorHandler — mas o formato tem de ser idêntico.
  */
+function limitHandler(req: Request, res: Response): void {
+  res.status(429).json({
+    error: {
+      code: 'rate_limited',
+      message: 'Demasiados pedidos. Tente novamente mais tarde.',
+      request_id: req.id ?? 'unknown',
+    },
+  });
+}
+
+/** Limite global de `/api/v1`. */
 export const apiLimiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   limit: env.RATE_LIMIT_MAX,
-
-  // Inclui os headers padronizados `RateLimit-*` (RFC atual) na
-  // resposta, para que o cliente saiba quantas requisições ainda
-  // tem disponíveis e quando a janela reinicia.
   standardHeaders: true,
-
-  // Desliga os headers antigos `X-RateLimit-*`, não padronizados,
-  // para não duplicar a mesma informação em dois formatos.
   legacyHeaders: false,
+  handler: limitHandler,
+});
 
-  handler(_req: Request, res: Response) {
-    res.status(429).json({
-      status: 'error',
-      message: 'Muitas requisições. Tente novamente mais tarde.',
-    });
-  },
+/**
+ * Limite específico para endpoints públicos que recebem tokens.
+ *
+ * Protege contra enumeração/adivinhação de links. É aplicado sempre
+ * (não só em produção), porque a superfície de ataque existe em
+ * qualquer ambiente exposto.
+ */
+export const publicTokenLimiter = rateLimit({
+  windowMs: env.PUBLIC_RATE_LIMIT_WINDOW_MS,
+  limit: env.PUBLIC_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: limitHandler,
+});
+
+/**
+ * Limite para a troca do segredo de gestão por sessão.
+ *
+ * Mais restrito do que o global: é o ponto onde um segredo bearer
+ * pode ser tentado repetidamente.
+ */
+export const hostSessionLimiter = rateLimit({
+  windowMs: env.HOST_SESSION_RATE_LIMIT_WINDOW_MS,
+  limit: env.HOST_SESSION_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: limitHandler,
 });

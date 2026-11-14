@@ -39,6 +39,10 @@ function isLocalhostOrigin(origin: string): boolean {
  * que nunca vão respeitar CORS de qualquer forma (CORS é uma
  * restrição imposta pelo BROWSER, não pelo servidor em si).
  */
+const allowedOrigins = env.CORS_ORIGIN.split(',')
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0);
+
 export const corsOptions: CorsOptions = {
   origin(origin, callback) {
     // Sem header Origin (curl, Postman, chamadas server-to-server,
@@ -50,7 +54,7 @@ export const corsOptions: CorsOptions = {
       return;
     }
 
-    if (env.CORS_ORIGIN.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
       return;
     }
@@ -68,11 +72,11 @@ export const corsOptions: CorsOptions = {
   },
 
   // Permite que o browser envie cookies/credenciais em requisições
-  // cross-origin. Necessário caso a autenticação futura use cookies
-  // httpOnly para o refresh token; não tem efeito nenhum enquanto a
-  // API usa apenas JSON puro sem cookies.
+  // cross-origin. É obrigatório para as sessões de gestão e a
+  // capacidade do convidado, que vivem em cookies HttpOnly.
   credentials: true,
 
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-Id'],
+  exposedHeaders: ['X-Request-Id'],
 };

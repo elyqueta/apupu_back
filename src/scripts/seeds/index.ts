@@ -1,66 +1,62 @@
-import { closePool } from '../../database/pool';
 import { logger } from '../../config/logger';
-import { SEED_PASSWORD } from './data';
-import { seedUsers } from './seedUsers';
-import { seedCompanies, seedUserCompanies } from './seedCompanies';
-import { seedCategories, seedProducts } from './seedCatalog';
-import { seedAddresses } from './seedAddresses';
-import { seedDeliveryTypes, seedPaymentMethods } from './seedDeliveryPayment';
-import { seedCarts, seedCartItems } from './seedCarts';
-import { seedOrders } from './seedOrders';
-import { seedWishlists, seedNotifications } from './seedEngagement';
+import { pool, closePool } from '../../database/pool';
 
-async function runSeeds(): Promise<void> {
-  logger.warn('=== A iniciar seeds ===');
+/**
+ * Seed de infraestrutura de templates.
+ *
+ * Não cria templates visuais finais: esses serão fornecidos pelo
+ * responsável do produto. Apenas garante um template neutro para que o
+ * fluxo de criação de eventos possa ser testado ponta a ponta.
+ */
+async function seedTemplates(): Promise<void> {
+  await pool.query(
+    `INSERT INTO event_templates (
+       slug, name, description, supported_fields, themes, is_active, sort_order
+     )
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, true, 0)
+     ON CONFLICT (slug) DO UPDATE
+       SET name = EXCLUDED.name,
+           description = EXCLUDED.description,
+           supported_fields = EXCLUDED.supported_fields,
+           themes = EXCLUDED.themes,
+           is_active = EXCLUDED.is_active,
+           sort_order = EXCLUDED.sort_order,
+           updated_at = now()`,
+    [
+      'base',
+      'Base',
+      'Template neutro de infraestrutura. Substituir pelos templates finais fornecidos pelo responsável.',
+      JSON.stringify([
+        'title',
+        'host_name',
+        'starts_at',
+        'timezone',
+        'location',
+        'message',
+        'rules',
+        'dress_code',
+        'contribution',
+      ]),
+      JSON.stringify([
+        { mode: 'light', palette: 'default' },
+        { mode: 'dark', palette: 'default' },
+      ]),
+    ]
+  );
 
-  logger.warn('--- Utilizadores ---');
-  const userIds = await seedUsers();
-
-  console.warn('\n--- Empresas ---');
-  const companyIds = await seedCompanies(userIds);
-  console.warn('\n--- Associações utilizador-empresa ---');
-  await seedUserCompanies(userIds, companyIds);
-
-  console.warn('\n--- Categorias ---');
-  const categoryIds = await seedCategories();
-  console.warn('\n--- Produtos ---');
-  await seedProducts(categoryIds);
-
-  console.warn('\n--- Endereços ---');
-  await seedAddresses(userIds);
-
-  console.warn('\n--- Tipos de entrega ---');
-  const deliveryTypeIds = await seedDeliveryTypes();
-  console.warn('\n--- Métodos de pagamento ---');
-  const paymentMethodIds = await seedPaymentMethods();
-
-  console.warn('\n--- Carrinhos ---');
-  await seedCarts(userIds);
-  console.warn('\n--- Itens de carrinho ---');
-  await seedCartItems(userIds);
-
-  console.warn('\n--- Pedidos ---');
-  await seedOrders(userIds, deliveryTypeIds, paymentMethodIds);
-
-  console.warn('\n--- Wishlists ---');
-  await seedWishlists(userIds);
-  console.warn('\n--- Notificações ---');
-  await seedNotifications(userIds);
-
-  console.warn('\n=== Seeds concluídos com sucesso ===\n');
-  console.warn('Credenciais de teste (senha única para todos):');
-  console.warn(`  Senha:        ${SEED_PASSWORD}`);
-  console.warn(`  Admin:        admin@qd.co.ao`);
-  console.warn(`  Cliente 1:    joao.silva@example.com`);
-  logger.warn(`  Cliente 2:    maria.santos@example.com`);
-  logger.warn(`  Empresa:      empresa.tech@example.com`);
+  logger.info('Template base garantido.');
 }
 
-runSeeds()
-  .catch((err: unknown) => {
-    logger.error({ err }, 'Erro ao executar seeds');
-    process.exit(1);
-  })
-  .finally(async () => {
+async function main(): Promise<void> {
+  try {
+    await seedTemplates();
+    logger.info('Seeds concluídos.');
+  } finally {
     await closePool();
-  });
+  }
+}
+
+void main().catch((error: unknown) => {
+  logger.error({ err: error }, 'Falha ao executar seeds.');
+  process.exitCode = 1;
+});

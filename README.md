@@ -1,267 +1,170 @@
-# QD Store Backend
+# Apupu — Backend
 
-API REST do QD Solutions — e-commerce de tecnologia para Angola.
+API REST da **Apupu**, uma plataforma de convites para eventos.
 
-- **Stack:** Node.js 20 + Express + TypeScript + PostgreSQL 16
-- **Porta da API:** `1914` (host) → `1914` (container)
+- **Stack:** Node.js 20 + Express 4 + TypeScript 5 + PostgreSQL 16
+- **Porta da API:** `3000`
 - **Porta do Postgres:** `5433` (host) → `5432` (container)
-- Ambas publicadas em **dual-stack** (`127.0.0.1` e `[::1]`) para
-  clientes que resolvem `localhost` para IPv6
+- **Sem contas na fase 1:** a gestão do evento é feita por um link secreto
+  e cada convidado recebe um link individual.
 
-## Pré-requisitos
+## Âmbito da primeira fase
 
-- Docker 20.10+ e o plugin Compose v2 (`docker compose version`)
-- Node.js 20 ou superior e npm (para executar a API localmente)
+Incluído:
+
+- Criar e editar eventos sem registo de utilizador.
+- Escolher um template de convite (infraestrutura; templates finais
+  serão fornecidos pelo responsável do produto).
+- Registar convidados e enviar convites por email.
+- Página pública do convite com aceitação, alteração de resposta e recusa.
+- Recusa cancela os lembretes futuros e notifica o anfitrião por email.
+- Lembretes automáticos a 14, 7, 3 e 1 dia antes do evento, às 09:00 no
+  fuso do evento.
+
+Fora do âmbito: contas, login, painel administrativo, pagamentos, SMS e
+WhatsApp.
 
 ## Arranque rápido
-
-1. Instalar dependências e preparar o ficheiro de ambiente:
-
-   ```bash
-   npm install
-   cp .env.example .env
-   ```
-
-   Revê `DATABASE_URL`, `CORS_ORIGIN`, `CORS_ALLOW_LOCALHOST` e `JWT_SECRET`
-   no `.env`. O exemplo destina-se a desenvolvimento local.
-2. Iniciar o PostgreSQL:
-
-   ```bash
-   docker compose up -d
-   ```
-
-3. Aplicar migrations e carregar dados de teste:
-
-   ```bash
-   npm run migrate:up
-   npm run seed
-   ```
-
-4. Iniciar a API:
-
-   ```bash
-   npm run dev
-   ```
-
-5. Noutro terminal, executar o smoke test:
-
-   ```bash
-   npm run smoke
-   ```
-
-   Para testar a API servida pelo Docker Compose, configura
-   `API_URL=http://localhost:1914 npm run smoke`. O padrão do smoke test é
-   `http://localhost:3000`.
-
-Swagger/Scalar: `http://localhost:3000/api-docs` em desenvolvimento local ou
-`http://localhost:1914/api-docs` no Docker Compose. O contrato detalhado para integração do
-front-end está em [docs/API-CONTRACT.md](./docs/API-CONTRACT.md).
-
-## Como subir os containers
-
-Na raiz do projecto:
-
-### Primeira vez (ou após alterar código/migrations)
-
-```bash
-docker compose up -d --build
-```
-
-### Arranque normal (imagem já construída)
-
-```bash
-docker compose up -d
-```
-
-### Parar
-
-```bash
-docker compose down
-```
-
-> Os dados do Postgres persistem no volume `qd_store_postgres_data` — o `down` não apaga a base de dados.
-
-### Reiniciar após um `down`
-
-```bash
-docker compose start
-```
-
-## Verificar
-
-```bash
-docker compose ps
-curl http://localhost:1914/health
-```
-
-Resposta esperada do health check:
-
-```json
-{ "status": "ok", "service": "qd-store-backend", "database": "connected" }
-```
-
-Endpoints úteis:
-
-- `GET /api/v1/categories`
-- `GET /api/v1/locations`
-
-## Versionamento da API
-
-Todas as rotas de domínio vivem sob o prefixo **`/api/v1`**:
-
-| Recurso | Prefixo |
-|---|---|
-| Auth | `/api/v1/auth` |
-| Categorias | `/api/v1/categories` |
-| Ícones | `/api/v1/icons` |
-| Empresas | `/api/v1/companies` |
-| Admin | `/api/v1/admin` |
-| Utilizadores admin | `/api/v1/admin/users` |
-| Pedidos de orçamento admin | `/api/v1/admin/quote-requests` |
-| Localidades | `/api/v1/locations` |
-| Endereços | `/api/v1/addresses` |
-| Produtos | `/api/v1/products` |
-| Tipos de entrega | `/api/v1/delivery-types` |
-| Métodos de pagamento | `/api/v1/payment-methods` |
-| Carrinho | `/api/v1/cart` |
-| Encomendas | `/api/v1/orders` |
-| Wishlist | `/api/v1/wishlist` |
-| Notificações | `/api/v1/notifications` |
-| Destaques | `/api/v1/highlights` |
-| Serviços | `/api/v1/services` |
-| Pedidos de orçamento | `/api/v1/quote-requests` |
-
-A estrutura de pastas espelha a versão:
-
-```
-src/routes/
-└── v1/
-    ├── index.ts        # router agregador da v1 (monta os domínios)
-    ├── auth.routes.ts
-    └── ...
-```
-
-Em `app.ts`, a montagem é uma única linha — `app.use('/api/v1', v1Routes)`.
-Uma futura v2 encaixa-se criando `src/routes/v2/` no mesmo formato e
-montando sob `/api/v2`, sem tocar na v1. `/health` fica fora do prefixo
-versionado de propósito (health check de orquestrador não deve quebrar
-entre versões). Routers aninhados (`/products/:productId/images`,
-`/companies/:companyId/users`) continuam montados dentro dos routers
-pai, herdando o prefixo.
-
-## Documentação
-
-- **Local (dev):** `http://localhost:1914/api-docs` (com `npm run dev`)
-- **No container:** `http://localhost:1914/api-docs` também está
-  activo — o compose corre a API com `NODE_ENV: development` de
-  propósito, para a doc ficar disponível sem parar o container. O
-  spec está em `/openapi.json`.
-
-> A documentação é gerada a partir dos comentários JSDoc das rotas.
-> Para tal funcionar dentro do container, o `swagger-jsdoc` usa dois
-> globs (`*.routes.ts` para dev e `*.routes.js` para a imagem
-> compilada) — alterar o caminho dos ficheiros de rotas exige
-> actualizar `src/config/swagger.ts`.
->
-> **Tela branca ao abrir a docs:** o HTML da docs carrega o Scalar UI
-> de um CDN (`cdn.jsdelivr.net`). Se não houver internet ou um proxy
-> bloquear esse domínio, a tela fica branca — o spec em
-> `/openapi.json` continua a funcionar normalmente. Abra o console do
-> navegador (F12) para confirmar se há erro de carregamento do CDN.
-
-## Notas de arquitetura do setup Docker
-
-- **Migrations automáticas:** ao arrancar, o container da API executa
-  `npm run migrate:up` antes de iniciar o servidor — o schema fica
-  sempre actualizado sem passos manuais.
-- **Rede interna:** a API liga-se ao Postgres pelo hostname
-  `postgres:5432` (rede do Compose), não pelo `localhost:5433` do host.
-  A porta 5433 existe apenas para clientes externos (psql, DBeaver).
-- **Variáveis de ambiente:** a API recebe tudo via `environment:` do
-  `docker-compose.yml`. O `.env` local **não** é copiado para a imagem
-  (ver `.dockerignore`).
-- **CORS local:** `CORS_ALLOW_LOCALHOST=true` permite qualquer porta em
-  origens `localhost`, `127.0.0.1` e `[::1]` apenas em `development`.
-  Mantém-se `false` por omissão; o Compose publica a API apenas em loopback.
-- **JWT_SECRET:** o compose tem um default de desenvolvimento. Em
-  produção, exporte antes de subir:
-
-  ```bash
-  export JWT_SECRET=$(openssl rand -base64 48)
-  docker compose up -d
-  ```
-- **Build multi-stage:** o `Dockerfile` instala a toolchain de
-  compilação apenas para o `bcrypt` (módulo nativo) num stage
-  separado; a imagem final é Alpine sem compiladores e corre com o
-  utilizador sem privilégios `node`.
-- **`--build`** reconstrói a imagem — necessário quando muda código,
-  `package.json` ou adiciona migrations. Sem ele, o compose reutiliza
-  a imagem existente e arranca em segundos.
-
-### `ECONNREFUSED ::1:1914` no API client, mas o browser funciona?
-
-É IPv6. O Docker publica as portas em IPv4 por omissão, e clientes que
-resolvem `localhost` para `::1` (Node 17+, WSL, Windows, clientes
-containerizados) não encontram nada a escutar lá — daí o
-`ECONNREFUSED ::1:1914`. O browser funciona porque implementa Happy
-Eyeballs: tenta IPv6, falha, e cai imediatamente para IPv4.
-
-O compose já publica em dual-stack para os dois serviços
-(`127.0.0.1:1914:1914` + `[::1]:1914:1914`), o que resolve a maioria
-dos casos. Se o teu cliente insistir, use o IP literal na URL:
-
-```
-http://127.0.0.1:1914/api/v1/categories
-```
-
-## Logs
-
-A aplicação usa **Pino**. Em desenvolvimento emite texto colorido e
-legível no terminal; em produção emite JSON numa única linha, pronto
-para ingestão por sistemas de log (Datadog, CloudWatch, ELK).
-
-```bash
-docker compose logs -f api
-docker compose logs -f postgres
-```
-
-## Testes
-
-Usa **Vitest**. Executar:
-
-```bash
-npm run test          # corre os testes uma vez
-npm run test:watch    # modo watch
-npm run test:coverage # com cobertura de código
-```
-
-## Seeds (dados de teste)
-
-### Local (sem Docker)
-
-```bash
-npm run seed          # todos os seeds
-npm run seed:admin    # apenas o utilizador administrador
-```
-
-### Dentro do container Docker
-
-O container tem apenas o código compilado (`dist/`), então os seeds correm via `node`:
-
-```bash
-docker compose exec api npm run seed:docker          # todos os seeds
-docker compose exec api npm run seed:admin:docker    # apenas o admin
-```
-
-Os seeds são idempotentes: verificam se o registo já existe antes de criar. O container aplica as migrations automaticamente ao subir, então o schema já estará atualizado antes de correr os seeds.
-
-## Desenvolvimento local sem Docker
 
 ```bash
 cp .env.example .env
 npm install
+docker compose up -d postgres
+npm run migrate:up
+npm run seed
 npm run dev
 ```
 
-Requer um Postgres acessível em `localhost:5433` (por exemplo, subindo
-apenas o serviço de base de dados: `docker compose up -d postgres`).
+Smoke test (noutro terminal):
+
+```bash
+npm run smoke
+# fluxo completo, escreve dados de teste:
+SMOKE_WRITE=true npm run smoke
+```
+
+Documentação interativa: <http://localhost:3000/api-docs> · spec em
+<http://localhost:3000/openapi.json>.
+
+## Docker Compose
+
+```bash
+docker compose up -d --build   # primeira vez ou após alterar código/migrations
+docker compose up -d           # arranque normal
+docker compose down            # parar (os dados persistem no volume)
+```
+
+O container da API aplica as migrations pendentes antes de arrancar o
+servidor.
+
+## Endpoints
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/health` | Estado da API e da base de dados |
+| `GET` | `/api/v1/templates` | Templates de convite ativos |
+| `POST` | `/api/v1/events` | Cria evento, convidados e entregas de email |
+| `POST` | `/api/v1/host/session` | Troca o link secreto por sessão `HttpOnly` |
+| `DELETE` | `/api/v1/host/session/:eventId` | Revoga a sessão de gestão |
+| `GET` | `/api/v1/host/events/:eventId` | Evento, estatísticas e convidados |
+| `PATCH` | `/api/v1/host/events/:eventId` | Actualiza o evento e reconcilia lembretes |
+| `GET` | `/api/v1/host/events/:eventId/invitations` | Lista convidados |
+| `POST` | `/api/v1/host/events/:eventId/invitations` | Adiciona convidado e enfileira convite |
+| `PATCH` | `/api/v1/host/events/:eventId/invitations/:invitationId` | Actualiza convidado |
+| `DELETE` | `/api/v1/host/events/:eventId/invitations/:invitationId` | Remove convidado |
+| `POST` | `/api/v1/host/events/:eventId/invitations/:invitationId/resend` | Reenvia convite |
+| `POST` | `/api/v1/host/events/:eventId/invitations/:invitationId/revoke` | Revoga acesso do navegador |
+| `POST` | `/api/v1/public/invitations/:token/claim` | Reclama o convite no primeiro navegador |
+| `GET` | `/api/v1/public/invitations/:token` | Consulta o convite com a capacidade do navegador |
+| `PUT` | `/api/v1/public/invitations/:token/rsvp` | Aceita, altera ou recusa o convite |
+
+O contrato detalhado está em [docs/API-CONTRACT.md](docs/API-CONTRACT.md).
+A especificação autoritária do produto está em [`backend/`](backend/).
+
+## Segurança e privacidade
+
+- O **link de gestão** é um token de 256 bits. A base de dados guarda
+  apenas o HMAC. O token em claro é enviado uma única vez para o email do
+  anfitrião; nunca é devolvido em JSON nem escrito em logs.
+- O segredo de gestão é trocado por uma sessão `HttpOnly` curta, por
+  evento (`apupu_host_<eventId>`). Operações mutáveis exigem
+  `X-CSRF-Token` derivado da sessão.
+- O **token de convite** é guardado em hash (lookup) e cifrado com
+  AES-256-GCM (para reenvios e lembretes).
+- O primeiro navegador que abre um convite fica **vinculado** a ele por
+  um cookie `HttpOnly` (`apupu_guest`). Outro navegador recebe o mesmo
+  `404` genérico de um link inexistente. Isto não identifica uma pessoa
+  nem um dispositivo físico.
+- Respostas da API têm `Cache-Control: private, no-store`.
+- Tokens e dados pessoais nunca são escritos em logs.
+
+## Lembretes e outbox
+
+A cadência é configurada em `REMINDER_OFFSETS_DAYS` (por omissão
+`14,7,3,1`) e a hora local em `REMINDER_LOCAL_HOUR` (por omissão `9`). O
+worker da outbox corre a cada `OUTBOX_SCAN_INTERVAL_MS` quando
+`OUTBOX_ENABLED=true`; também é possível executar um ciclo manual:
+
+```bash
+npm run outbox:run
+```
+
+Uma recusa cancela imediatamente os lembretes pendentes desse convidado.
+Cancelar o evento cancela convites/lembretes pendentes e enfileira o
+aviso de cancelamento aos convidados que não recusaram.
+
+## Email
+
+- `EMAIL_TRANSPORT=json` (desenvolvimento): não envia; escreve as
+  mensagens renderizadas em `EMAIL_JSON_DIR` (por omissão
+  `tmp/outbox/`). O conteúdo inclui links com tokens, por isso nunca é
+  escrito nos logs.
+- `EMAIL_TRANSPORT=smtp`: usa `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`,
+  `SMTP_USER`, `SMTP_PASS` e `EMAIL_FROM`.
+
+A outbox tem retries com backoff exponencial (`EMAIL_MAX_ATTEMPTS`,
+`EMAIL_RETRY_BASE_MS`) e chaves idempotentes que impedem envios
+duplicados.
+
+## Testes e validação
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run test:coverage
+```
+
+Os testes unitários não precisam de base de dados. O smoke test precisa
+da API a correr.
+
+## Estrutura
+
+```
+src/
+├── config/         env (Zod), logger (Pino), CORS, Swagger
+├── controllers/    camada HTTP (sem regras de negócio)
+├── database/       pool Postgres e helpers de transacção
+├── dto/            conversão explícita para o contrato (snake_case)
+├── errors/         AppError + erros HTTP tipados
+├── middlewares/    asyncHandler, validate, errorHandler, hostAuth, guestAuth, CSRF
+├── repositories/   SQL e mapeamento de linhas
+├── routes/v1/      routers por domínio + agregador
+├── schemas/        validação Zod
+├── scripts/        seeds, smoke test, ciclo manual da outbox
+├── services/       eventos, convites, sessão, email, lembretes, outbox
+├── types/          tipos do domínio
+└── utils/          tokens, cifra, datas, links, cookies
+migrations/         node-pg-migrate
+tests/              Vitest
+backend/            especificação autoritária do produto
+docs/               contrato e modelo de dados da implementação
+```
+
+## Decisões que exigem confirmação antes de produção
+
+- Política de retenção e eliminação de dados pessoais.
+- Regras de consentimento e unsubscribe para emails transacionais.
+- Domínio definitivo e política de cookies same-site.
+- Recuperação de acesso se o anfitrião perder o link secreto.
+- Limites e acessibilidade dos templates finais.

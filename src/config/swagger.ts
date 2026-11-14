@@ -1,30 +1,18 @@
 import path from 'node:path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import { env } from './env';
-import { catalogSchemas } from './swagger-schemas/catalog.schemas';
-import { cartSchemas } from './swagger-schemas/cart.schemas';
-import { orderSchemas } from './swagger-schemas/order.schemas';
-import { paymentSchemas } from './swagger-schemas/payment.schemas';
-import { engagementSchemas } from './swagger-schemas/engagement.schemas';
-import { commonSchemas } from './swagger-schemas/common.schemas';
-import { authSchemas } from './swagger-schemas/auth.schemas';
-import { companySchemas } from './swagger-schemas/company.schemas';
-import { locationSchemas } from './swagger-schemas/location.schemas';
-import { addressSchemas } from './swagger-schemas/address.schemas';
-import { productSchemas } from './swagger-schemas/product.schemas';
-import { adminUserSchemas } from './swagger-schemas/admin-user.schemas';
-import { quoteRequestSchemas } from './swagger-schemas/quote-request.schemas';
+import { apupuSchemas } from './swagger-schemas/apupu.schemas';
 
 const swaggerDefinition: swaggerJsdoc.OAS3Definition = {
   openapi: '3.0.0',
   info: {
-    title: 'QD Store API',
-    version: '1.0.0',
+    title: 'Apupu API',
+    version: '0.1.0',
     description:
-      'API REST do QD Solutions — e-commerce de tecnologia para Angola. ' +
-      'Documentação gerada automaticamente a partir de comentários JSDoc ' +
-      'nas rotas, garantindo que a documentação nunca fica desatualizada ' +
-      'em relação ao código real.',
+      'API REST do Apupu — plataforma de convites para eventos. ' +
+      'Sem contas na primeira fase: a gestão do evento é feita por um ' +
+      'link secreto e cada convidado recebe um link individual. ' +
+      'Documentação gerada a partir dos comentários JSDoc das rotas.',
   },
   servers: [
     {
@@ -33,39 +21,24 @@ const swaggerDefinition: swaggerJsdoc.OAS3Definition = {
     },
   ],
   components: {
-    schemas: {
-      ...catalogSchemas,
-      ...cartSchemas,
-      ...orderSchemas,
-      ...paymentSchemas,
-      ...engagementSchemas,
-      ...commonSchemas,
-      ...authSchemas,
-      ...companySchemas,
-      ...locationSchemas,
-      ...addressSchemas,
-      ...productSchemas,
-      ...adminUserSchemas,
-      ...quoteRequestSchemas,
-      UpdateUserProfileInput: {
-        type: 'object',
-        properties: {
-          fullName: { type: 'string', maxLength: 150 },
-          email: { type: 'string', format: 'email' },
-          phone: { type: 'string', minLength: 9, maxLength: 20 },
-          currentPassword: { type: 'string', format: 'password' },
-          newPassword: { type: 'string', format: 'password' },
-          removePhoto: { type: 'boolean' },
-          photo: { type: 'string', format: 'binary' },
-        },
+    schemas: apupuSchemas,
+    securitySchemes: {
+      hostSession: {
+        type: 'apiKey',
+        in: 'cookie',
+        name: `${env.HOST_COOKIE_NAME}_<eventId>`,
+        description:
+          'Cookie HttpOnly emitido por POST /host/session. Operações mutáveis exigem também X-CSRF-Token.',
       },
     },
-
-    securitySchemes: {
-      bearerAuth: {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
+    responses: {
+      ValidationError: {
+        description: 'Dados inválidos.',
+        content: {
+          'application/json': {
+            schema: { $ref: '#/components/schemas/Error' },
+          },
+        },
       },
     },
   },
@@ -73,14 +46,13 @@ const swaggerDefinition: swaggerJsdoc.OAS3Definition = {
 
 const options: swaggerJsdoc.Options = {
   definition: swaggerDefinition,
-  // Dois padrões, um por modo de execução: em desenvolvimento (tsx),
-  // __dirname aponta para src/config e os ficheiros são .ts; na imagem
-  // Docker compilada, __dirname aponta para dist/config e os ficheiros
-  // são .js. Sem o padrão .js, o spec ficaria vazio no container.
-  // O subdirectório v1/ acompanha o versionamento das rotas.
+  // Em desenvolvimento (tsx) os ficheiros são .ts; na imagem Docker
+  // compilada são .js. Usamos `process.cwd()` em vez de `__dirname`
+  // porque `__dirname` não existe de forma fiável quando o projeto é
+  // carregado como ESM (Vitest, por exemplo).
   apis: [
-    path.join(__dirname, '../routes/v1/*.routes.ts'),
-    path.join(__dirname, '../routes/v1/*.routes.js'),
+    path.join(process.cwd(), 'src/routes/v1/*.routes.ts'),
+    path.join(process.cwd(), 'dist/routes/v1/*.routes.js'),
   ],
 };
 

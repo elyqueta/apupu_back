@@ -1,352 +1,255 @@
-interface ApiEnvelope<T> {
-  status: string;
-  data: T;
-  count?: number;
-  pagination?: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { env } from '../config/env';
+import { logger } from '../config/logger';
+import { closePool } from '../database/pool';
+import { processOutbox } from '../services/outbox.service';
+
+/**
+ * Smoke test da API.
+ *
+ * Por omissão é só de leitura. Com `SMOKE_WRITE=true` percorre o fluxo
+ * completo: criar evento, obter o link de gestão a partir da outbox de
+ * desenvolvimento, abrir sessão, adicionar convidado, reclamar o convite
+ * e recusar. Escreve dados na base de dados configurada.
+ */
+const BASE = env.API_BASE_URL.replace(/\/+$/, '');
+
+interface ApiResponse {
+  status: number;
+  body: unknown;
+  cookies: string[];
+}
+
+function cookieHeader(cookies: string[]): string {
+  return cookies.map((cookie) => cookie.split(';')[0]).join('; ');
+}
+
+async function request(
+  route: string,
+  init: RequestInit = {},
+  cookies: string[] = []
+): Promise<ApiResponse> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init.headers as Record<string, string> | undefined),
   };
-}
 
-interface ApiResult<T> {
-  response: Response;
-  body: T | undefined;
-}
+  if (cookies.length > 0) headers.Cookie = cookieHeader(cookies);
 
-interface RequestOptions {
-  method?: string;
-  token?: string;
-  body?: unknown;
-}
+  const response = await fetch(`${BASE}${route}`, { ...init, headers });
+  const text = await response.text();
 
-interface AuthData {
-  accessToken: string;
-  refreshToken: string;
-}
-
-interface Product {
-  id: string;
-  price: number;
-  status: 'active' | 'inactive' | 'out_of_stock';
-}
-
-interface CartItem {
-  productId: string;
-  quantity: number;
-  unitPrice: number;
-}
-
-interface Cart {
-  id: string;
-  items: CartItem[];
-  itemsCount: number;
-  total: number;
-}
-
-interface DeliveryType {
-  id: string;
-}
-
-interface PaymentMethod {
-  id: string;
-  type: 'multicaixa_express' | 'multicaixa_reference' | 'bank_transfer';
-}
-
-interface Address {
-  id: string;
-  isDefault: boolean;
-}
-
-interface Order {
-  id: string;
-  status: string;
-  total: number;
-  payment: { id: string; status: string } | null;
-}
-
-interface Payment {
-  id: string;
-  status: string;
-  details: {
-    reference?: string;
-  };
-}
-
-const apiUrl = (process.env.API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-const versionPrefix = '/api/v1';
-
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-function requireValue<T>(value: T | null | undefined, name: string): T {
-  if (value === undefined || value === null) {
-    throw new Error(`${name} não foi devolvido pela API.`);
-  }
-  return value;
-}
-
-async function request<T>(path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
-  const headers = new Headers();
-  if (options.body !== undefined) {
-    headers.set('content-type', 'application/json');
-  }
-  if (options.token) {
-    headers.set('authorization', `Bearer ${options.token}`);
-  }
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-  });
-  let body: T | undefined;
-  if (response.status !== 204) {
-    body = (await response.json()) as T;
-  }
-  return { response, body };
-}
-
-function expectStatus<T>(
-  result: ApiResult<T>,
-  expected: number,
-  description: string
-): T | undefined {
-  assert(
-    result.response.status === expected,
-    `${description}: esperado HTTP ${expected}, recebido ${result.response.status}.`
-  );
-  return result.body;
-}
-
-async function step(name: string, action: () => Promise<void>): Promise<void> {
+  let body: unknown = text;
   try {
-    await action();
-    console.warn(`✔ ${name}`);
-  } catch (error) {
-    console.warn(`✘ ${name}: ${error instanceof Error ? error.message : String(error)}`);
-    throw error;
+    body = JSON.parse(text) as unknown;
+  } catch {
+    // mantém texto
+  }
+
+  const withGetSetCookie = response.headers as Headers & { getSetCookie?: () => string[] };
+  const cookiesFromResponse =
+    withGetSetCookie.getSetCookie?.() ??
+    [response.headers.get('set-cookie')].filter((value): value is string => Boolean(value));
+
+  return { status: response.status, body, cookies: cookiesFromResponse };
+}
+
+function assertStatus(label: string, response: ApiResponse, expected: number): void {
+  if (response.status !== expected) {
+    throw new Error(
+      `${label}: esperado ${expected}, recebido ${response.status} — ${JSON.stringify(response.body)}`
+    );
   }
 }
 
-async function login(email: string): Promise<string> {
-  const result = await request<ApiEnvelope<AuthData>>(`${versionPrefix}/auth/login`, {
+function dataOf(response: ApiResponse): Record<string, unknown> {
+  const body = response.body as { data?: Record<string, unknown> } | null;
+  return body?.data ?? {};
+}
+
+/** Lê a mensagem mais recente da outbox de desenvolvimento. */
+async function latestOutboxMessage(
+  predicate: (message: { to?: string; subject?: string; text?: string }) => boolean
+): Promise<{ to: string; subject: string; text: string }> {
+  const directory = path.resolve(process.cwd(), env.EMAIL_JSON_DIR);
+  const files = (await readdir(directory)).filter((file) => file.endsWith('.json')).sort();
+
+  for (const file of files.reverse()) {
+    const raw = await readFile(path.join(directory, file), 'utf8');
+    const message = JSON.parse(raw) as { to?: string; subject?: string; text?: string };
+
+    if (predicate(message)) {
+      return {
+        to: message.to ?? '',
+        subject: message.subject ?? '',
+        text: message.text ?? '',
+      };
+    }
+  }
+
+  throw new Error(`Nenhuma mensagem correspondente em ${directory}.`);
+}
+
+function extractToken(text: string, prefix: string): string {
+  const match = new RegExp(`${prefix}/([A-Za-z0-9_-]+)`).exec(text);
+  if (!match?.[1]) throw new Error(`Token não encontrado no texto do email (${prefix}).`);
+  return match[1];
+}
+
+async function readOnlyChecks(): Promise<void> {
+  assertStatus('health', await request('/health'), 200);
+  assertStatus('templates', await request('/api/v1/templates'), 200);
+
+  const missing = await request('/api/v1/rota-inexistente');
+  assertStatus('rota inexistente', missing, 404);
+
+  logger.info('Smoke test de leitura concluído.');
+}
+
+async function writeFlow(): Promise<void> {
+  const suffix = Date.now().toString(36);
+  const hostEmail = `host-${suffix}@example.test`;
+  const guestEmail = `guest-${suffix}@example.test`;
+  const startsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const created = await request('/api/v1/events', {
     method: 'POST',
-    body: { email, password: 'Teste1234' },
-  });
-  const body = requireValue(expectStatus(result, 200, `Login ${email}`), 'Resposta do login');
-  return requireValue(body.data.accessToken, 'accessToken');
-}
-
-async function run(): Promise<void> {
-  let accessToken = '';
-  let adminToken = '';
-  let productId = '';
-  let productPrice = 0;
-  let deliveryTypeId = '';
-  let expressMethodId = '';
-  let referenceMethodId = '';
-  let addressId = '';
-  let firstOrderId = '';
-  let referencePaymentId = '';
-
-  await step('Health check e ligação à base de dados', async () => {
-    const result = await request<{ database: string }>('/health');
-    const body = requireValue(expectStatus(result, 200, 'Health check'), 'Health check');
-    assert(
-      body.database === 'connected',
-      'O health check não confirmou a ligação à base de dados.'
-    );
+    body: JSON.stringify({
+      event: {
+        title: `Evento smoke ${suffix}`,
+        host_name: 'Anfitriã Smoke',
+        host_email: hostEmail,
+        starts_at: startsAt,
+        timezone: 'Africa/Luanda',
+        location: { type: 'venue', name: 'Espaço de teste', address: 'Luanda' },
+        message: 'Evento criado pelo smoke test.',
+        rules: 'Sem regras.',
+        dress_code: 'Casual',
+        theme: { mode: 'dark', palette: 'default' },
+        contribution: { enabled: false },
+      },
+      guests: [{ name: 'Convidado Smoke', email: guestEmail, phone: null }],
+    }),
   });
 
-  await step('Login do utilizador de teste', async () => {
-    accessToken = await login('joao.silva@example.com');
-  });
+  assertStatus('criar evento', created, 201);
 
-  await step('Obter produto activo do catálogo', async () => {
-    const result = await request<ApiEnvelope<Product[]> & { pagination?: { total: number } }>(
-      `${versionPrefix}/products?limit=5`
-    );
-    const body = requireValue(expectStatus(result, 200, 'Listagem de produtos'), 'Produtos');
-    const product = body.data.find((entry) => entry.status === 'active');
-    assert(body.data.length > 0, 'O catálogo não devolveu produtos.');
-    assert(product, 'Nenhum dos primeiros cinco produtos está activo.');
-    productId = product.id;
-    productPrice = product.price;
-  });
+  const createdData = dataOf(created);
+  const event = createdData.event as { id?: string } | undefined;
+  if (!event?.id) throw new Error('Evento criado sem id na resposta.');
 
-  await step('Adicionar 2 unidades ao carrinho e validar o total', async () => {
-    const clearResult = await request<undefined>(`${versionPrefix}/cart`, {
-      method: 'DELETE',
-      token: accessToken,
-    });
-    expectStatus(clearResult, 204, 'Limpar carrinho');
-    const addResult = await request<ApiEnvelope<Cart>>(`${versionPrefix}/cart/items`, {
-      method: 'POST',
-      token: accessToken,
-      body: { productId, quantity: 2 },
-    });
-    expectStatus(addResult, 201, 'Adicionar produto ao carrinho');
-    const cartResult = await request<ApiEnvelope<Cart>>(`${versionPrefix}/cart`, {
-      token: accessToken,
-    });
-    const cart = requireValue(expectStatus(cartResult, 200, 'Consultar carrinho'), 'Carrinho').data;
-    assert(cart.itemsCount === 2, `itemsCount esperado 2, recebido ${cart.itemsCount}.`);
-    const expectedTotalCents = Math.round(productPrice * 100) * 2;
-    assert(
-      Math.round(cart.total * 100) === expectedTotalCents,
-      `Total do carrinho inesperado: ${cart.total}.`
-    );
-  });
+  // Em desenvolvimento, as mensagens ficam em ficheiros. Processa a
+  // outbox para garantir que os convites já foram renderizados.
+  if (env.EMAIL_TRANSPORT === 'json') {
+    await processOutbox();
+  }
 
-  await step('Obter entrega, Multicaixa Express e endereço padrão', async () => {
-    const [deliveryResult, methodsResult, addressesResult] = await Promise.all([
-      request<ApiEnvelope<DeliveryType[]>>(`${versionPrefix}/delivery-types`),
-      request<ApiEnvelope<PaymentMethod[]>>(`${versionPrefix}/payment-methods`),
-      request<ApiEnvelope<Address[]>>(`${versionPrefix}/addresses`, { token: accessToken }),
-    ]);
-    const delivery = requireValue(
-      expectStatus(deliveryResult, 200, 'Tipos de entrega'),
-      'Tipos de entrega'
-    ).data[0];
-    const methods = requireValue(
-      expectStatus(methodsResult, 200, 'Métodos de pagamento'),
-      'Métodos de pagamento'
-    ).data;
-    const addressList = requireValue(
-      expectStatus(addressesResult, 200, 'Endereços'),
-      'Endereços'
-    ).data;
-    deliveryTypeId = requireValue(delivery, 'Tipo de entrega').id;
-    expressMethodId = requireValue(
-      methods.find((method) => method.type === 'multicaixa_express'),
-      'Método Multicaixa Express'
-    ).id;
-    referenceMethodId = requireValue(
-      methods.find((method) => method.type === 'multicaixa_reference'),
-      'Método Multicaixa Referência'
-    ).id;
-    addressId = requireValue(
-      addressList.find((address) => address.isDefault),
-      'Endereço padrão'
-    ).id;
-  });
-
-  await step('Criar encomenda e confirmar que o carrinho ficou vazio', async () => {
-    const result = await request<ApiEnvelope<Order>>(`${versionPrefix}/orders`, {
-      method: 'POST',
-      token: accessToken,
-      body: { deliveryTypeId, paymentMethodId: expressMethodId, addressId },
-    });
-    const order = requireValue(expectStatus(result, 201, 'Criar encomenda'), 'Encomenda').data;
-    assert(order.status === 'processing', 'A encomenda não ficou em processamento.');
-    firstOrderId = order.id;
-    const cartResult = await request<ApiEnvelope<Cart>>(`${versionPrefix}/cart`, {
-      token: accessToken,
-    });
-    const cart = requireValue(
-      expectStatus(cartResult, 200, 'Carrinho após encomenda'),
-      'Carrinho'
-    ).data;
-    assert(cart.itemsCount === 0, 'O carrinho não foi esvaziado após criar a encomenda.');
-  });
-
-  await step('Pagar encomenda por Multicaixa Express simulado', async () => {
-    const result = await request<ApiEnvelope<Payment>>(
-      `${versionPrefix}/orders/${firstOrderId}/payments`,
-      {
-        method: 'POST',
-        token: accessToken,
-        body: { methodType: 'multicaixa_express', customerPhone: '923111111' },
-      }
-    );
-    const payment = requireValue(expectStatus(result, 201, 'Pagamento Express'), 'Pagamento').data;
-    assert(payment.status === 'confirmed', `Pagamento Express ficou ${payment.status}.`);
-  });
-
-  await step('Consultar encomenda com pagamento confirmado', async () => {
-    const result = await request<ApiEnvelope<Order>>(`${versionPrefix}/orders/${firstOrderId}`, {
-      token: accessToken,
-    });
-    const order = requireValue(expectStatus(result, 200, 'Consultar encomenda'), 'Encomenda').data;
-    assert(order.payment?.status === 'confirmed', 'A encomenda não mostra pagamento confirmado.');
-  });
-
-  await step('Criar segunda encomenda com pagamento por Referência', async () => {
-    const addResult = await request<ApiEnvelope<Cart>>(`${versionPrefix}/cart/items`, {
-      method: 'POST',
-      token: accessToken,
-      body: { productId, quantity: 1 },
-    });
-    expectStatus(addResult, 201, 'Adicionar produto para segunda encomenda');
-    const orderResult = await request<ApiEnvelope<Order>>(`${versionPrefix}/orders`, {
-      method: 'POST',
-      token: accessToken,
-      body: { deliveryTypeId, paymentMethodId: referenceMethodId, addressId },
-    });
-    const order = requireValue(
-      expectStatus(orderResult, 201, 'Criar segunda encomenda'),
-      'Encomenda'
-    ).data;
-    const paymentResult = await request<ApiEnvelope<Payment>>(
-      `${versionPrefix}/orders/${order.id}/payments`,
-      {
-        method: 'POST',
-        token: accessToken,
-        body: { methodType: 'multicaixa_reference' },
-      }
-    );
-    const payment = requireValue(
-      expectStatus(paymentResult, 201, 'Pagamento por Referência'),
-      'Pagamento'
-    ).data;
-    assert(payment.status === 'pending', 'Pagamento por Referência não ficou pendente.');
-    assert(/^\d{9}$/.test(payment.details.reference ?? ''), 'Referência não tem nove dígitos.');
-    referencePaymentId = payment.id;
-    const cartResult = await request<ApiEnvelope<Cart>>(`${versionPrefix}/cart`, {
-      token: accessToken,
-    });
-    assert(
-      requireValue(expectStatus(cartResult, 200, 'Carrinho após segunda encomenda'), 'Carrinho')
-        .data.itemsCount === 0,
-      'O carrinho não ficou vazio após a segunda encomenda.'
-    );
-  });
-
-  await step('Admin confirma pagamento por Referência', async () => {
-    adminToken = await login('admin@qd.co.ao');
-    const result = await request<ApiEnvelope<Payment>>(
-      `${versionPrefix}/admin/payments/${referencePaymentId}/confirm`,
-      { method: 'POST', token: adminToken }
-    );
-    const payment = requireValue(
-      expectStatus(result, 200, 'Confirmar Referência'),
-      'Pagamento'
-    ).data;
-    assert(payment.status === 'confirmed', 'O administrador não confirmou o pagamento.');
-  });
-
-  await step('Verificações de autenticação, autorização e posse', async () => {
-    const anonymous = await request<unknown>(`${versionPrefix}/orders`);
-    expectStatus(anonymous, 401, 'Pedidos sem token');
-    const customerAdmin = await request<unknown>(`${versionPrefix}/admin/orders`, {
-      token: accessToken,
-    });
-    expectStatus(customerAdmin, 403, 'Área administrativa com conta de cliente');
-    const mariaToken = await login('maria.santos@example.com');
-    const otherOrder = await request<unknown>(`${versionPrefix}/orders/${firstOrderId}`, {
-      token: mariaToken,
-    });
-    expectStatus(otherOrder, 404, 'Encomenda de outro utilizador');
-  });
-}
-
-run().catch((error: unknown) => {
-  console.warn(
-    `✘ Smoke test interrompido: ${error instanceof Error ? error.message : String(error)}`
+  const manageMessage = await latestOutboxMessage(
+    (message) => message.to === hostEmail && (message.subject ?? '').includes('link de gestão')
   );
+  const manageToken = extractToken(manageMessage.text, '/gerir');
+
+  const session = await request('/api/v1/host/session', {
+    method: 'POST',
+    body: JSON.stringify({ token: manageToken }),
+  });
+  assertStatus('abrir sessão de gestão', session, 200);
+
+  const sessionData = dataOf(session);
+  const csrfToken = sessionData.csrf_token;
+  if (typeof csrfToken !== 'string') throw new Error('Sessão sem csrf_token.');
+
+  const hostCookies = session.cookies;
+  const eventRoute = `/api/v1/host/events/${event.id}`;
+
+  assertStatus('consultar evento', await request(eventRoute, {}, hostCookies), 200);
+
+  const updated = await request(
+    eventRoute,
+    {
+      method: 'PATCH',
+      headers: { 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ dress_code: 'Traje formal' }),
+    },
+    hostCookies
+  );
+  assertStatus('actualizar evento', updated, 200);
+
+  const added = await request(
+    `${eventRoute}/invitations`,
+    {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ name: 'Segundo Convidado', email: `second-${suffix}@example.test` }),
+    },
+    hostCookies
+  );
+  assertStatus('adicionar convidado', added, 201);
+
+  if (env.EMAIL_TRANSPORT === 'json') {
+    await processOutbox();
+  }
+
+  const inviteMessage = await latestOutboxMessage(
+    (message) => message.to === guestEmail && (message.subject ?? '').startsWith('Convite:')
+  );
+  const inviteToken = extractToken(inviteMessage.text, '/convite');
+
+  const claimed = await request(`/api/v1/public/invitations/${inviteToken}/claim`, {
+    method: 'POST',
+  });
+  assertStatus('reclamar convite', claimed, 200);
+
+  const claimData = dataOf(claimed);
+  const guestCsrf = claimData.csrf_token;
+  if (typeof guestCsrf !== 'string') throw new Error('Claim sem csrf_token.');
+
+  const guestCookies = claimed.cookies;
+
+  assertStatus(
+    'consultar convite',
+    await request(`/api/v1/public/invitations/${inviteToken}`, {}, guestCookies),
+    200
+  );
+
+  const rsvp = await request(
+    `/api/v1/public/invitations/${inviteToken}/rsvp`,
+    {
+      method: 'PUT',
+      headers: { 'X-CSRF-Token': guestCsrf },
+      body: JSON.stringify({ status: 'declined' }),
+    },
+    guestCookies
+  );
+  assertStatus('recusar convite', rsvp, 200);
+
+  assertStatus(
+    'terminar sessão',
+    await request(
+      `/api/v1/host/session/${event.id}`,
+      { method: 'DELETE', headers: { 'X-CSRF-Token': csrfToken } },
+      hostCookies
+    ),
+    204
+  );
+
+  logger.info({ eventId: event.id }, 'Smoke test completo concluído.');
+}
+
+async function main(): Promise<void> {
+  try {
+    await readOnlyChecks();
+
+    if (process.env.SMOKE_WRITE === 'true') {
+      await writeFlow();
+    }
+  } finally {
+    await closePool();
+  }
+}
+
+void main().catch((error: unknown) => {
+  logger.error({ err: error }, 'Smoke test falhou.');
   process.exitCode = 1;
 });

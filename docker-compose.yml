@@ -1,25 +1,21 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: qd_store_postgres
+    container_name: apupu_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: qd_user
-      POSTGRES_PASSWORD: qd_password
-      POSTGRES_DB: qd_store
-    # Publicação em dual-stack: 127.0.0.1 (IPv4) e ::1 (IPv6). Sem a
-    # segunda entrada, clientes que resolvem "localhost" para ::1
-    # (Node 17+ verbatim, WSL, Windows, containers) falham com
-    # ECONNREFUSED ::1:1914 enquanto o browser funciona (Happy
-    # Eyeballs cai para IPv4).
+      POSTGRES_USER: apupu_user
+      POSTGRES_PASSWORD: apupu_password
+      POSTGRES_DB: apupu
+    # Publicação em dual-stack (IPv4 e IPv6): clientes que resolvem
+    # "localhost" para ::1 não encontram nada se só houver IPv4.
     ports:
-      - "127.0.0.1:5433:5432"
-      - "[::1]:5433:5432"
+      - '127.0.0.1:5433:5432'
+      - '[::1]:5433:5432'
     volumes:
-      - qd_store_postgres_data:/var/lib/postgresql/data
-      - ../database:/database:ro
+      - apupu_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U qd_user -d qd_store']
+      test: ['CMD-SHELL', 'pg_isready -U apupu_user -d apupu']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -28,51 +24,47 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: qd_store_api
+    container_name: apupu_api
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      # development (e não production) para manter /api-docs activo
-      # dentro do container — os comentários JSDoc das rotas são a
-      # fonte da documentação.
+      # development mantém /api-docs ativo dentro do container.
       NODE_ENV: development
-      PORT: "1914"
-      # Em desenvolvimento, aceitar qualquer origem localhost/127.0.0.1
-      # para suportar Angular em portas como 4200, 4300 ou 5173.
+      PORT: '3000'
       CORS_ALLOW_LOCALHOST: ${CORS_ALLOW_LOCALHOST:-true}
-      # "postgres" é o hostname do serviço na rede do Compose; a 5432
-      # é a porta INTERNA do container (não a 5433 publicada no host).
-      DATABASE_URL: postgres://qd_user:qd_password@postgres:5432/qd_store
-      CORS_ORIGIN: http://localhost:1914,http://localhost:5173,https://qd-store-one.vercel.app
-      # O rate limit global só é aplicado em produção; estes valores
-      # continuam definidos para satisfazer a configuração tipada.
-      RATE_LIMIT_WINDOW_MS: "900000"
-      RATE_LIMIT_MAX: "2000"
-      # Default de desenvolvimento; em produção exporte JWT_SECRET no
-      # ambiente do host antes de subir.
-      JWT_SECRET: ${JWT_SECRET:-qd_store_dev_only_jwt_secret_mude_em_producao_2026}
-      JWT_ACCESS_EXPIRES_IN: 15m
-      JWT_REFRESH_EXPIRES_IN_DAYS: "7"
-      BCRYPT_SALT_ROUNDS: "12"
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      DATABASE_URL: postgres://apupu_user:apupu_password@postgres:5432/apupu
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:4200}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:4200}
+      API_BASE_URL: ${API_BASE_URL:-http://localhost:3000}
+      # Em produção, exportar TOKEN_PEPPER no ambiente do host:
+      #   export TOKEN_PEPPER=$(openssl rand -base64 48)
+      TOKEN_PEPPER: ${TOKEN_PEPPER:-apupu_dev_only_token_pepper_mude_em_producao_2026}
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-json}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Apupu <convites@apupu.local>}
+      EMAIL_JSON_DIR: ${EMAIL_JSON_DIR:-tmp/outbox}
+      OUTBOX_ENABLED: ${OUTBOX_ENABLED:-true}
+      OUTBOX_SCAN_INTERVAL_MS: ${OUTBOX_SCAN_INTERVAL_MS:-60000}
+      MAX_INVITATIONS_PER_EVENT: ${MAX_INVITATIONS_PER_EVENT:-1000}
     ports:
-      - "127.0.0.1:1914:1914"
-      - "[::1]:1914:1914"
-    # Aplica as migrations pendentes antes de iniciar o servidor —
-    # node-pg-migrate lê a DATABASE_URL do ambiente acima.
-    command: ["sh", "-c", "npm run migrate:up && node dist/server.js"]
+      - '127.0.0.1:3000:3000'
+      - '[::1]:3000:3000'
+    # Aplica migrations pendentes antes de arrancar o servidor.
+    command: ['sh', '-c', 'npm run migrate:up && node dist/server.js']
     healthcheck:
       test:
         - CMD-SHELL
-        - wget --spider -q http://127.0.0.1:1914/health || exit 1
+        - wget --spider -q http://127.0.0.1:3000/health || exit 1
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
 
 volumes:
-  qd_store_postgres_data:
+  apupu_postgres_data:
