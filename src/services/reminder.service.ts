@@ -5,6 +5,7 @@ import { emailDeliveryRepository } from '../repositories/emailDelivery.repositor
 import { Event } from '../types/event.types';
 import { Invitation } from '../types/invitation.types';
 import { buildReminderSchedule } from '../utils/date.util';
+import { encryptToken } from '../utils/crypto.util';
 
 /**
  * Agendamento de mensagens na outbox.
@@ -178,4 +179,77 @@ export async function enqueueEventCancelled(
       client
     );
   }
+}
+
+/* ─────────────────────────── Mensagens de conta ─────────────────────────── */
+
+/**
+ * Enfileira a verificação de email. O token é guardado cifrado na
+ * outbox para o worker reconstruir o link; na tabela de tokens fica
+ * apenas o HMAC.
+ */
+export async function enqueueEmailVerification(
+  hostId: string,
+  email: string,
+  token: string,
+  client?: PoolClient
+): Promise<void> {
+  await emailDeliveryRepository.enqueue(
+    {
+      eventId: null,
+      invitationId: null,
+      hostId,
+      messageType: 'email_verification',
+      reminderKind: null,
+      recipientEmail: email,
+      scheduledFor: new Date(),
+      idempotencyKey: `email_verification:${hostId}:${randomUUID()}`,
+      tokenEncrypted: encryptToken(token),
+    },
+    client
+  );
+}
+
+/** Enfileira a mensagem de boas-vindas (uma por conta). */
+export async function enqueueHostWelcome(
+  hostId: string,
+  email: string,
+  client?: PoolClient
+): Promise<void> {
+  await emailDeliveryRepository.enqueue(
+    {
+      eventId: null,
+      invitationId: null,
+      hostId,
+      messageType: 'host_welcome',
+      reminderKind: null,
+      recipientEmail: email,
+      scheduledFor: new Date(),
+      idempotencyKey: `host_welcome:${hostId}`,
+    },
+    client
+  );
+}
+
+/** Enfileira a reposição de senha com token de uso único. */
+export async function enqueuePasswordReset(
+  hostId: string,
+  email: string,
+  token: string,
+  client?: PoolClient
+): Promise<void> {
+  await emailDeliveryRepository.enqueue(
+    {
+      eventId: null,
+      invitationId: null,
+      hostId,
+      messageType: 'password_reset',
+      reminderKind: null,
+      recipientEmail: email,
+      scheduledFor: new Date(),
+      idempotencyKey: `password_reset:${hostId}:${randomUUID()}`,
+      tokenEncrypted: encryptToken(token),
+    },
+    client
+  );
 }

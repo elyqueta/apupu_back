@@ -1,7 +1,8 @@
 import { PoolClient } from 'pg';
-import { pool } from '../database/pool';
+import { pool, query } from '../database/pool';
 import {
   Invitation,
+  InvitationWithEvent,
   RsvpStatus,
   SendStatus,
   UpdateInvitationInput,
@@ -13,6 +14,7 @@ interface InvitationRow {
   guest_name: string;
   guest_email: string;
   guest_phone: string | null;
+  table_name: string | null;
   token_hash: string;
   token_encrypted: string;
   claim_hash: string | null;
@@ -35,6 +37,7 @@ function toInvitation(row: InvitationRow): Invitation {
     guestName: row.guest_name,
     guestEmail: row.guest_email,
     guestPhone: row.guest_phone,
+    tableName: row.table_name,
     tokenHash: row.token_hash,
     tokenEncrypted: row.token_encrypted,
     claimHash: row.claim_hash,
@@ -52,19 +55,45 @@ function toInvitation(row: InvitationRow): Invitation {
 }
 
 const SELECT_COLUMNS = `
-  id, event_id, guest_name, guest_email, guest_phone,
+  id, event_id, guest_name, guest_email, guest_phone, table_name,
   token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
   rsvp_status, rsvp_responded_at, rsvp_version,
   send_status, send_count, last_sent_at, created_at, updated_at
 `;
+
+interface InvitationWithEventRow extends InvitationRow {
+  event_title: string;
+  event_starts_at: Date;
+  event_status: string;
+}
+
+function toInvitationWithEvent(row: InvitationWithEventRow): InvitationWithEvent {
+  return {
+    ...toInvitation(row),
+    eventTitle: row.event_title,
+    eventStartsAt: row.event_starts_at,
+    eventStatus: row.event_status,
+  };
+}
 
 export interface InsertInvitationData {
   eventId: string;
   guestName: string;
   guestEmail: string;
   guestPhone: string | null;
+  tableName: string | null;
   tokenHash: string;
   tokenEncrypted: string;
+}
+
+export interface HostGuestListFilters {
+  hostId: string;
+  eventId?: string;
+  rsvpStatus?: RsvpStatus;
+  sendStatus?: SendStatus;
+  q?: string;
+  offset: number;
+  limit: number;
 }
 
 export const invitationRepository = {
@@ -72,15 +101,17 @@ export const invitationRepository = {
     const runner = client ?? pool;
     const result = await runner.query<InvitationRow>(
       `INSERT INTO invitations (
-         event_id, guest_name, guest_email, guest_phone, token_hash, token_encrypted
+         event_id, guest_name, guest_email, guest_phone, table_name,
+         token_hash, token_encrypted
        )
-       VALUES ($1,$2,$3,$4,$5,$6)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING ${SELECT_COLUMNS}`,
       [
         data.eventId,
         data.guestName,
         data.guestEmail,
         data.guestPhone,
+        data.tableName,
         data.tokenHash,
         data.tokenEncrypted,
       ]
@@ -127,10 +158,95 @@ export const invitationRepository = {
       `SELECT ${SELECT_COLUMNS}
          FROM invitations
         WHERE event_id = $1
-        ORDER BY created_at ASC`,
+        ORDER BY created_at ASC, id ASC`,
       [eventId]
     );
     return result.rows.map(toInvitation);
+  },
+
+  /** Lista paginada dos convidados de um evento. */
+  async listByEventPage(
+    eventId: string,
+    offset: number,
+    limit: number,
+    client?: PoolClient
+  ): Promise<{ items: Invitation[]; total: number }> {
+    const runner = client ?? pool;
+    const countResult = await runner.query<{ total: string }>(
+      'SELECT count(*)::text AS total FROM invitations WHERE event_id = $1',
+      [eventId]
+    );
+    const result = await runner.query<InvitationRow>(
+      `SELECT ${SELECT_COLUMNS}
+         FROM invitations
+        WHERE event_id = $1
+        ORDER BY created_at ASC, id ASC
+        LIMIT $2 OFFSET $3`,
+      [eventId, limit, offset]
+    );
+
+    return {
+      items: result.rows.map(toInvitation),
+      total: Number(countResult.rows[0]?.total ?? '0'),
+    };
+  },
+
+  /**
+   * Lista global de convidados de uma conta, com filtros e o resumo do
+   * evento a que pertencem.
+   */
+  async listForHost(
+    filters: HostGuestListFilters
+  ): Promise<{ items: InvitationWithEvent[]; total: number }> {
+    const conditions = ['e.host_id = $1'];
+    const values: unknown[] = [filters.hostId];
+
+    if (filters.eventId) {
+      values.push(filters.eventId);
+      conditions.push(`i.event_id = $${values.length}`);
+    }
+    if (filters.rsvpStatus) {
+      values.push(filters.rsvpStatus);
+      conditions.push(`i.rsvp_status = $${values.length}`);
+    }
+    if (filters.sendStatus) {
+      values.push(filters.sendStatus);
+      conditions.push(`i.send_status = $${values.length}`);
+    }
+    if (filters.q) {
+      values.push(`%${filters.q}%`);
+      conditions.push(
+        `(i.guest_name ILIKE $${values.length} OR i.guest_email ILIKE $${values.length})`
+      );
+    }
+
+    const where = conditions.join(' AND ');
+    const countResult = await query<{ total: string }>(
+      `SELECT count(*)::text AS total
+         FROM invitations i
+         JOIN events e ON e.id = i.event_id
+        WHERE ${where}`,
+      values
+    );
+
+    const listValues = [...values, filters.limit, filters.offset];
+    const result = await query<InvitationWithEventRow>(
+      `SELECT ${SELECT_COLUMNS.split(',').map((column) => `i.${column.trim()}`).join(', ')},
+              e.title AS event_title,
+              e.starts_at AS event_starts_at,
+              e.status AS event_status
+         FROM invitations i
+         JOIN events e ON e.id = i.event_id
+        WHERE ${where}
+        ORDER BY i.created_at DESC, i.id DESC
+        LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,
+      listValues
+    );
+
+    return {
+      items: result.rows.map(toInvitationWithEvent),
+      total: Number(countResult.rows[0]?.total ?? '0'),
+    };
   },
 
   async countByEvent(eventId: string, client?: PoolClient): Promise<number> {
@@ -187,6 +303,10 @@ export const invitationRepository = {
     if ('guestPhone' in changes) {
       values.push(changes.guestPhone);
       set.push(`guest_phone = $${values.length}`);
+    }
+    if ('tableName' in changes) {
+      values.push(changes.tableName);
+      set.push(`table_name = $${values.length}`);
     }
 
     if (set.length === 0) return this.findById(id, client);

@@ -12,6 +12,7 @@ export interface Invitation {
   guestName: string;
   guestEmail: string;
   guestPhone: string | null;
+  tableName: string | null;
   tokenHash: string;
   tokenEncrypted: string;
   claimHash: string | null;
@@ -31,12 +32,21 @@ export interface CreateInvitationInput {
   guestName: string;
   guestEmail: string;
   guestPhone: string | null;
+  tableName: string | null;
 }
 
 export interface UpdateInvitationInput {
   guestName?: string;
   guestEmail?: string;
   guestPhone?: string | null;
+  tableName?: string | null;
+}
+
+/** Convite com o resumo do evento, usado na lista global de convidados. */
+export interface InvitationWithEvent extends Invitation {
+  eventTitle: string;
+  eventStartsAt: Date;
+  eventStatus: string;
 }
 
 export interface RsvpInput {

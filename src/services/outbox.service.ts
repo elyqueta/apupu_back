@@ -5,7 +5,9 @@ import {
   DeliveryContext,
   emailDeliveryRepository,
 } from '../repositories/emailDelivery.repository';
+import { activityRepository } from '../repositories/activity.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
+import { isHostMessage } from '../types/emailDelivery.types';
 import { reminderScheduledFor } from '../utils/date.util';
 import { renderDelivery, sendMail } from './email.service';
 
@@ -41,6 +43,11 @@ type Verdict = { ok: true } | { ok: false; reason: string };
 export function evaluateApplicability(context: DeliveryContext): Verdict {
   if (context.messageType === 'manage_link') {
     return { ok: false, reason: 'manage_link_not_queued' };
+  }
+
+  // Mensagens de conta não dependem do estado de um evento.
+  if (isHostMessage(context.messageType)) {
+    return { ok: true };
   }
 
   // Enquanto o evento estiver em `draft` não está pronto: convites e
@@ -87,6 +94,10 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
       return { ok: false, reason: 'invalid_reminder_kind' };
     }
 
+    if (!context.eventStartsAt || !context.eventTimezone) {
+      return { ok: false, reason: 'missing_event_context' };
+    }
+
     const expected = reminderScheduledFor(
       context.eventStartsAt,
       context.eventTimezone,
@@ -129,6 +140,25 @@ async function processDelivery(context: DeliveryContext, result: OutboxResult): 
       await invitationRepository.setSendStatus(fresh.invitationId, 'sent', {
         incrementCount: true,
       });
+    }
+
+    if (fresh.messageType === 'reminder' && fresh.eventId && fresh.invitationId) {
+      // O email já saiu: uma falha ao registar a actividade não pode
+      // provocar um reenvio (duplicado). Fica apenas no log.
+      await activityRepository
+        .create({
+          eventId: fresh.eventId,
+          invitationId: fresh.invitationId,
+          kind: 'reminder_sent',
+          guestName: fresh.guestName,
+          metadata: { reminder_kind: fresh.reminderKind },
+        })
+        .catch((error: unknown) => {
+          logger.warn(
+            { err: error, deliveryId: fresh.id },
+            'Falha ao registar actividade de lembrete enviado.'
+          );
+        });
     }
 
     result.sent += 1;

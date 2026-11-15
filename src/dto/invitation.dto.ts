@@ -1,5 +1,5 @@
 import { Event } from '../types/event.types';
-import { Invitation } from '../types/invitation.types';
+import { Invitation, InvitationWithEvent } from '../types/invitation.types';
 import { EmailDelivery } from '../types/emailDelivery.types';
 import { EventTemplate } from '../types/template.types';
 import { PublicEventDto, toPublicEventDto } from './event.dto';
@@ -14,6 +14,7 @@ export interface InvitationDto {
   guest_name: string;
   guest_email: string;
   guest_phone: string | null;
+  table_name: string | null;
   rsvp_status: string;
   rsvp_responded_at: string | null;
   send_status: string;
@@ -31,6 +32,7 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     guest_name: invitation.guestName,
     guest_email: invitation.guestEmail,
     guest_phone: invitation.guestPhone,
+    table_name: invitation.tableName,
     rsvp_status: invitation.rsvpStatus,
     rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     send_status: invitation.sendStatus,
@@ -38,6 +40,30 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     last_sent_at: iso(invitation.lastSentAt),
     created_at: invitation.createdAt.toISOString(),
     updated_at: invitation.updatedAt.toISOString(),
+  };
+}
+
+export interface EventSummaryDto {
+  id: string;
+  title: string;
+  starts_at: string | null;
+  status: string;
+}
+
+export interface HostGuestDto extends InvitationDto {
+  event: EventSummaryDto;
+}
+
+/** Lista global de convidados: convite + resumo do evento. */
+export function toHostGuestDto(invitation: InvitationWithEvent): HostGuestDto {
+  return {
+    ...toInvitationDto(invitation),
+    event: {
+      id: invitation.eventId,
+      title: invitation.eventTitle,
+      starts_at: iso(invitation.eventStartsAt),
+      status: invitation.eventStatus,
+    },
   };
 }
 

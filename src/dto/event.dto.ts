@@ -34,6 +34,7 @@ export interface EventDto {
   title: string;
   host_name: string;
   host_email: string;
+  category: string | null;
   starts_at: string | null;
   ends_at: string | null;
   timezone: string;
@@ -82,6 +83,7 @@ export function toEventDto(event: Event, stats?: EventStats): EventDto {
     title: event.title,
     host_name: event.hostName,
     host_email: event.hostEmail,
+    category: event.category,
     starts_at: iso(event.startsAt),
     ends_at: iso(event.endsAt),
     timezone: event.timezone,
@@ -126,6 +128,7 @@ export function toPublicEventDto(event: Event): PublicEventDto {
     id: event.id,
     title: event.title,
     host_name: event.hostName,
+    category: event.category,
     starts_at: iso(event.startsAt),
     ends_at: iso(event.endsAt),
     timezone: event.timezone,

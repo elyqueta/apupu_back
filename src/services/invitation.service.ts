@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import { withTransaction } from '../database/pool';
 import { ConflictError, NotFoundError } from '../errors';
+import { activityRepository } from '../repositories/activity.repository';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { eventRepository } from '../repositories/event.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
@@ -88,6 +89,7 @@ export const invitationService = {
             guestName: input.name,
             guestEmail: input.email,
             guestPhone: input.phone ?? null,
+            tableName: input.table_name ?? null,
             tokenHash: hashToken(token),
             tokenEncrypted: encryptToken(token),
           },
@@ -95,6 +97,17 @@ export const invitationService = {
         );
 
         await enqueueOnboardingMessages(event, invitation, client);
+
+        await activityRepository.create(
+          {
+            eventId: event.id,
+            invitationId: invitation.id,
+            kind: 'guest_added',
+            guestName: invitation.guestName,
+          },
+          client
+        );
+
         return invitation;
       });
     } catch (error) {
@@ -121,6 +134,7 @@ export const invitationService = {
         if (input.name !== undefined) changes.guestName = input.name;
         if (input.email !== undefined) changes.guestEmail = input.email;
         if (input.phone !== undefined) changes.guestPhone = input.phone;
+        if (input.table_name !== undefined) changes.tableName = input.table_name;
 
         const updated = await invitationRepository.update(current.id, changes, client);
 
@@ -338,6 +352,16 @@ export const invitationService = {
       } else if (current.rsvpStatus === 'declined') {
         await enqueueRemindersForInvitation(event, updated, client);
       }
+
+      await activityRepository.create(
+        {
+          eventId: event.id,
+          invitationId: updated.id,
+          kind: status === 'accepted' ? 'rsvp_accepted' : 'rsvp_declined',
+          guestName: updated.guestName,
+        },
+        client
+      );
 
       return {
         event,

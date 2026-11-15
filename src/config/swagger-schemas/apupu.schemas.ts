@@ -83,6 +83,11 @@ export const apupuSchemas = {
     },
   },
 
+  EventCategory: {
+    type: 'string',
+    enum: ['wedding', 'birthday', 'corporate', 'baby', 'other'],
+  },
+
   Event: {
     type: 'object',
     properties: {
@@ -90,7 +95,11 @@ export const apupuSchemas = {
       title: { type: 'string' },
       host_name: { type: 'string' },
       host_email: { type: 'string', format: 'email' },
-      starts_at: { type: 'string', format: 'date-time' },
+      category: {
+        allOf: [{ $ref: '#/components/schemas/EventCategory' }],
+        nullable: true,
+      },
+      starts_at: { type: 'string', format: 'date-time', nullable: true },
       ends_at: { type: 'string', format: 'date-time', nullable: true },
       timezone: { type: 'string', example: 'Africa/Luanda' },
       location: { $ref: '#/components/schemas/EventLocation' },
@@ -132,6 +141,7 @@ export const apupuSchemas = {
       name: { type: 'string' },
       email: { type: 'string', format: 'email' },
       phone: { type: 'string', nullable: true },
+      table_name: { type: 'string', nullable: true },
     },
   },
 
@@ -143,6 +153,7 @@ export const apupuSchemas = {
       guest_name: { type: 'string' },
       guest_email: { type: 'string', format: 'email' },
       guest_phone: { type: 'string', nullable: true },
+      table_name: { type: 'string', nullable: true },
       rsvp_status: {
         type: 'string',
         enum: ['pending', 'accepted', 'declined'],
@@ -223,6 +234,10 @@ export const apupuSchemas = {
           title: { type: 'string' },
           host_name: { type: 'string' },
           host_email: { type: 'string', format: 'email' },
+          category: {
+            allOf: [{ $ref: '#/components/schemas/EventCategory' }],
+            nullable: true,
+          },
           starts_at: { type: 'string', format: 'date-time' },
           ends_at: { type: 'string', format: 'date-time', nullable: true },
           timezone: { type: 'string', example: 'Africa/Luanda' },
@@ -255,6 +270,10 @@ export const apupuSchemas = {
       title: { type: 'string' },
       host_name: { type: 'string' },
       host_email: { type: 'string', format: 'email' },
+      category: {
+        allOf: [{ $ref: '#/components/schemas/EventCategory' }],
+        nullable: true,
+      },
       starts_at: { type: 'string', format: 'date-time' },
       ends_at: { type: 'string', format: 'date-time', nullable: true },
       timezone: { type: 'string' },
@@ -276,6 +295,114 @@ export const apupuSchemas = {
         type: 'string',
         enum: ['draft', 'scheduled', 'cancelled', 'completed'],
       },
+    },
+  },
+
+  HostProfile: {
+    type: 'object',
+    properties: {
+      display_name: { type: 'string', nullable: true },
+      phone: { type: 'string', nullable: true },
+      birth_date: {
+        type: 'string',
+        format: 'date',
+        nullable: true,
+        description: 'Data de calendário (YYYY-MM-DD), opcional.',
+      },
+      locale: { type: 'string', example: 'pt-AO' },
+      timezone: { type: 'string', example: 'Africa/Luanda' },
+      avatar_url: { type: 'string', format: 'uri', nullable: true },
+    },
+  },
+
+  Host: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      email: { type: 'string', format: 'email' },
+      email_verified: { type: 'boolean' },
+      status: { type: 'string', enum: ['active', 'suspended', 'deleted'] },
+      profile: { $ref: '#/components/schemas/HostProfile' },
+      profile_complete: { type: 'boolean' },
+      missing_fields: {
+        type: 'array',
+        items: { type: 'string' },
+        example: ['birth_date'],
+      },
+      created_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  UpdateProfile: {
+    type: 'object',
+    properties: {
+      display_name: { type: 'string', nullable: true },
+      phone: { type: 'string', nullable: true },
+      birth_date: {
+        type: 'string',
+        format: 'date',
+        nullable: true,
+        description: 'Data passada, idade mínima de 18 anos.',
+      },
+      locale: { type: 'string' },
+      timezone: { type: 'string' },
+      avatar_url: { type: 'string', format: 'uri', nullable: true },
+    },
+  },
+
+  PaginationMeta: {
+    type: 'object',
+    properties: {
+      page: { type: 'integer', minimum: 1 },
+      page_size: { type: 'integer', minimum: 1, maximum: 100 },
+      total: { type: 'integer', minimum: 0 },
+      total_pages: { type: 'integer', minimum: 0 },
+    },
+  },
+
+  HostGuest: {
+    allOf: [
+      { $ref: '#/components/schemas/Invitation' },
+      {
+        type: 'object',
+        properties: {
+          event: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              title: { type: 'string' },
+              starts_at: { type: 'string', format: 'date-time', nullable: true },
+              status: {
+                type: 'string',
+                enum: ['draft', 'scheduled', 'cancelled', 'completed'],
+              },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  Activity: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      event_id: { type: 'string', format: 'uuid' },
+      kind: { type: 'string', example: 'rsvp_accepted' },
+      guest_name: { type: 'string', nullable: true },
+      at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  Task: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      event_id: { type: 'string', format: 'uuid', nullable: true },
+      label: { type: 'string' },
+      done: { type: 'boolean' },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
     },
   },
 } as const;

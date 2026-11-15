@@ -172,6 +172,44 @@ export function buildReminderSchedule(
     .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime());
 }
 
+/**
+ * Verdadeiro se `value` é uma data de calendário real no formato
+ * `YYYY-MM-DD`. Rejeita 2026-02-30 e datas com hora.
+ */
+export function isValidCalendarDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+/** Idade completa em anos, comparando datas de calendário em UTC. */
+export function ageInYears(birthDate: string, now: Date = new Date()): number {
+  const parts = birthDate.split('-').map(Number);
+  const year = parts[0] ?? 0;
+  const month = parts[1] ?? 1;
+  const day = parts[2] ?? 1;
+  let age = now.getUTCFullYear() - year;
+  const beforeBirthday =
+    now.getUTCMonth() + 1 < month ||
+    (now.getUTCMonth() + 1 === month && now.getUTCDate() < day);
+
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
 /** Verdadeiro se o fuso informado é aceite pelo runtime. */
 export function isValidTimeZone(timeZone: string): boolean {
   try {

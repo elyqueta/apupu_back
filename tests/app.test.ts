@@ -1,5 +1,17 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+/**
+ * O teste do aceite público não deve depender de uma base de dados:
+ * o repositório é simulado para devolver "não encontrado", que é o
+ * mesmo 404 genérico devolvido a um token inválido.
+ */
+vi.mock('../src/repositories/invitation.repository', () => ({
+  invitationRepository: {
+    findByTokenHash: vi.fn().mockResolvedValue(null),
+  },
+}));
+
 import app from '../src/app';
 
 describe('app', () => {
@@ -22,13 +34,35 @@ describe('app', () => {
       expect.arrayContaining([
         '/api/v1/events',
         '/api/v1/templates',
+        '/api/v1/auth/register',
+        '/api/v1/auth/login',
+        '/api/v1/auth/session',
+        '/api/v1/auth/password/forgot',
+        '/api/v1/host/profile',
+        '/api/v1/host/events',
+        '/api/v1/host/dashboard',
+        '/api/v1/host/guests',
+        '/api/v1/host/reports/summary',
+        '/api/v1/host/tasks',
         '/api/v1/host/session',
         '/api/v1/host/events/{eventId}',
         '/api/v1/host/events/{eventId}/invitations',
+        '/api/v1/host/events/{eventId}/reports',
         '/api/v1/public/invitations/{token}/claim',
         '/api/v1/public/invitations/{token}/rsvp',
       ])
     );
+  });
+
+  it('documenta os esquemas de conta e paginação', async () => {
+    const response = await request(app).get('/openapi.json');
+    const schemas = response.body.components?.schemas ?? {};
+
+    expect(schemas).toHaveProperty('Host');
+    expect(schemas).toHaveProperty('HostProfile');
+    expect(schemas).toHaveProperty('PaginationMeta');
+    expect(schemas).toHaveProperty('EventCategory');
+    expect(response.body.components?.securitySchemes).toHaveProperty('accountSession');
   });
 
   it('devolve 404 no envelope de erro estável', async () => {
@@ -113,5 +147,67 @@ describe('app', () => {
 
     // Sem sessão, o 401 vem antes do CSRF — a ordem é intencional.
     expect(response.status).toBe(401);
+  });
+
+  it('exige sessão de conta nas rotas do workspace', async () => {
+    const session = await request(app).get('/api/v1/auth/session');
+    expect(session.status).toBe(401);
+    expect(session.body.error.code).toBe('host_session_invalid');
+
+    const profile = await request(app).get('/api/v1/host/profile');
+    expect(profile.status).toBe(401);
+    expect(profile.body.error.code).toBe('host_session_invalid');
+
+    const events = await request(app).get('/api/v1/host/events');
+    expect(events.status).toBe(401);
+    expect(events.body.error.code).toBe('host_session_invalid');
+
+    const dashboard = await request(app).get('/api/v1/host/dashboard');
+    expect(dashboard.status).toBe(401);
+  });
+
+  it('exige sessão antes do CSRF nas mutações autenticadas', async () => {
+    const logout = await request(app).post('/api/v1/auth/logout');
+    expect(logout.status).toBe(401);
+    expect(logout.body.error.code).toBe('host_session_invalid');
+
+    const createEvent = await request(app).post('/api/v1/host/events').send({});
+    expect(createEvent.status).toBe(401);
+    expect(createEvent.body.error.code).toBe('host_session_invalid');
+  });
+
+  it('valida o registo de conta', async () => {
+    const response = await request(app)
+      .post('/api/v1/auth/register')
+      .send({ email: 'não-é-email', password: 'curta' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('validation_failed');
+    expect(response.body.error.fields).toHaveProperty('email');
+    expect(response.body.error.fields).toHaveProperty('password');
+  });
+
+  it('valida o email no reenvio de verificação', async () => {
+    const response = await request(app)
+      .post('/api/v1/auth/email/verify/resend')
+      .send({ email: 'não-é-email' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('validation_failed');
+    expect(response.body.error.fields).toHaveProperty('email');
+  });
+
+  it('mantém o aceite público sem conta', async () => {
+    const claim = await request(app).post(
+      '/api/v1/public/invitations/token-que-nao-existe-123456/claim'
+    );
+    expect(claim.status).toBe(404);
+    expect(claim.body.error.code).toBe('invitation_not_found');
+
+    const rsvp = await request(app)
+      .put('/api/v1/public/invitations/token-que-nao-existe-123456/rsvp')
+      .send({ status: 'accepted' });
+    expect(rsvp.status).toBe(404);
+    expect(rsvp.body.error.code).toBe('invitation_not_found');
   });
 });

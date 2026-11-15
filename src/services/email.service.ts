@@ -147,7 +147,16 @@ function eventHtml(event: EventSummary): string {
   return rows.join('\n');
 }
 
-function summaryFromContext(context: DeliveryContext): EventSummary {
+function summaryFromContext(context: DeliveryContext): EventSummary | null {
+  if (
+    context.eventTitle === null ||
+    context.eventStartsAt === null ||
+    context.eventTimezone === null ||
+    context.eventLocationType === null
+  ) {
+    return null;
+  }
+
   return {
     title: context.eventTitle,
     startsAt: context.eventStartsAt,
@@ -160,9 +169,27 @@ function summaryFromContext(context: DeliveryContext): EventSummary {
   };
 }
 
+function requireEventSummary(context: DeliveryContext): EventSummary {
+  const event = summaryFromContext(context);
+
+  if (!event) {
+    throw new Error('Entrega de evento sem dados do evento.');
+  }
+
+  return event;
+}
+
 function inviteToken(context: DeliveryContext): string {
-  if (!context.tokenEncrypted) {
+  if (!context.invitationTokenEncrypted) {
     throw new Error('Entrega de convite sem token cifrado.');
+  }
+  return decryptToken(context.invitationTokenEncrypted);
+}
+
+/** Token cifrado das mensagens de conta (verificação/reposição). */
+function hostToken(context: DeliveryContext): string {
+  if (!context.tokenEncrypted) {
+    throw new Error('Entrega de conta sem token cifrado.');
   }
   return decryptToken(context.tokenEncrypted);
 }
@@ -188,14 +215,103 @@ function reminderText(kind: string | null): { lead: string; subject: string } {
  * nunca é persistido na linha de entrega.
  */
 export function renderDelivery(context: DeliveryContext): MailMessage {
-  const event = summaryFromContext(context);
-
   switch (context.messageType) {
     case 'manage_link': {
       throw new Error('O link de gestão não é enviado pela outbox.');
     }
 
+    case 'email_verification': {
+      const url = links.verifyEmail(hostToken(context));
+
+      return {
+        to: context.recipientEmail,
+        subject: 'Confirma o teu email — Apupu',
+        messageKey: context.idempotencyKey,
+        text: [
+          'Olá,',
+          '',
+          'Criaste uma conta no Apupu. Confirma o teu email para poderes criar e gerir eventos:',
+          url,
+          '',
+          'Este link expira ao fim de 24 horas e só pode ser usado uma vez.',
+        ].join('\n'),
+        html: `
+          <p>Olá,</p>
+          <p>Criaste uma conta no Apupu. Confirma o teu email para poderes criar e gerir eventos:</p>
+          <p><a href="${escapeHtml(url)}">Confirmar email</a></p>
+          <p>Este link expira ao fim de 24 horas e só pode ser usado uma vez.</p>
+        `,
+      };
+    }
+
+    case 'password_reset': {
+      const url = links.resetPassword(hostToken(context));
+
+      return {
+        to: context.recipientEmail,
+        subject: 'Reposição de senha — Apupu',
+        messageKey: context.idempotencyKey,
+        text: [
+          'Olá,',
+          '',
+          'Recebemos um pedido para repor a senha da tua conta Apupu:',
+          url,
+          '',
+          'Se não fizeste este pedido, ignora este email. O link expira ao fim de 60 minutos.',
+        ].join('\n'),
+        html: `
+          <p>Olá,</p>
+          <p>Recebemos um pedido para repor a senha da tua conta Apupu:</p>
+          <p><a href="${escapeHtml(url)}">Definir nova senha</a></p>
+          <p>Se não fizeste este pedido, ignora este email. O link expira ao fim de 60 minutos.</p>
+        `,
+      };
+    }
+
+    case 'host_welcome': {
+      return {
+        to: context.recipientEmail,
+        subject: 'Bem-vindo ao Apupu',
+        messageKey: context.idempotencyKey,
+        text: [
+          'Olá,',
+          '',
+          'A tua conta Apupu foi criada.',
+          'Confirma o email para começares a criar e gerir eventos.',
+          links.login(),
+        ].join('\n'),
+        html: `
+          <p>Olá,</p>
+          <p>A tua conta Apupu foi criada.</p>
+          <p>Confirma o email para começares a criar e gerir eventos.</p>
+          <p><a href="${escapeHtml(links.login())}">Entrar no Apupu</a></p>
+        `,
+      };
+    }
+
+    case 'profile_reminder': {
+      return {
+        to: context.recipientEmail,
+        subject: 'Completa o teu perfil — Apupu',
+        messageKey: context.idempotencyKey,
+        text: [
+          'Olá,',
+          '',
+          'Falta preencher a tua data de nascimento no perfil Apupu.',
+          'Podes fazê-lo nas definições da conta.',
+          links.login(),
+        ].join('\n'),
+        html: `
+          <p>Olá,</p>
+          <p>Falta preencher a tua data de nascimento no perfil Apupu.</p>
+          <p>Podes fazê-lo nas definições da conta.</p>
+          <p><a href="${escapeHtml(links.login())}">Abrir definições</a></p>
+        `,
+      };
+    }
+
     case 'invitation': {
+      const event = requireEventSummary(context);
       const url = links.invitation(inviteToken(context));
       const guest = context.guestName ?? 'convidado';
 
@@ -206,7 +322,7 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
         text: [
           `Olá ${guest},`,
           '',
-          `${context.hostName} convida-te para ${event.title}.`,
+          `${context.hostName ?? 'O anfitrião'} convida-te para ${event.title}.`,
           '',
           eventLines(event).join('\n'),
           '',
@@ -221,7 +337,7 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
           .join('\n'),
         html: `
           <p>Olá ${escapeHtml(guest)},</p>
-          <p><strong>${escapeHtml(context.hostName)}</strong> convida-te para <strong>${escapeHtml(event.title)}</strong>.</p>
+          <p><strong>${escapeHtml(context.hostName ?? 'O anfitrião')}</strong> convida-te para <strong>${escapeHtml(event.title)}</strong>.</p>
           ${eventHtml(event)}
           ${context.eventContributionEnabled ? '<p>Os dados de contribuição estão disponíveis na página do convite.</p>' : ''}
           <p><a href="${escapeHtml(url)}">Confirmar presença</a></p>
@@ -231,6 +347,7 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
     }
 
     case 'reminder': {
+      const event = requireEventSummary(context);
       const url = links.invitation(inviteToken(context));
       const guest = context.guestName ?? 'convidado';
       const { lead, subject } = reminderText(context.reminderKind);
@@ -265,21 +382,22 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
     }
 
     case 'decline_notification': {
+      const event = requireEventSummary(context);
       const guest = context.guestName ?? 'Um convidado';
       const guestEmail = context.guestEmail ?? context.recipientEmail;
 
       return {
-        to: context.hostEmail,
+        to: context.hostEmail ?? context.recipientEmail,
         subject: `Convite recusado — ${event.title}`,
         messageKey: context.idempotencyKey,
         text: [
-          `Olá ${context.hostName},`,
+          `Olá ${context.hostName ?? 'anfitrião'},`,
           '',
           `${guest} (${guestEmail}) recusou o convite para ${event.title}.`,
           'Os lembretes para este convidado foram cancelados.',
         ].join('\n'),
         html: `
-          <p>Olá ${escapeHtml(context.hostName)},</p>
+          <p>Olá ${escapeHtml(context.hostName ?? 'anfitrião')},</p>
           <p><strong>${escapeHtml(guest)}</strong> (${escapeHtml(guestEmail)}) recusou o convite para <strong>${escapeHtml(event.title)}</strong>.</p>
           <p>Os lembretes para este convidado foram cancelados.</p>
         `,
@@ -287,6 +405,7 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
     }
 
     case 'event_cancelled': {
+      const event = requireEventSummary(context);
       const guest = context.guestName ?? 'convidado';
 
       return {

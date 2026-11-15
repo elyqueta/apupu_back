@@ -56,6 +56,16 @@ export class TooManyRequestsError extends AppError {
   }
 }
 
+/** 423 — a conta está temporariamente bloqueada. */
+export class LockedError extends AppError {
+  constructor(
+    message = 'Conta temporariamente bloqueada. Tente novamente mais tarde.',
+    code = 'account_locked'
+  ) {
+    super(message, 423, code);
+  }
+}
+
 /** 503 — um serviço externo necessário está indisponível. */
 export class ServiceUnavailableError extends AppError {
   constructor(message = 'Serviço temporariamente indisponível.', code = 'service_unavailable') {

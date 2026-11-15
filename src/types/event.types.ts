@@ -9,6 +9,15 @@ export type LocationType = (typeof LOCATION_TYPES)[number];
 export const THEME_MODES = ['light', 'dark'] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
 
+export const EVENT_CATEGORIES = [
+  'wedding',
+  'birthday',
+  'corporate',
+  'baby',
+  'other',
+] as const;
+export type EventCategory = (typeof EVENT_CATEGORIES)[number];
+
 export interface EventLocation {
   type: LocationType;
   name: string | null;
@@ -35,9 +44,12 @@ export interface EventContribution {
 
 export interface Event {
   id: string;
+  /** Conta proprietária; nulo em eventos legados geridos por link. */
+  hostId: string | null;
   title: string;
   hostName: string;
   hostEmail: string;
+  category: EventCategory | null;
   startsAt: Date;
   endsAt: Date | null;
   timezone: string;
@@ -62,9 +74,11 @@ export interface EventRecord extends Event {
 }
 
 export interface CreateEventInput {
+  hostId: string | null;
   title: string;
   hostName: string;
   hostEmail: string;
+  category: EventCategory | null;
   startsAt: Date;
   endsAt: Date | null;
   timezone: string;
@@ -87,4 +101,48 @@ export interface EventStats {
   accepted: number;
   declined: number;
   pending: number;
+}
+
+export interface EventWithStats extends EventRecord {
+  stats: EventStats;
+}
+
+export interface HostEventListFilters {
+  hostId: string;
+  status?: EventStatus;
+  q?: string;
+  sort: 'starts_at' | 'created_at';
+  order: 'asc' | 'desc';
+  offset: number;
+  limit: number;
+}
+
+export interface HostTotals {
+  events: number;
+  drafts: number;
+  scheduled: number;
+  cancelled: number;
+  completed: number;
+  totalInvitations: number;
+  accepted: number;
+  declined: number;
+  pending: number;
+}
+
+export interface EventReportRow {
+  eventId: string;
+  title: string;
+  status: EventStatus;
+  totalInvitations: number;
+  accepted: number;
+  declined: number;
+  pending: number;
+}
+
+export interface DailyReportRow {
+  date: string;
+  invitations: number;
+  accepted: number;
+  declined: number;
+  reminders: number;
 }

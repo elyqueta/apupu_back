@@ -1,5 +1,6 @@
 import { NotFoundError, ValidationError } from '../errors';
 import { withTransaction } from '../database/pool';
+import { activityRepository } from '../repositories/activity.repository';
 import { eventRepository, InsertEventData } from '../repositories/event.repository';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
@@ -155,25 +156,38 @@ export interface CreatedEventResult {
   deliveries: Array<{ email: string; status: 'queued' }>;
 }
 
+export interface CreateEventOptions {
+  /** Conta proprietária; ausente no fluxo legado por link secreto. */
+  hostId?: string | null;
+}
+
 export const eventService = {
   /**
    * Cria o evento, os convites e as entregas iniciais numa única
    * transacção. O link de gestão é enviado imediatamente a seguir ao
    * commit: é o único momento em que o token existe em claro e não
    * pode ser persistido.
+   *
+   * `options.hostId` liga o evento à conta autenticada. O fluxo legado
+   * (sem conta) continua a funcionar com `hostId` nulo.
    */
-  async create(input: CreateEventBody): Promise<CreatedEventResult> {
+  async create(
+    input: CreateEventBody,
+    options: CreateEventOptions = {}
+  ): Promise<CreatedEventResult> {
     await assertTemplateActive(input.event.template_id);
 
     const manageToken = generateToken();
     const manageTokenHash = hashToken(manageToken);
 
     const data: InsertEventData = {
+      hostId: options.hostId ?? null,
       manageTokenHash,
       manageTokenExpiresAt: null,
       title: input.event.title,
       hostName: input.event.host_name,
       hostEmail: input.event.host_email,
+      category: input.event.category ?? null,
       startsAt: input.event.starts_at,
       endsAt: input.event.ends_at ?? null,
       timezone: input.event.timezone,
@@ -205,6 +219,7 @@ export const eventService = {
             guestName: guest.name,
             guestEmail: guest.email,
             guestPhone: normalizeOptional(guest.phone),
+            tableName: normalizeOptional(guest.table_name),
             tokenHash: hashToken(token),
             tokenEncrypted: encryptToken(token),
           },
@@ -215,6 +230,15 @@ export const eventService = {
       }
 
       await enqueueOnboardingForEvent(event, invitations, client);
+
+      await activityRepository.create(
+        {
+          eventId: event.id,
+          kind: 'event_created',
+          metadata: { guest_count: invitations.length },
+        },
+        client
+      );
 
       return { event, invitations };
     });
@@ -310,6 +334,7 @@ export const eventService = {
       if (input.title !== undefined) changes.title = input.title;
       if (input.host_name !== undefined) changes.hostName = input.host_name;
       if (input.host_email !== undefined) changes.hostEmail = input.host_email;
+      if (input.category !== undefined) changes.category = input.category;
       if (input.starts_at !== undefined) changes.startsAt = input.starts_at;
       if ('ends_at' in input) changes.endsAt = input.ends_at ?? null;
       if (input.timezone !== undefined) changes.timezone = input.timezone;

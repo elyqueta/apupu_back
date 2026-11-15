@@ -5,7 +5,11 @@ do evento é guardado em `events.timezone` para apresentação e cálculo de
 lembretes).
 
 Especificação autoritária: [`../backend/architecture-and-data-model.md`](../backend/architecture-and-data-model.md).
-Migração: [`../migrations/1739900000000_baseline-apupu.js`](../migrations/1739900000000_baseline-apupu.js).
+Migrações:
+[`../migrations/1739900000000_baseline-apupu.js`](../migrations/1739900000000_baseline-apupu.js)
+(base) e
+[`../migrations/1739900000001_host-accounts.js`](../migrations/1739900000001_host-accounts.js)
+(contas, perfil, sessões de conta e suporte ao frontend).
 
 ## `event_templates`
 
@@ -30,11 +34,13 @@ pelo código; o seed garante apenas um template neutro (`base`).
 | Coluna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid | PK |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE SET NULL`); nulo em eventos legados |
 | `manage_token_hash` | text | único; HMAC-SHA256 do link de gestão |
 | `manage_token_expires_at` | timestamptz | opcional |
 | `manage_token_revoked_at` | timestamptz | opcional |
 | `title` | text | |
 | `host_name` / `host_email` | text | |
+| `category` | text | `wedding` \| `birthday` \| `corporate` \| `baby` \| `other`; opcional |
 | `starts_at` | timestamptz | instante UTC |
 | `ends_at` | timestamptz | opcional; `> starts_at` |
 | `timezone` | text | IANA, por omissão `Africa/Luanda` |
@@ -61,8 +67,9 @@ Constraints:
 - `events_contribution_check`: quando `contribution_enabled=true`, os
   três campos bancários são obrigatórios.
 - `events_dates_check`: `ends_at` nulo ou posterior a `starts_at`.
+- `events_category_check`: categoria nula ou num dos valores permitidos.
 
-Índices: `events_starts_at_idx`, `events_status_idx`.
+Índices: `events_starts_at_idx`, `events_status_idx`, `events_host_id_idx`.
 
 ## `invitations`
 
@@ -73,6 +80,7 @@ Constraints:
 | `guest_name` | text | |
 | `guest_email` | text | |
 | `guest_phone` | text | opcional; nunca usado para envio automático |
+| `table_name` | text | opcional; mesa/lugar indicado pelo anfitrião |
 | `token_hash` | text | único; HMAC-SHA256 para lookup |
 | `token_encrypted` | text | AES-256-GCM; permite reenvios e lembretes |
 | `claim_hash` | text | HMAC da capacidade do primeiro navegador |
@@ -100,7 +108,11 @@ Invariantes:
 2. `claim_hash` nunca é devolvido pela API.
 3. Recusar um convite não afecta os restantes convidados.
 
-## `host_sessions`
+## `event_host_sessions`
+
+Sessões de gestão por evento do fluxo legado (link secreto). Foram
+renomeadas de `host_sessions` na migração de contas para não colidir com
+as sessões de conta.
 
 | Coluna | Tipo | Notas |
 |---|---|---|
@@ -112,17 +124,124 @@ Invariantes:
 | `created_at` | timestamptz | |
 | `last_used_at` | timestamptz | |
 
-Índices: `event_id`, `expires_at`. A sessão é sempre limitada a um
+Índices: `event_host_sessions_event_id_idx`,
+`event_host_sessions_expiry_idx`. A sessão é sempre limitada a um
 evento; o UUID do evento nunca é autorização.
+
+## `hosts`
+
+Conta de anfitrião.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `email` | citext | único; normalizado para minúsculas na fronteira |
+| `password_hash` | text | Argon2id; nunca devolvido nem registado |
+| `email_verified_at` | timestamptz | nulo até à verificação |
+| `status` | text | `active` \| `suspended` \| `deleted` |
+| `failed_login_attempts` | integer | `>= 0` |
+| `locked_until` | timestamptz | bloqueio temporário após falhas |
+| `last_login_at` | timestamptz | |
+| `created_at` / `updated_at` | timestamptz | |
+
+Constraints: `hosts_email_unique`, `hosts_status_check`,
+`hosts_failed_login_attempts_check`. Índice: `hosts_status_idx`.
+
+## `host_profiles`
+
+Perfil da conta, numa relação 1:1 com `hosts`.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `host_id` | uuid | PK e FK → `hosts` (`ON DELETE CASCADE`) |
+| `display_name` | text | opcional |
+| `phone` | text | opcional |
+| `birth_date` | date | opcional; data de calendário no passado |
+| `locale` | text | `pt-AO` \| `en`; por omissão `pt-AO` |
+| `timezone` | text | IANA; por omissão `Africa/Luanda` |
+| `avatar_url` | text | opcional; URL, sem upload de ficheiros |
+| `created_at` / `updated_at` | timestamptz | |
+
+Constraints: `host_profiles_locale_check`,
+`host_profiles_birth_date_check`. `birth_date` é PII e só é devolvida ao
+próprio anfitrião.
+
+## `host_auth_sessions`
+
+Sessões de conta (`apupu_auth`), independentes das sessões por evento.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`) |
+| `token_hash` | text | único; HMAC do token de sessão |
+| `csrf_hash` | text | HMAC do token CSRF derivado |
+| `user_agent_hash` | text | HMAC do user-agent; opcional |
+| `expires_at` | timestamptz | `> created_at` |
+| `revoked_at` | timestamptz | |
+| `last_used_at` | timestamptz | |
+| `created_at` | timestamptz | |
+
+Constraints: `host_auth_sessions_expiry_check`. Índices:
+`host_auth_sessions_host_id_idx`, `host_auth_sessions_expiry_idx`.
+
+## `email_verifications` e `password_resets`
+
+Tokens de uso único enviados por email.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`) |
+| `token_hash` | text | único; HMAC do token |
+| `expires_at` | timestamptz | validade configurável |
+| `consumed_at` | timestamptz | preenchido no consumo atómico |
+| `created_at` | timestamptz | |
+
+Índices por `host_id` e `expires_at`. O token em claro existe apenas no
+link entregue; nunca é persistido.
+
+## `event_activity`
+
+Feed de actividade por evento.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`) |
+| `invitation_id` | uuid | FK → `invitations` (`ON DELETE SET NULL`) |
+| `kind` | text | `rsvp_accepted`, `rsvp_declined`, `guest_added`, `reminder_sent`, `event_created` |
+| `guest_name` | text | opcional |
+| `metadata` | jsonb | por omissão `{}` |
+| `at` | timestamptz | |
+
+Constraints: `event_activity_kind_check`. Índices:
+`event_activity_event_id_idx` e `event_activity_at_idx`.
+
+## `host_tasks`
+
+Tarefas do workspace, globais ou ligadas a um evento.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`) |
+| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`); nulo = global |
+| `label` | text | |
+| `done` | boolean | por omissão `false` |
+| `created_at` / `updated_at` | timestamptz | |
+
+Índices: `host_tasks_host_id_idx`, `host_tasks_event_id_idx`.
 
 ## `email_deliveries` (outbox)
 
 | Coluna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid | PK |
-| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`) |
+| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`); **nulo** em mensagens de conta |
 | `invitation_id` | uuid | FK → `invitations` (`ON DELETE CASCADE`) |
-| `message_type` | text | `manage_link`, `invitation`, `reminder`, `decline_notification`, `event_cancelled` |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`); mensagens de conta |
+| `message_type` | text | ver lista abaixo |
 | `reminder_kind` | text | `14d`, `7d`, `3d`, `1d` (só lembretes) |
 | `recipient_email` | text | |
 | `scheduled_for` | timestamptz | instante UTC de envio |
@@ -132,11 +251,16 @@ evento; o UUID do evento nunca é autorização.
 | `provider_message_id` | text | |
 | `last_error` | text | mensagem operacional, sem tokens |
 | `idempotency_key` | text | único |
+| `token_encrypted` | text | AES-256-GCM; só verificação e reposição de senha |
 | `sent_at` | timestamptz | |
 | `created_at` / `updated_at` | timestamptz | |
 
+Tipos de mensagem: `manage_link`, `invitation`, `reminder`,
+`decline_notification`, `event_cancelled`, `email_verification`,
+`host_welcome`, `password_reset`, `profile_reminder`.
+
 Índices: índice parcial `(status, scheduled_for)` para entregas
-pendentes, `event_id` e `invitation_id`.
+pendentes, `event_id`, `invitation_id` e `host_id`.
 
 Chaves idempotentes usadas:
 
@@ -147,22 +271,42 @@ Chaves idempotentes usadas:
 | Lembrete | `reminder:<invitationId>:<scheduledFor ISO>` |
 | Aviso de recusa | `decline_notification:<invitationId>:<rsvpVersion>` |
 | Cancelamento do evento | `event_cancelled:<invitationId>` |
+| Link de gestão | `manage_link:<eventId>` |
+| Verificação de email | `email_verification:<hostId>:<uuid>` |
+| Boas-vindas | `host_welcome:<hostId>` |
+| Reposição de senha | `password_reset:<hostId>:<uuid>` |
 
 O link de gestão é enviado de forma síncrona após a transacção de
 criação; o resultado é registado em `email_deliveries` com
 `message_type=manage_link`, mas essa entrega nunca é reenviada pelo
-worker.
+worker. As mensagens de conta (`email_verification`, `host_welcome`,
+`password_reset`, `profile_reminder`) usam `host_id` e não dependem de
+um evento.
 
 ## Relações
 
-- Um evento tem zero ou mais convites; um convite pertence a exactamente
-  um evento.
-- Um evento tem zero ou mais sessões de gestão e entregas de email.
-- Apagar um evento remove em cascata convites, sessões e entregas.
+- Uma conta (`hosts`) tem um perfil, zero ou mais sessões de conta,
+  tokens de verificação/reposição, tarefas e eventos.
+- Um evento pertence a zero ou uma conta (`host_id`; nulo em eventos
+  legados) e tem zero ou mais convites, sessões de gestão, actividades e
+  entregas de email.
+- Um convite pertence a exactamente um evento e pode originar
+  actividades e entregas.
+- Apagar uma conta remove em cascata perfil, sessões, tokens, tarefas e
+  entregas; os eventos ficam com `host_id` nulo (`ON DELETE SET NULL`).
+- Apagar um evento remove em cascata convites, sessões de gestão,
+  actividades, tarefas ligadas e entregas.
 - Apagar um convite remove em cascata as suas entregas.
 
 ## Regras de concorrência
 
+- Registo: a unicidade do email é garantida por `hosts_email_unique`; a
+  violação é convertida em `409 email_already_registered`.
+- Verificação de email e reposição de senha: `consumed_at IS NULL` no
+  `UPDATE` torna o consumo atómico; o mesmo link nunca é usado duas
+  vezes.
+- Login: falhas incrementam `failed_login_attempts`; ao atingir o limite,
+  `locked_until` bloqueia temporariamente novas tentativas.
 - Claim: `UPDATE ... WHERE claim_hash IS NULL` dentro de transacção; dois
   pedidos simultâneos nunca reclamam o convite em navegadores distintos.
 - RSVP: exige capacidade válida e actualiza de forma atómica; repetir o
@@ -170,3 +314,6 @@ worker.
 - Recusa e cancelamento de lembretes ocorrem na mesma transacção lógica.
 - A outbox reserva linhas com `FOR UPDATE SKIP LOCKED`; cada entrega é
   revalidada imediatamente antes do envio.
+- Todas as leituras e mutações do workspace são limitadas por
+  `events.host_id = sessão.host_id`; a ausência de posse devolve `404`,
+  não `403`.

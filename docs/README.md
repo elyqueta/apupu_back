@@ -28,6 +28,19 @@ mantidos em sincronia com a implementação:
 
 Regras de produto e âmbito: [`../agents.md`](../agents.md).
 
+## Requisitos de contas
+
+O documento de requisitos que motivou a camada de contas continua a ser
+útil como especificação funcional:
+
+| Documento | Conteúdo |
+|---|---|
+| [CONTAS-E-REQUISITOS-FRONTEND.md](./CONTAS-E-REQUISITOS-FRONTEND.md) | Contas de anfitrião (registo/login email+senha), perfil com data de nascimento e endpoints de suporte ao frontend |
+
+O estado **implementado** está descrito em
+[API-CONTRACT.md](./API-CONTRACT.md) e
+[DATA-MODEL.md](./DATA-MODEL.md).
+
 ## Documentação interactiva
 
 Com a API a correr em desenvolvimento:

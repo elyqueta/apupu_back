@@ -112,3 +112,32 @@ export function readCsrfHeader(req: Request): string | null {
   const value = req.header(env.CSRF_HEADER_NAME);
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
+
+/* ───────────────────────── Sessão de conta ───────────────────────── */
+
+const AUTH_PATH = '/api/v1';
+
+export function readAuthSession(req: Request): string | null {
+  const value: unknown = req.cookies?.[env.AUTH_COOKIE_NAME];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+export function setAuthSession(res: Response, sessionToken: string): void {
+  const maxAgeMs = env.AUTH_SESSION_TTL_MINUTES * 60 * 1000;
+
+  res.cookie(
+    env.AUTH_COOKIE_NAME,
+    sessionToken,
+    baseCookieOptions(AUTH_PATH, maxAgeMs)
+  );
+  res.cookie(
+    env.AUTH_CSRF_COOKIE_NAME,
+    csrfTokenFor(sessionToken),
+    csrfCookieOptions(AUTH_PATH, maxAgeMs)
+  );
+}
+
+export function clearAuthSession(res: Response): void {
+  res.clearCookie(env.AUTH_COOKIE_NAME, { path: AUTH_PATH });
+  res.clearCookie(env.AUTH_CSRF_COOKIE_NAME, { path: AUTH_PATH });
+}

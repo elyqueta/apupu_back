@@ -4,8 +4,9 @@ import { EmailDelivery, MessageType } from '../types/emailDelivery.types';
 
 interface DeliveryRow {
   id: string;
-  event_id: string;
+  event_id: string | null;
   invitation_id: string | null;
+  host_id: string | null;
   message_type: MessageType;
   reminder_kind: string | null;
   recipient_email: string;
@@ -16,6 +17,7 @@ interface DeliveryRow {
   provider_message_id: string | null;
   last_error: string | null;
   idempotency_key: string;
+  token_encrypted: string | null;
   sent_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -26,6 +28,7 @@ function toDelivery(row: DeliveryRow): EmailDelivery {
     id: row.id,
     eventId: row.event_id,
     invitationId: row.invitation_id,
+    hostId: row.host_id,
     messageType: row.message_type,
     reminderKind: row.reminder_kind,
     recipientEmail: row.recipient_email,
@@ -36,6 +39,7 @@ function toDelivery(row: DeliveryRow): EmailDelivery {
     providerMessageId: row.provider_message_id,
     lastError: row.last_error,
     idempotencyKey: row.idempotency_key,
+    tokenEncrypted: row.token_encrypted,
     sentAt: row.sent_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -43,9 +47,9 @@ function toDelivery(row: DeliveryRow): EmailDelivery {
 }
 
 const SELECT_COLUMNS = `
-  id, event_id, invitation_id, message_type, reminder_kind, recipient_email,
+  id, event_id, invitation_id, host_id, message_type, reminder_kind, recipient_email,
   scheduled_for, status, attempts, next_attempt_at, provider_message_id,
-  last_error, idempotency_key, sent_at, created_at, updated_at
+  last_error, idempotency_key, token_encrypted, sent_at, created_at, updated_at
 `;
 
 const CONTEXT_COLUMNS = `
@@ -66,19 +70,22 @@ const CONTEXT_COLUMNS = `
   e.host_email,
   i.guest_name,
   i.guest_email,
-  i.token_encrypted,
+  i.token_encrypted             AS invitation_token_encrypted,
   i.rsvp_status,
   i.claim_revoked_at
 `;
 
 export interface InsertDeliveryData {
-  eventId: string;
+  eventId: string | null;
   invitationId: string | null;
+  hostId?: string | null;
   messageType: MessageType;
   reminderKind: string | null;
   recipientEmail: string;
   scheduledFor: Date;
   idempotencyKey: string;
+  /** Token cifrado para mensagens de conta. Nunca em claro. */
+  tokenEncrypted?: string | null;
 }
 
 /**
@@ -89,45 +96,45 @@ export interface InsertDeliveryData {
  * renderizar, dentro do worker.
  */
 export interface DeliveryContext extends EmailDelivery {
-  eventTitle: string;
-  eventStatus: string;
-  eventStartsAt: Date;
+  eventTitle: string | null;
+  eventStatus: string | null;
+  eventStartsAt: Date | null;
   eventEndsAt: Date | null;
-  eventTimezone: string;
-  eventLocationType: string;
+  eventTimezone: string | null;
+  eventLocationType: string | null;
   eventLocationName: string | null;
   eventLocationAddress: string | null;
   eventOnlineUrl: string | null;
   eventDressCode: string | null;
   eventRsvpDeadline: Date | null;
-  eventContributionEnabled: boolean;
-  hostName: string;
-  hostEmail: string;
+  eventContributionEnabled: boolean | null;
+  hostName: string | null;
+  hostEmail: string | null;
   guestName: string | null;
   guestEmail: string | null;
-  tokenEncrypted: string | null;
+  invitationTokenEncrypted: string | null;
   rsvpStatus: string | null;
   claimRevokedAt: Date | null;
 }
 
 interface DeliveryContextRow extends DeliveryRow {
-  event_title: string;
-  event_status: string;
-  event_starts_at: Date;
+  event_title: string | null;
+  event_status: string | null;
+  event_starts_at: Date | null;
   event_ends_at: Date | null;
-  event_timezone: string;
-  event_location_type: string;
+  event_timezone: string | null;
+  event_location_type: string | null;
   event_location_name: string | null;
   event_location_address: string | null;
   event_online_url: string | null;
   event_dress_code: string | null;
   event_rsvp_deadline: Date | null;
-  event_contribution_enabled: boolean;
-  host_name: string;
-  host_email: string;
+  event_contribution_enabled: boolean | null;
+  host_name: string | null;
+  host_email: string | null;
   guest_name: string | null;
   guest_email: string | null;
-  token_encrypted: string | null;
+  invitation_token_encrypted: string | null;
   rsvp_status: string | null;
   claim_revoked_at: Date | null;
 }
@@ -151,7 +158,7 @@ function toContext(row: DeliveryContextRow): DeliveryContext {
     hostEmail: row.host_email,
     guestName: row.guest_name,
     guestEmail: row.guest_email,
-    tokenEncrypted: row.token_encrypted,
+    invitationTokenEncrypted: row.invitation_token_encrypted,
     rsvpStatus: row.rsvp_status,
     claimRevokedAt: row.claim_revoked_at,
   };
@@ -166,20 +173,22 @@ export const emailDeliveryRepository = {
     const runner = client ?? pool;
     const result = await runner.query<DeliveryRow>(
       `INSERT INTO email_deliveries (
-         event_id, invitation_id, message_type, reminder_kind,
-         recipient_email, scheduled_for, idempotency_key
+         event_id, invitation_id, host_id, message_type, reminder_kind,
+         recipient_email, scheduled_for, idempotency_key, token_encrypted
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (idempotency_key) DO NOTHING
        RETURNING ${SELECT_COLUMNS}`,
       [
         data.eventId,
         data.invitationId,
+        data.hostId ?? null,
         data.messageType,
         data.reminderKind,
         data.recipientEmail,
         data.scheduledFor,
         data.idempotencyKey,
+        data.tokenEncrypted ?? null,
       ]
     );
 
@@ -266,7 +275,7 @@ export const emailDeliveryRepository = {
     const context = await client.query<DeliveryContextRow>(
       `SELECT ${CONTEXT_COLUMNS}
          FROM email_deliveries d
-         JOIN events e ON e.id = d.event_id
+         LEFT JOIN events e ON e.id = d.event_id
          LEFT JOIN invitations i ON i.id = d.invitation_id
         WHERE d.id = ANY($1::uuid[])`,
       [ids]
@@ -280,7 +289,7 @@ export const emailDeliveryRepository = {
     const result = await query<DeliveryContextRow>(
       `SELECT ${CONTEXT_COLUMNS}
          FROM email_deliveries d
-         JOIN events e ON e.id = d.event_id
+         LEFT JOIN events e ON e.id = d.event_id
          LEFT JOIN invitations i ON i.id = d.invitation_id
         WHERE d.id = $1`,
       [id]

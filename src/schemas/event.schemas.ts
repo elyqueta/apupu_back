@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { env } from '../config/env';
-import { EVENT_STATUSES, LOCATION_TYPES, THEME_MODES } from '../types/event.types';
+import {
+  EVENT_CATEGORIES,
+  EVENT_STATUSES,
+  LOCATION_TYPES,
+  THEME_MODES,
+} from '../types/event.types';
 import { isValidTimeZone } from '../utils/date.util';
 
 /**
@@ -111,6 +116,7 @@ const eventObjectSchema = z
       .email('Email do anfitrião inválido.')
       .max(254)
       .transform((value) => value.toLowerCase()),
+    category: z.enum(EVENT_CATEGORIES).nullable().optional(),
     starts_at: z.coerce.date({ error: 'Data de início inválida.' }),
     ends_at: optionalDate,
     timezone: z
@@ -143,6 +149,7 @@ const eventUpdateObjectSchema = z
       .email('Email do anfitrião inválido.')
       .max(254)
       .transform((value) => value.toLowerCase()),
+    category: z.enum(EVENT_CATEGORIES).nullable(),
     starts_at: z.coerce.date({ error: 'Data de início inválida.' }),
     ends_at: updateDate,
     timezone: z.string().trim().min(1).refine(isValidTimeZone, 'Fuso horário inválido.'),
@@ -191,6 +198,7 @@ const guestSchema = z
       .max(254)
       .transform((value) => value.toLowerCase()),
     phone: optionalText(30),
+    table_name: optionalText(100),
   })
   .strict();
 
@@ -236,6 +244,7 @@ export const updateInvitationSchema = z
       .max(254)
       .transform((value) => value.toLowerCase()),
     phone: optionalText(30),
+    table_name: optionalText(100),
   })
   .strict()
   .partial()

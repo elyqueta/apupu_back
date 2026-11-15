@@ -22,6 +22,21 @@ export const links = {
     return `${trimBase(env.APP_BASE_URL)}/convite/${token}`;
   },
 
+  /** Página de verificação de email da conta. */
+  verifyEmail(token: string): string {
+    return `${trimBase(env.APP_BASE_URL)}/verificar-email/${token}`;
+  },
+
+  /** Página de definição de nova senha. */
+  resetPassword(token: string): string {
+    return `${trimBase(env.APP_BASE_URL)}/recuperar-senha/${token}`;
+  },
+
+  /** Página de login da conta. */
+  login(): string {
+    return `${trimBase(env.APP_BASE_URL)}/entrar`;
+  },
+
   /** Endpoint direto de RSVP da API (útil em clientes sem frontend). */
   rsvp(token: string): string {
     return `${trimBase(env.API_BASE_URL)}/api/v1/public/invitations/${token}/rsvp`;

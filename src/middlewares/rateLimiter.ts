@@ -55,3 +55,37 @@ export const hostSessionLimiter = rateLimit({
   legacyHeaders: false,
   handler: limitHandler,
 });
+
+function requestEmail(req: Request): string {
+  const value = (req.body as { email?: unknown } | undefined)?.email;
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+/**
+ * Limite dedicado por IP para registo, login e reposição de senha.
+ *
+ * Complementa o limite global: um atacante que rode IPs diferentes
+ * ainda é travado pelo limite por email.
+ */
+export const authIpLimiter = rateLimit({
+  windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
+  limit: env.AUTH_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: limitHandler,
+});
+
+/**
+ * Limite por IP + email.
+ *
+ * O email é lido do corpo já interpretado; quando ausente, cai para o
+ * IP, para que o limite nunca fique sem chave.
+ */
+export const authEmailLimiter = rateLimit({
+  windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
+  limit: env.AUTH_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip ?? 'unknown'}:${requestEmail(req)}`,
+  handler: limitHandler,
+});

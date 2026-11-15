@@ -10,8 +10,9 @@ const swaggerDefinition: swaggerJsdoc.OAS3Definition = {
     version: '0.1.0',
     description:
       'API REST do Apupu — plataforma de convites para eventos. ' +
-      'Sem contas na primeira fase: a gestão do evento é feita por um ' +
-      'link secreto e cada convidado recebe um link individual. ' +
+      'Os anfitriões podem criar conta (email + senha) e gerir eventos no ' +
+      'workspace autenticado; o fluxo legado por link secreto continua ' +
+      'válido e o aceite público do convite não exige conta. ' +
       'Documentação gerada a partir dos comentários JSDoc das rotas.',
   },
   servers: [
@@ -29,6 +30,13 @@ const swaggerDefinition: swaggerJsdoc.OAS3Definition = {
         name: `${env.HOST_COOKIE_NAME}_<eventId>`,
         description:
           'Cookie HttpOnly emitido por POST /host/session. Operações mutáveis exigem também X-CSRF-Token.',
+      },
+      accountSession: {
+        type: 'apiKey',
+        in: 'cookie',
+        name: env.AUTH_COOKIE_NAME,
+        description:
+          'Cookie HttpOnly emitido por POST /auth/login. Operações mutáveis exigem também o cabeçalho X-CSRF-Token (valor devolvido no login ou em GET /auth/session).',
       },
     },
     responses: {

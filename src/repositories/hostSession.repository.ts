@@ -37,7 +37,7 @@ export const hostSessionRepository = {
   ): Promise<HostSession> {
     const runner = client ?? pool;
     const result = await runner.query<HostSessionRow>(
-      `INSERT INTO host_sessions (event_id, token_hash, expires_at)
+      `INSERT INTO event_host_sessions (event_id, token_hash, expires_at)
        VALUES ($1,$2,$3)
        RETURNING ${SELECT_COLUMNS}`,
       [eventId, tokenHash, expiresAt]
@@ -56,7 +56,7 @@ export const hostSessionRepository = {
   async findActiveByTokenHash(tokenHash: string): Promise<HostSession | null> {
     const result = await query<HostSessionRow>(
       `SELECT ${SELECT_COLUMNS}
-         FROM host_sessions
+         FROM event_host_sessions
         WHERE token_hash = $1
           AND revoked_at IS NULL
           AND expires_at > now()`,
@@ -67,19 +67,19 @@ export const hostSessionRepository = {
   },
 
   async touch(id: string): Promise<void> {
-    await query('UPDATE host_sessions SET last_used_at = now() WHERE id = $1', [id]);
+    await query('UPDATE event_host_sessions SET last_used_at = now() WHERE id = $1', [id]);
   },
 
   async revoke(id: string): Promise<void> {
     await query(
-      'UPDATE host_sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL',
+      'UPDATE event_host_sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL',
       [id]
     );
   },
 
   async revokeAllForEvent(eventId: string): Promise<number> {
     const result = await query(
-      `UPDATE host_sessions
+      `UPDATE event_host_sessions
           SET revoked_at = now()
         WHERE event_id = $1 AND revoked_at IS NULL`,
       [eventId]

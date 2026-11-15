@@ -4,36 +4,47 @@ API REST da **Apupu**, uma plataforma de convites para eventos.
 
 - **Stack:** Node.js 20 + Express 4 + TypeScript 5 + PostgreSQL 16
 - **Porta da API:** `3000`
-- **Porta do Postgres:** `5433` (host) → `5432` (container)
-- **Sem contas na fase 1:** a gestão do evento é feita por um link secreto
-  e cada convidado recebe um link individual.
+- **Porta do Postgres:** `5432`
+- **Contas de anfitrião:** registo e login com email e senha; o link
+  secreto por evento mantém-se válido em paralelo.
+- **Aceite público do convite:** não exige conta.
 
-## Âmbito da primeira fase
+## Âmbito
 
 Incluído:
 
-- Criar e editar eventos sem registo de utilizador.
+- Criar conta de anfitrião (email + senha), verificar email e repor senha.
+- Perfil com data de nascimento opcional, telefone, locale e avatar (URL).
+- Gerir vários eventos por conta: lista paginada, painel, convidados,
+  actividade, relatórios e tarefas.
+- Criar e editar eventos por link secreto (fluxo legado, sem conta).
 - Escolher um template de convite (infraestrutura; templates finais
   serão fornecidos pelo responsável do produto).
-- Registar convidados e enviar convites por email.
+- Registar convidados, indicar mesa e enviar convites por email.
 - Página pública do convite com aceitação, alteração de resposta e recusa.
 - Recusa cancela os lembretes futuros e notifica o anfitrião por email.
 - Lembretes automáticos a 14, 7, 3 e 1 dia antes do evento, às 09:00 no
   fuso do evento.
 
-Fora do âmbito: contas, login, painel administrativo, pagamentos, SMS e
-WhatsApp.
+Fora do âmbito: painel administrativo, pagamentos, SMS e WhatsApp.
 
 ## Arranque rápido
+
+Pré-requisito: um PostgreSQL local em `localhost:5432` com a base e o
+utilizador indicados em `.env.example` (ou ajustar `DATABASE_URL`).
 
 ```bash
 cp .env.example .env
 npm install
-docker compose up -d postgres
 npm run migrate:up
 npm run seed
 npm run dev
 ```
+
+Alternativa com Docker: `docker compose up -d postgres` expõe o
+Postgres em `localhost:5433` (para não colidir com uma instância local
+na porta 5432); nesse caso ajustar `DATABASE_URL` no `.env` para a
+porta `5433`.
 
 Smoke test (noutro terminal):
 
@@ -63,7 +74,32 @@ servidor.
 |---|---|---|
 | `GET` | `/health` | Estado da API e da base de dados |
 | `GET` | `/api/v1/templates` | Templates de convite ativos |
-| `POST` | `/api/v1/events` | Cria evento, convidados e entregas de email |
+| `POST` | `/api/v1/events` | Cria evento, convidados e entregas de email (sem conta) |
+| `POST` | `/api/v1/auth/register` | Cria conta e enfileira verificação de email |
+| `POST` | `/api/v1/auth/email/verify` | Consome o token de verificação |
+| `POST` | `/api/v1/auth/email/verify/resend` | Reenvia verificação (sempre `202`) |
+| `POST` | `/api/v1/auth/login` | Cria sessão de conta e devolve `csrf_token` |
+| `POST` | `/api/v1/auth/logout` | Revoga a sessão e limpa cookies |
+| `GET` | `/api/v1/auth/session` | Conta autenticada, perfil e `csrf_token` |
+| `POST` | `/api/v1/auth/password/forgot` | Enfileira reposição de senha (sempre `202`) |
+| `POST` | `/api/v1/auth/password/reset` | Define nova senha a partir do token |
+| `POST` | `/api/v1/auth/password/change` | Altera a senha autenticada |
+| `GET` | `/api/v1/host/profile` | Perfil da conta |
+| `PATCH` | `/api/v1/host/profile` | Atualiza o perfil (data de nascimento opcional) |
+| `POST` | `/api/v1/host/profile/avatar` | Define o URL do avatar |
+| `GET` | `/api/v1/host/events` | Lista paginada dos eventos da conta |
+| `POST` | `/api/v1/host/events` | Cria evento na conta (email verificado) |
+| `DELETE` | `/api/v1/host/events/:eventId` | Apaga evento da conta |
+| `GET` | `/api/v1/host/dashboard` | Próximo evento, próximos e totais |
+| `GET` | `/api/v1/host/guests` | Convidados de todos os eventos (paginado) |
+| `GET` | `/api/v1/host/activity` | Actividade da conta (paginada) |
+| `GET` | `/api/v1/host/events/:eventId/activity` | Actividade do evento (paginada) |
+| `GET` | `/api/v1/host/reports/summary` | Agregados por evento e taxas |
+| `GET` | `/api/v1/host/events/:eventId/reports` | Série diária do evento |
+| `GET` | `/api/v1/host/tasks` | Tarefas da conta |
+| `POST` | `/api/v1/host/tasks` | Cria tarefa |
+| `PATCH` | `/api/v1/host/tasks/:taskId` | Atualiza tarefa |
+| `DELETE` | `/api/v1/host/tasks/:taskId` | Remove tarefa |
 | `POST` | `/api/v1/host/session` | Troca o link secreto por sessão `HttpOnly` |
 | `DELETE` | `/api/v1/host/session/:eventId` | Revoga a sessão de gestão |
 | `GET` | `/api/v1/host/events/:eventId` | Evento, estatísticas e convidados |
@@ -83,6 +119,16 @@ A especificação autoritária do produto está em [`backend/`](backend/).
 
 ## Segurança e privacidade
 
+- **Senhas** são guardadas com Argon2id (`ARGON2_*`). A senha em claro
+  nunca é persistida, registada ou devolvida. O login falhado usa uma
+  verificação contra um hash descartável para reduzir enumeração por
+  temporização e bloqueia temporariamente após `AUTH_MAX_FAILED_LOGINS`.
+- A **sessão de conta** (`apupu_auth`) é um cookie `HttpOnly`; operações
+  mutáveis exigem `X-CSRF-Token` derivado da sessão. O login devolve o
+  token CSRF e `GET /auth/session` volta a devolvê-lo.
+- Os **tokens de verificação de email e de reposição de senha** são de
+  uso único e guardados apenas como HMAC; o token em claro só existe no
+  link entregue.
 - O **link de gestão** é um token de 256 bits. A base de dados guarda
   apenas o HMAC. O token em claro é enviado uma única vez para o email do
   anfitrião; nunca é devolvido em JSON nem escrito em logs.
@@ -95,6 +141,8 @@ A especificação autoritária do produto está em [`backend/`](backend/).
   um cookie `HttpOnly` (`apupu_guest`). Outro navegador recebe o mesmo
   `404` genérico de um link inexistente. Isto não identifica uma pessoa
   nem um dispositivo físico.
+- Todas as leituras e mutações de eventos são limitadas por
+  `events.host_id`; uma conta sem posse recebe `404`, não `403`.
 - Respostas da API têm `Cache-Control: private, no-store`.
 - Tokens e dados pessoais nunca são escritos em logs.
 
@@ -147,14 +195,14 @@ src/
 ├── database/       pool Postgres e helpers de transacção
 ├── dto/            conversão explícita para o contrato (snake_case)
 ├── errors/         AppError + erros HTTP tipados
-├── middlewares/    asyncHandler, validate, errorHandler, hostAuth, guestAuth, CSRF
+├── middlewares/    asyncHandler, validate, errorHandler, hostAuth, hostAccountAuth, guestAuth, CSRF
 ├── repositories/   SQL e mapeamento de linhas
 ├── routes/v1/      routers por domínio + agregador
 ├── schemas/        validação Zod
 ├── scripts/        seeds, smoke test, ciclo manual da outbox
-├── services/       eventos, convites, sessão, email, lembretes, outbox
+├── services/       contas, eventos, convites, sessão, email, lembretes, outbox
 ├── types/          tipos do domínio
-└── utils/          tokens, cifra, datas, links, cookies
+└── utils/          tokens, senhas, cifra, datas, links, cookies, paginação
 migrations/         node-pg-migrate
 tests/              Vitest
 backend/            especificação autoritária do produto
@@ -163,8 +211,11 @@ docs/               contrato e modelo de dados da implementação
 
 ## Decisões que exigem confirmação antes de produção
 
-- Política de retenção e eliminação de dados pessoais.
+- Política de retenção e eliminação de dados pessoais (incluindo
+  `host_profiles.birth_date`).
 - Regras de consentimento e unsubscribe para emails transacionais.
-- Domínio definitivo e política de cookies same-site.
-- Recuperação de acesso se o anfitrião perder o link secreto.
+- Domínio definitivo e política de cookies same-site entre aplicação e API.
+- Recuperação de acesso ao link secreto de eventos legados.
+- Rotação/revogação de links de gestão e política de sessões de conta.
+- Limites por recurso e auditoria de acessos.
 - Limites e acessibilidade dos templates finais.

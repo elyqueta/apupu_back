@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import authRoutes from './auth.routes';
 import eventsRoutes from './events.routes';
 import hostRoutes from './host.routes';
+import hostWorkspaceRoutes from './hostWorkspace.routes';
 import publicRoutes from './public.routes';
 import templatesRoutes from './templates.routes';
 
@@ -14,8 +16,10 @@ import templatesRoutes from './templates.routes';
 const router = Router();
 
 router.use('/templates', templatesRoutes);
+router.use('/auth', authRoutes);
 router.use('/events', eventsRoutes);
 router.use('/host', hostRoutes);
+router.use('/host', hostWorkspaceRoutes);
 router.use('/public/invitations', publicRoutes);
 
 export default router;
