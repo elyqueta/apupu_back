@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   csrfMatches,
   csrfTokenFor,
+  generateOtpCode,
   generateToken,
   hashesMatch,
+  hashOtpCode,
   hashToken,
 } from '../src/utils/token.util';
 
@@ -48,5 +50,20 @@ describe('token.util', () => {
 
     expect(csrfMatches(expected, expected)).toBe(true);
     expect(csrfMatches(expected, csrfTokenFor(generateToken()))).toBe(false);
+  });
+
+  it('gera códigos OTP de 6 dígitos', () => {
+    for (let i = 0; i < 50; i += 1) {
+      expect(generateOtpCode()).toMatch(/^\d{6}$/);
+    }
+  });
+
+  it('liga o hash do OTP ao email normalizado', () => {
+    const code = '004271';
+    const hash = hashOtpCode('ana@exemplo.ao', code);
+
+    expect(hashOtpCode('  ANA@Exemplo.AO ', code)).toBe(hash);
+    expect(hashOtpCode('outra@exemplo.ao', code)).not.toBe(hash);
+    expect(hashOtpCode('ana@exemplo.ao', '004272')).not.toBe(hash);
   });
 });

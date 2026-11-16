@@ -1,4 +1,4 @@
-# Documentação — Apupu
+# Documentação — Conta Comigo
 
 Índice da documentação do backend.
 

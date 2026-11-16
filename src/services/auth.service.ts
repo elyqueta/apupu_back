@@ -3,6 +3,7 @@ import { withTransaction } from '../database/pool';
 import {
   ConflictError,
   LockedError,
+  TooManyRequestsError,
   UnauthorizedError,
   ValidationError,
 } from '../errors';
@@ -13,6 +14,7 @@ import {
   emailVerificationRepository,
   passwordResetRepository,
 } from '../repositories/hostToken.repository';
+import { registrationVerificationRepository } from '../repositories/registrationVerification.repository';
 import { HostAuthSession, HostWithProfile } from '../types/host.types';
 import { isUniqueViolation } from '../utils/db.util';
 import {
@@ -20,15 +22,29 @@ import {
   verifyAgainstDummy,
   verifyPassword,
 } from '../utils/password.util';
-import { csrfTokenFor, generateToken, hashToken } from '../utils/token.util';
+import {
+  csrfTokenFor,
+  generateOtpCode,
+  generateToken,
+  hashesMatch,
+  hashOtpCode,
+  hashToken,
+} from '../utils/token.util';
 import {
   ChangePasswordBody,
   LoginBody,
   RegisterBody,
+  RegisterRequestCodeBody,
+  RegisterVerifyCodeBody,
   ResetPasswordBody,
 } from '../schemas/auth.schemas';
 import { AuditContext, auditService } from './audit.service';
-import { enqueueEmailVerification, enqueueHostWelcome, enqueuePasswordReset } from './reminder.service';
+import {
+  enqueueEmailVerification,
+  enqueueHostWelcome,
+  enqueuePasswordReset,
+  enqueueRegistrationOtp,
+} from './reminder.service';
 
 /**
  * Autenticação da conta de anfitrião.
@@ -45,6 +61,10 @@ const INVALID_CREDENTIALS = 'Email ou senha inválidos.';
 const INVALID_SESSION = 'Sessão inválida ou expirada.';
 const INVALID_VERIFICATION = 'Link de verificação inválido ou expirado.';
 const INVALID_RESET = 'Link de reposição inválido ou expirado.';
+const INVALID_OTP = 'Código inválido ou expirado.';
+const OTP_ATTEMPTS_EXCEEDED = 'Demasiadas tentativas. Pede um novo código.';
+const REGISTRATION_VERIFICATION_REQUIRED =
+  'Verifica o teu email antes de criar a conta.';
 
 export interface CreatedAccountSession {
   session: HostAuthSession;
@@ -52,6 +72,17 @@ export interface CreatedAccountSession {
   csrfToken: string;
   expiresAt: Date;
 }
+
+/**
+ * Resultado interno da verificação do OTP.
+ *
+ * As falhas são devolvidas como valor — e não lançadas dentro da
+ * transacção — para que o incremento de tentativas e a invalidação do
+ * código sejam efectivamente persistidos (uma excepção faria rollback).
+ */
+type RegistrationCodeOutcome =
+  | { status: 'verified'; verificationToken: string; expiresAt: Date }
+  | { status: 'invalid'; reason: 'otp_invalid' | 'otp_attempts_exceeded' };
 
 function tokenExpiry(minutes: number): Date {
   return new Date(Date.now() + minutes * 60 * 1000);
@@ -78,23 +109,200 @@ async function createAccountSession(
 
 export const authService = {
   /**
-   * Cria a conta, o perfil e o token de verificação numa transacção.
+   * Valida a disponibilidade do email e envia um código OTP.
    *
-   * Não inicia sessão: o frontend mostra "verifique o seu email". O
-   * email de boas-vindas é enfileirado uma única vez por conta.
+   * O código anterior do mesmo email é invalidado. A conta ainda não
+   * existe: só é criada no passo `register`, depois de o código ser
+   * verificado e o token de verificação ser consumido.
    */
-  async register(input: RegisterBody): Promise<HostWithProfile> {
-    const passwordHash = await hashPassword(input.password);
+  async requestRegistrationCode(
+    input: RegisterRequestCodeBody,
+    context?: AuditContext
+  ): Promise<{ expiresAt: Date; resendAvailableAt: Date }> {
+    if (await hostRepository.emailExists(input.email)) {
+      throw new ConflictError('Este email já está registado.', 'email_already_registered', {
+        email: ['Este email já está registado.'],
+      });
+    }
+
+    const latest = await registrationVerificationRepository.findLatestActiveForEmail(
+      input.email
+    );
+    const resendAvailableAt = latest
+      ? new Date(
+          latest.createdAt.getTime() + env.REGISTRATION_OTP_RESEND_SECONDS * 1000
+        )
+      : new Date();
+
+    if (latest && resendAvailableAt.getTime() > Date.now()) {
+      throw new TooManyRequestsError(
+        'Aguarda antes de pedir um novo código.',
+        'otp_resend_too_soon'
+      );
+    }
+
+    const code = generateOtpCode();
+    const expiresAt = tokenExpiry(env.REGISTRATION_OTP_TTL_MINUTES);
+
+    await withTransaction(async (client) => {
+      await registrationVerificationRepository.consumePendingForEmail(input.email, client);
+      await registrationVerificationRepository.create(
+        input.email,
+        hashOtpCode(input.email, code),
+        expiresAt,
+        client
+      );
+      await enqueueRegistrationOtp(input.email, code, client);
+    });
+
+    await auditService.record({
+      action: 'registration_code_requested',
+      ip: context?.ip ?? null,
+      requestId: context?.requestId ?? null,
+    });
+
+    return { expiresAt, resendAvailableAt };
+  },
+
+  /**
+   * Verifica o código OTP e devolve um token de uso único, de curta
+   * duração, que autoriza a criação da conta.
+   *
+   * As tentativas são contadas de forma atómica. Ao atingir o limite,
+   * o código é invalidado e é necessário pedir um novo.
+   */
+  async verifyRegistrationCode(
+    input: RegisterVerifyCodeBody,
+    context?: AuditContext
+  ): Promise<{ verificationToken: string; expiresAt: Date }> {
+    const auditBase = {
+      ip: context?.ip ?? null,
+      requestId: context?.requestId ?? null,
+    };
 
     try {
-      return await withTransaction(async (client) => {
+      const outcome = await withTransaction<RegistrationCodeOutcome>(
+        async (client) => {
+          const verification =
+            await registrationVerificationRepository.findLatestActiveForEmailForUpdate(
+              input.email,
+              client
+            );
+
+          if (!verification || verification.verifiedAt) {
+            return { status: 'invalid', reason: 'otp_invalid' };
+          }
+
+          if (verification.attempts >= env.REGISTRATION_OTP_MAX_ATTEMPTS) {
+            await registrationVerificationRepository.consumePendingForEmail(
+              input.email,
+              client
+            );
+
+            return { status: 'invalid', reason: 'otp_attempts_exceeded' };
+          }
+
+          if (!hashesMatch(verification.codeHash, hashOtpCode(input.email, input.code))) {
+            const attempts = await registrationVerificationRepository.registerFailedAttempt(
+              verification.id,
+              client
+            );
+
+            if (attempts >= env.REGISTRATION_OTP_MAX_ATTEMPTS) {
+              await registrationVerificationRepository.consumePendingForEmail(
+                input.email,
+                client
+              );
+
+              return { status: 'invalid', reason: 'otp_attempts_exceeded' };
+            }
+
+            return { status: 'invalid', reason: 'otp_invalid' };
+          }
+
+          const verificationToken = generateToken();
+          const expiresAt = tokenExpiry(env.REGISTRATION_VERIFICATION_TTL_MINUTES);
+
+          await registrationVerificationRepository.markVerified(
+            verification.id,
+            hashToken(verificationToken),
+            expiresAt,
+            client
+          );
+
+          return { status: 'verified', verificationToken, expiresAt };
+        }
+      );
+
+      if (outcome.status === 'invalid') {
+        throw outcome.reason === 'otp_attempts_exceeded'
+          ? new ValidationError(
+              OTP_ATTEMPTS_EXCEEDED,
+              { code: [OTP_ATTEMPTS_EXCEEDED] },
+              'otp_attempts_exceeded'
+            )
+          : new ValidationError(INVALID_OTP, { code: [INVALID_OTP] }, 'otp_invalid');
+      }
+
+      await auditService.record({
+        ...auditBase,
+        action: 'registration_code_verified',
+      });
+
+      return {
+        verificationToken: outcome.verificationToken,
+        expiresAt: outcome.expiresAt,
+      };
+    } catch (error) {
+      await auditService.record({
+        ...auditBase,
+        action: 'registration_code_failed',
+        outcome: 'failure',
+        metadata: {
+          reason: error instanceof ValidationError ? error.code : 'unknown_error',
+        },
+      });
+
+      throw error;
+    }
+  },
+
+  /**
+   * Cria a conta, o perfil e liga os eventos legados numa transacção.
+   *
+   * Exige o token devolvido por `verifyRegistrationCode`; sem ele não
+   * há criação de conta. O email fica verificado de imediato e o email
+   * de boas-vindas é enfileirado uma única vez.
+   */
+  async register(input: RegisterBody, context?: AuditContext): Promise<HostWithProfile> {
+    const passwordHash = await hashPassword(input.password);
+
+    let host: HostWithProfile;
+
+    try {
+      host = await withTransaction(async (client) => {
         if (await hostRepository.emailExists(input.email)) {
           throw new ConflictError('Este email já está registado.', 'email_already_registered', {
             email: ['Este email já está registado.'],
           });
         }
 
-        const host = await hostRepository.create(
+        const consumed =
+          await registrationVerificationRepository.consumeVerificationToken(
+            input.email,
+            hashToken(input.verification_token),
+            client
+          );
+
+        if (!consumed) {
+          throw new ValidationError(
+            REGISTRATION_VERIFICATION_REQUIRED,
+            { verification_token: [REGISTRATION_VERIFICATION_REQUIRED] },
+            'verification_required'
+          );
+        }
+
+        const created = await hostRepository.create(
           {
             email: input.email,
             passwordHash,
@@ -103,18 +311,15 @@ export const authService = {
           client
         );
 
-        const token = generateToken();
-        await emailVerificationRepository.create(
-          host.id,
-          hashToken(token),
-          tokenExpiry(env.EMAIL_VERIFICATION_TTL_MINUTES),
-          client
-        );
+        await hostRepository.setEmailVerified(created.id, client);
+        await eventRepository.claimByHostEmail(created.id, created.email, client);
 
-        await enqueueEmailVerification(host.id, host.email, token, client);
-        await enqueueHostWelcome(host.id, host.email, client);
+        const verified = await hostRepository.findById(created.id, client);
+        if (!verified) throw new Error('Falha ao ler a conta criada.');
 
-        return host;
+        await enqueueHostWelcome(verified.id, verified.email, client);
+
+        return verified;
       });
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -125,6 +330,15 @@ export const authService = {
 
       throw error;
     }
+
+    await auditService.record({
+      action: 'registration_completed',
+      hostId: host.id,
+      ip: context?.ip ?? null,
+      requestId: context?.requestId ?? null,
+    });
+
+    return host;
   },
 
   /**

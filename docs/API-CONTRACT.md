@@ -1,4 +1,4 @@
-# Contrato da API — v1 (implementação)
+# Conta Comigo — Contrato da API v1 (implementação)
 
 Base: `/api/v1`. Este documento descreve o contrato efectivamente
 implementado. A especificação autoritária do produto está em
@@ -56,15 +56,22 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `401` | `host_session_invalid` | Sessão de gestão ou de conta ausente, expirada ou de outro evento |
 | `401` | `invalid_credentials` | Email ou senha inválidos no login |
 | `403` | `csrf_invalid` | Falta ou não coincide o `X-CSRF-Token` |
+| `403` | `forbidden` | Origem não permitida pelo CORS |
 | `403` | `email_not_verified` | A conta ainda não confirmou o email; escrita de eventos bloqueada |
 | `404` | `invitation_not_found` | Token inválido, convite revogado ou reclamado por outro navegador (resposta sempre igual) |
 | `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
 | `404` | `event_not_found` / `invitation_not_found` / `task_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
-| `409` | `event_not_scheduled`, `event_cancelled`, `event_completed`, `rsvp_deadline_passed`, `email_duplicate`, `invitation_limit_reached`, `email_already_registered` | Conflito de estado |
+| `404` | `route_not_found` | Rota inexistente |
+| `409` | `event_not_scheduled`, `event_cancelled`, `event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`, `invitation_limit_reached`, `email_already_registered` | Conflito de estado |
 | `409` | `invitation_revoked`, `invitation_not_resendable` | Convite revogado ou sem link reutilizável para reenvio |
-| `422` | `validation_failed`, `verification_invalid`, `reset_invalid` | Validação Zod ou token de uso único inválido/expirado; inclui `fields` |
+| `422` | `validation_failed` | Validação Zod; inclui `fields` |
+| `422` | `verification_invalid`, `reset_invalid` | Token de uso único inválido ou expirado |
+| `422` | `verification_required` | É necessário verificar o email antes de criar a conta |
+| `422` | `otp_invalid` | Código OTP inválido ou expirado |
+| `422` | `otp_attempts_exceeded` | Limite de tentativas do código atingido; pedir novo código |
 | `423` | `account_locked` | Demasiadas falhas de login; bloqueio temporário |
 | `429` | `rate_limited` | Limite de pedidos excedido (activo em todos os ambientes) |
+| `429` | `otp_resend_too_soon` | Pedido de novo código antes do intervalo mínimo |
 | `500` | `internal_error` | Erro inesperado; sem stack trace |
 
 ## Autenticação e cookies
@@ -103,28 +110,126 @@ workspace (`/host/events` sem `:eventId`, `/host/profile`,
 
 ### Registo e verificação
 
+O registo tem três passos. A conta **só é criada** depois de o email
+ser verificado por código OTP.
+
+#### 1. Pedir o código
+
+`POST /api/v1/auth/register/request-code`
+
+```json
+{ "email": "ana@exemplo.ao" }
+```
+
+- Valida o formato do email e confirma que ainda não existe conta.
+- Invalida qualquer código anterior do mesmo email.
+- Envia um código numérico de 6 dígitos, válido por
+  `REGISTRATION_OTP_TTL_MINUTES` minutos (por omissão 10).
+- Um novo pedido antes de `REGISTRATION_OTP_RESEND_SECONDS` segundos
+  (por omissão 60) devolve `429 otp_resend_too_soon`.
+
+Resposta `202`:
+
+```json
+{
+  "data": {
+    "status": "accepted",
+    "email": "ana@exemplo.ao",
+    "expires_at": "2026-11-16T02:30:30.588Z",
+    "resend_available_at": "2026-11-16T02:20:30.586Z"
+  }
+}
+```
+
+Erros: `409 email_already_registered`, `422 validation_failed`,
+`429 otp_resend_too_soon` ou `429 rate_limited`.
+
+#### 2. Verificar o código
+
+`POST /api/v1/auth/register/verify-code`
+
+```json
+{ "email": "ana@exemplo.ao", "code": "004271" }
+```
+
+- O código tem exactamente 6 dígitos.
+- Após `REGISTRATION_OTP_MAX_ATTEMPTS` falhas (por omissão 5) o código
+  é invalidado e é necessário pedir um novo.
+- O sucesso devolve um `verification_token` de uso único, válido por
+  `REGISTRATION_VERIFICATION_TTL_MINUTES` minutos (por omissão 15).
+
+Resposta `200`:
+
+```json
+{
+  "data": {
+    "email": "ana@exemplo.ao",
+    "verification_token": "DKNAPJMDeXHmDxeIQDvxMsD47GYjqtzgGwh3gWlPr2I",
+    "expires_at": "2026-11-16T02:35:49.786Z"
+  }
+}
+```
+
+Erros: `422 otp_invalid`, `422 otp_attempts_exceeded`,
+`422 validation_failed`, `429 rate_limited`.
+
+#### 3. Criar a conta
+
 `POST /api/v1/auth/register`
 
 ```json
-{ "email": "ana@exemplo.ao", "password": "…", "display_name": "Ana" }
+{
+  "email": "ana@exemplo.ao",
+  "password": "…",
+  "display_name": "Ana",
+  "verification_token": "DKNAPJMDeXHmDxeIQDvxMsD47GYjqtzgGwh3gWlPr2I"
+}
 ```
 
-- Cria a conta e o perfil, enfileira o email de verificação e o email de
-  boas-vindas. **Não** inicia sessão.
+- Exige o `verification_token` do passo anterior. Sem ele, ou se já
+  tiver sido usado/expirado, devolve `422 verification_required`.
+- A conta é criada já com `email_verified=true`; não é enviado um link
+  de verificação.
+- Os eventos legados cujo `host_email` coincide com o email verificado
+  são ligados à conta (`events.host_id`) de forma idempotente.
+- O email de boas-vindas é enfileirado. **Não** inicia sessão.
 - A senha exige 8 a 128 caracteres e não pode estar na lista mínima de
   senhas comuns.
-- `409 email_already_registered` se o email já existir.
 
 Resposta `201`:
 
 ```json
-{ "data": { "host": { "id": "...", "email": "...", "email_verified": false, "profile": { "...": "..." }, "profile_complete": false, "missing_fields": ["birth_date"] } } }
+{
+  "data": {
+    "host": {
+      "id": "db5a9bcc-82c0-46c2-80d5-de7ff164f14a",
+      "email": "ana@exemplo.ao",
+      "email_verified": true,
+      "status": "active",
+      "profile": {
+        "display_name": "Ana",
+        "phone": null,
+        "birth_date": null,
+        "locale": "pt-AO",
+        "timezone": "Africa/Luanda",
+        "avatar_url": null
+      },
+      "profile_complete": false,
+      "missing_fields": ["birth_date"],
+      "created_at": "2026-11-16T02:20:57.546Z"
+    }
+  }
+}
 ```
 
+Erros: `409 email_already_registered`, `422 verification_required`,
+`422 validation_failed`, `429 rate_limited`.
+
+#### Contas antigas por verificar
+
 `POST /api/v1/auth/email/verify` consome `{ "token": "..." }` e devolve
-`200` com a conta já verificada. Só depois da verificação os eventos
-legados com o mesmo `host_email` são ligados à conta
-(`events.host_id`), de forma idempotente. Token inválido/expirado:
+`200` com a conta já verificada. Continua disponível para contas
+criadas antes deste fluxo. Token inválido/expirado:
 `422 verification_invalid`.
 
 `POST /api/v1/auth/email/verify/resend` recebe `{ "email": "..." }` e
@@ -979,7 +1084,8 @@ Todos os ambientes aplicam `/api/v1`:
   `PUBLIC_RATE_LIMIT_MAX`.
 - Troca do segredo de gestão: `HOST_SESSION_RATE_LIMIT_WINDOW_MS` /
   `HOST_SESSION_RATE_LIMIT_MAX`.
-- Autenticação (`register`, `login`, `email/verify/resend`,
+- Autenticação (`register`, `register/request-code`,
+  `register/verify-code`, `login`, `email/verify/resend`,
   `password/forgot`): `AUTH_RATE_LIMIT_WINDOW_MS` /
   `AUTH_RATE_LIMIT_MAX`, aplicado por IP e por IP + email.
 - Escritas de gestão (criar/actualizar/apagar eventos, convidados,
@@ -988,8 +1094,8 @@ Todos os ambientes aplicam `/api/v1`:
   `WRITE_RATE_LIMIT_MAX`.
 - RSVP público: `RSVP_RATE_LIMIT_WINDOW_MS` /
   `RSVP_RATE_LIMIT_MAX`, aplicado por IP + token do convite.
-- Verificação de email e reposição de senha consomem também o limite
-  público de tokens.
+- Verificação de email, verificação de código OTP e reposição de senha
+  consomem também o limite público de tokens.
 
 O limite de escritas escolhe a chave mais específica disponível:
 conta autenticada → evento → convite → IP. O limite de RSVP usa sempre
@@ -1013,6 +1119,8 @@ corpo. Todas as rotas podem devolver os erros transversais de
 
 | Método | Rota | Sucesso | Corpo |
 |---|---|---|---|
+| `POST` | `/api/v1/auth/register/request-code` | `202` | `{ "data": { "status": "accepted", "email": string, "expires_at": string, "resend_available_at": string } }` |
+| `POST` | `/api/v1/auth/register/verify-code` | `200` | `{ "data": { "email": string, "verification_token": string, "expires_at": string } }` |
 | `POST` | `/api/v1/auth/register` | `201` | `{ "data": { "host": Host } }` |
 | `POST` | `/api/v1/auth/email/verify` | `200` | `{ "data": { "host": Host } }` |
 | `POST` | `/api/v1/auth/email/verify/resend` | `202` | `{ "data": { "status": "accepted" } }` |
@@ -1073,6 +1181,269 @@ total_invitations, accepted, declined, pending }`, todos inteiros.
 | `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `200` | `{ "data": PublicInvitation }` |
 | `GET` | `/api/v1/templates` | `200` | `{ "data": Template[] }` |
 
+## Respostas de erro por endpoint
+
+Todas as respostas não-2xx usam o mesmo envelope. Abaixo estão os
+corpos reutilizáveis e, depois, o mapa de que erros cada rota devolve.
+`request_id` é sempre um UUID diferente por pedido.
+
+### Corpos reutilizáveis
+
+`422 validation_failed` — `fields` lista apenas os campos inválidos:
+
+```json
+{
+  "error": {
+    "code": "validation_failed",
+    "message": "Verifique os campos indicados.",
+    "fields": { "email": ["Email inválido."] },
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`400 invalid_json`:
+
+```json
+{
+  "error": {
+    "code": "invalid_json",
+    "message": "Corpo da requisição não é um JSON válido.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`401 host_session_invalid`:
+
+```json
+{
+  "error": {
+    "code": "host_session_invalid",
+    "message": "Sessão inválida ou expirada.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`401 invalid_credentials`:
+
+```json
+{
+  "error": {
+    "code": "invalid_credentials",
+    "message": "Email ou senha inválidos.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`403 csrf_invalid`:
+
+```json
+{
+  "error": {
+    "code": "csrf_invalid",
+    "message": "Token CSRF inválido ou ausente.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`403 email_not_verified`:
+
+```json
+{
+  "error": {
+    "code": "email_not_verified",
+    "message": "Confirma o teu email antes de gerir eventos.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`404 invitation_not_found`:
+
+```json
+{
+  "error": {
+    "code": "invitation_not_found",
+    "message": "Convite não encontrado.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`404 event_not_found`:
+
+```json
+{
+  "error": {
+    "code": "event_not_found",
+    "message": "Evento não encontrado.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`404 manage_link_invalid`:
+
+```json
+{
+  "error": {
+    "code": "manage_link_invalid",
+    "message": "Link de gestão inválido ou expirado.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`404 task_not_found`:
+
+```json
+{
+  "error": {
+    "code": "task_not_found",
+    "message": "Tarefa não encontrada.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`409` — o `code` varia com a regra de negócio:
+
+```json
+{
+  "error": {
+    "code": "event_not_scheduled",
+    "message": "O evento ainda não está agendado.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+Valores possíveis: `event_not_scheduled`, `event_cancelled`,
+`event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`,
+`invitation_limit_reached`, `invitation_revoked`,
+`invitation_not_resendable`, `email_already_registered`.
+
+`422` de token ou OTP — o `code` identifica o passo:
+
+```json
+{
+  "error": {
+    "code": "otp_invalid",
+    "message": "Código inválido ou expirado.",
+    "fields": { "code": ["Código inválido ou expirado."] },
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+Valores possíveis: `verification_invalid`, `verification_required`,
+`otp_invalid`, `otp_attempts_exceeded`, `reset_invalid`.
+
+`423 account_locked`:
+
+```json
+{
+  "error": {
+    "code": "account_locked",
+    "message": "Conta temporariamente bloqueada. Tente novamente mais tarde.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`429 rate_limited`:
+
+```json
+{
+  "error": {
+    "code": "rate_limited",
+    "message": "Demasiados pedidos. Tente novamente mais tarde.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`429 otp_resend_too_soon`:
+
+```json
+{
+  "error": {
+    "code": "otp_resend_too_soon",
+    "message": "Aguarda antes de pedir um novo código.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+`500 internal_error` (qualquer rota, em falha inesperada):
+
+```json
+{
+  "error": {
+    "code": "internal_error",
+    "message": "Erro interno do servidor.",
+    "request_id": "6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e"
+  }
+}
+```
+
+### Mapa de erros por endpoint
+
+| Método | Rota | Erros documentados |
+|---|---|---|
+| `POST` | `/api/v1/auth/register/request-code` | `409 email_already_registered`; `422 validation_failed`; `429 otp_resend_too_soon`; `429 rate_limited` |
+| `POST` | `/api/v1/auth/register/verify-code` | `422 otp_invalid`; `422 otp_attempts_exceeded`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/auth/register` | `409 email_already_registered`; `422 verification_required`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/auth/email/verify` | `422 verification_invalid`; `429 rate_limited` |
+| `POST` | `/api/v1/auth/email/verify/resend` | `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/auth/login` | `401 invalid_credentials`; `422 validation_failed`; `423 account_locked`; `429 rate_limited` |
+| `POST` | `/api/v1/auth/logout` | `401 host_session_invalid`; `403 csrf_invalid` |
+| `GET` | `/api/v1/auth/session` | `401 host_session_invalid` |
+| `POST` | `/api/v1/auth/password/forgot` | `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/auth/password/reset` | `422 reset_invalid`; `429 rate_limited` |
+| `POST` | `/api/v1/auth/password/change` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed` |
+| `POST` | `/api/v1/events` | `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/session` | `404 manage_link_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/session/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `429 rate_limited` |
+| `GET` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `404 event_not_found` |
+| `PATCH` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `404 event_not_found` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 invitation_not_found`; `409 invitation_email_duplicate`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 invitation_not_found`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/resend` | `401 host_session_invalid`; `403 csrf_invalid`; `404 invitation_not_found`; `409 invitation_not_resendable`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/revoke` | `401 host_session_invalid`; `403 csrf_invalid`; `404 invitation_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/profile` | `401 host_session_invalid` |
+| `PATCH` | `/api/v1/host/profile` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/profile/avatar` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/events` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events` | `401 host_session_invalid`; `403 email_not_verified`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `401 host_session_invalid`; `403 email_not_verified`; `404 event_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/dashboard` | `401 host_session_invalid` |
+| `GET` | `/api/v1/host/guests` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/activity` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/events/{eventId}/activity` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/reports/summary` | `401 host_session_invalid` |
+| `GET` | `/api/v1/host/events/{eventId}/reports` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/tasks` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 task_not_found`; `429 rate_limited` |
+| `POST` | `/api/v1/public/invitations/{token}/claim` | `404 invitation_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/public/invitations/{token}` | `404 invitation_not_found`; `429 rate_limited` |
+| `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `403 csrf_invalid`; `404 invitation_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/templates` | `429 rate_limited` |
+
+Além disso, qualquer rota pode devolver `400 invalid_json` quando o
+corpo não é JSON válido e `500 internal_error` em falhas inesperadas.
+Uma rota inexistente devolve `404 route_not_found`; um pedido com
+origem não permitida pelo CORS devolve `403 forbidden`.
+
 ## Auditoria
 
 As acções críticas são registadas numa tabela append-only
@@ -1083,6 +1454,8 @@ A auditoria é independente do ciclo de vida da conta e do evento:
 Acções registadas nesta fase:
 
 - `login_success`, `login_failure`, `login_locked`;
+- `registration_code_requested`, `registration_code_verified`,
+  `registration_code_failed`, `registration_completed`;
 - `email_verified`;
 - `password_changed`, `password_reset`;
 - `profile_updated` (inclui avatar);

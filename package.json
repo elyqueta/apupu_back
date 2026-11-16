@@ -1,7 +1,7 @@
 {
   "name": "apupu-backend",
   "version": "0.1.0",
-  "description": "API REST do Apupu — plataforma de convites para eventos",
+  "description": "API REST do Conta Comigo — plataforma de convites para eventos",
   "main": "dist/server.js",
   "engines": {
     "node": ">=20.0.0"

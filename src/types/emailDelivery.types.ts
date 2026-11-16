@@ -7,6 +7,7 @@ export const MESSAGE_TYPES = [
   'decline_notification',
   'event_cancelled',
   'email_verification',
+  'registration_otp',
   'host_welcome',
   'password_reset',
   'profile_reminder',
@@ -16,6 +17,7 @@ export type MessageType = (typeof MESSAGE_TYPES)[number];
 /** Mensagens de conta: não dependem de um evento. */
 export const HOST_MESSAGE_TYPES: readonly MessageType[] = [
   'email_verification',
+  'registration_otp',
   'host_welcome',
   'password_reset',
   'profile_reminder',

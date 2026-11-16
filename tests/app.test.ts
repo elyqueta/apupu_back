@@ -21,7 +21,7 @@ describe('app', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       openapi: '3.0.0',
-      info: { title: 'Apupu API' },
+      info: { title: 'Conta Comigo API' },
     });
     expect(Object.keys(response.body.paths ?? {}).length).toBeGreaterThan(0);
   });
@@ -35,6 +35,8 @@ describe('app', () => {
         '/api/v1/events',
         '/api/v1/templates',
         '/api/v1/auth/register',
+        '/api/v1/auth/register/request-code',
+        '/api/v1/auth/register/verify-code',
         '/api/v1/auth/login',
         '/api/v1/auth/session',
         '/api/v1/auth/password/forgot',
@@ -209,5 +211,91 @@ describe('app', () => {
       .send({ status: 'accepted' });
     expect(rsvp.status).toBe(404);
     expect(rsvp.body.error.code).toBe('invitation_not_found');
+  });
+
+  it('resolve todos os $ref do spec OpenAPI', async () => {
+    const response = await request(app).get('/openapi.json');
+    const spec = response.body as Record<string, unknown>;
+
+    const resolve = (ref: string): unknown => {
+      expect(ref.startsWith('#/')).toBe(true);
+
+      return ref
+        .slice(2)
+        .split('/')
+        .reduce<unknown>((node, segment) => {
+          if (node === null || typeof node !== 'object') return undefined;
+          return (node as Record<string, unknown>)[segment];
+        }, spec);
+    };
+
+    const refs = new Set<string>();
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        node.forEach(visit);
+        return;
+      }
+      if (node === null || typeof node !== 'object') return;
+
+      for (const [key, value] of Object.entries(node)) {
+        if (key === '$ref' && typeof value === 'string') refs.add(value);
+        else visit(value);
+      }
+    };
+    visit(spec);
+
+    expect(refs.size).toBeGreaterThan(0);
+    for (const ref of refs) {
+      expect(resolve(ref), `$ref não resolvido: ${ref}`).toBeDefined();
+    }
+  });
+
+  it('documenta um corpo JSON em todas as respostas não-2xx', async () => {
+    const response = await request(app).get('/openapi.json');
+    const spec = response.body as {
+      paths?: Record<string, Record<string, unknown>>;
+      components?: { responses?: Record<string, { content?: Record<string, unknown> }> };
+    };
+
+    const failures: string[] = [];
+    const withoutErrors: string[] = [];
+
+    for (const [pathName, pathItem] of Object.entries(spec.paths ?? {})) {
+      for (const [method, rawOperation] of Object.entries(pathItem)) {
+        const operation = rawOperation as { responses?: Record<string, unknown> };
+        const statuses = Object.keys(operation.responses ?? {});
+
+        if (!statuses.some((status) => !status.startsWith('2'))) {
+          withoutErrors.push(`${method.toUpperCase()} ${pathName}`);
+        }
+
+        for (const [status, rawResponse] of Object.entries(operation.responses ?? {})) {
+          if (status.startsWith('2')) continue;
+
+          const responseObject = rawResponse as {
+            $ref?: string;
+            content?: Record<string, unknown>;
+          };
+
+          let resolved = responseObject;
+          if (responseObject.$ref) {
+            const name = responseObject.$ref.replace('#/components/responses/', '');
+            const component = spec.components?.responses?.[name];
+            if (!component) {
+              failures.push(`${method.toUpperCase()} ${pathName} ${status}: $ref inexistente`);
+              continue;
+            }
+            resolved = component;
+          }
+
+          if (!resolved.content?.['application/json']) {
+            failures.push(`${method.toUpperCase()} ${pathName} ${status}: sem corpo JSON`);
+          }
+        }
+      }
+    }
+
+    expect(failures).toEqual([]);
+    expect(withoutErrors).toEqual([]);
   });
 });

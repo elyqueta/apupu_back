@@ -186,10 +186,13 @@ function inviteToken(context: DeliveryContext): string {
   return decryptToken(context.invitationTokenEncrypted);
 }
 
-/** Token cifrado das mensagens de conta (verificação/reposição). */
+/**
+ * Segredo cifrado das mensagens de conta (OTP, verificação e
+ * reposição de senha).
+ */
 function hostToken(context: DeliveryContext): string {
   if (!context.tokenEncrypted) {
-    throw new Error('Entrega de conta sem token cifrado.');
+    throw new Error('Entrega de conta sem segredo cifrado.');
   }
   return decryptToken(context.tokenEncrypted);
 }
@@ -225,21 +228,48 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
 
       return {
         to: context.recipientEmail,
-        subject: 'Confirma o teu email — Apupu',
+        subject: 'Confirma o teu email — Conta Comigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'Criaste uma conta no Apupu. Confirma o teu email para poderes criar e gerir eventos:',
+          'Criaste uma conta no Conta Comigo. Confirma o teu email para poderes criar e gerir eventos:',
           url,
           '',
           'Este link expira ao fim de 24 horas e só pode ser usado uma vez.',
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>Criaste uma conta no Apupu. Confirma o teu email para poderes criar e gerir eventos:</p>
+          <p>Criaste uma conta no Conta Comigo. Confirma o teu email para poderes criar e gerir eventos:</p>
           <p><a href="${escapeHtml(url)}">Confirmar email</a></p>
           <p>Este link expira ao fim de 24 horas e só pode ser usado uma vez.</p>
+        `,
+      };
+    }
+
+    case 'registration_otp': {
+      const code = hostToken(context);
+      const minutes = env.REGISTRATION_OTP_TTL_MINUTES;
+
+      return {
+        to: context.recipientEmail,
+        subject: 'O teu código de confirmação — Conta Comigo',
+        messageKey: context.idempotencyKey,
+        text: [
+          'Olá,',
+          '',
+          'O teu código de confirmação da Conta Comigo é:',
+          code,
+          '',
+          `O código expira ao fim de ${minutes} minutos e só pode ser usado uma vez.`,
+          'Se não pediste este código, ignora este email.',
+        ].join('\n'),
+        html: `
+          <p>Olá,</p>
+          <p>O teu código de confirmação da Conta Comigo é:</p>
+          <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px;">${escapeHtml(code)}</p>
+          <p>O código expira ao fim de ${minutes} minutos e só pode ser usado uma vez.</p>
+          <p>Se não pediste este código, ignora este email.</p>
         `,
       };
     }
@@ -249,19 +279,19 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
 
       return {
         to: context.recipientEmail,
-        subject: 'Reposição de senha — Apupu',
+        subject: 'Reposição de senha — Conta Comigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'Recebemos um pedido para repor a senha da tua conta Apupu:',
+          'Recebemos um pedido para repor a senha da tua conta no Conta Comigo:',
           url,
           '',
           'Se não fizeste este pedido, ignora este email. O link expira ao fim de 60 minutos.',
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>Recebemos um pedido para repor a senha da tua conta Apupu:</p>
+          <p>Recebemos um pedido para repor a senha da tua conta no Conta Comigo:</p>
           <p><a href="${escapeHtml(url)}">Definir nova senha</a></p>
           <p>Se não fizeste este pedido, ignora este email. O link expira ao fim de 60 minutos.</p>
         `,
@@ -271,20 +301,20 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
     case 'host_welcome': {
       return {
         to: context.recipientEmail,
-        subject: 'Bem-vindo ao Apupu',
+        subject: 'Bem-vindo ao Conta Comigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'A tua conta Apupu foi criada.',
-          'Confirma o email para começares a criar e gerir eventos.',
+          'A tua conta no Conta Comigo foi criada e o teu email já está confirmado.',
+          'Já podes criar e gerir os teus eventos.',
           links.login(),
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>A tua conta Apupu foi criada.</p>
-          <p>Confirma o email para começares a criar e gerir eventos.</p>
-          <p><a href="${escapeHtml(links.login())}">Entrar no Apupu</a></p>
+          <p>A tua conta no Conta Comigo foi criada e o teu email já está confirmado.</p>
+          <p>Já podes criar e gerir os teus eventos.</p>
+          <p><a href="${escapeHtml(links.login())}">Entrar no Conta Comigo</a></p>
         `,
       };
     }
@@ -292,18 +322,18 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
     case 'profile_reminder': {
       return {
         to: context.recipientEmail,
-        subject: 'Completa o teu perfil — Apupu',
+        subject: 'Completa o teu perfil — Conta Comigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'Falta preencher a tua data de nascimento no perfil Apupu.',
+          'Falta preencher a tua data de nascimento no perfil do Conta Comigo.',
           'Podes fazê-lo nas definições da conta.',
           links.login(),
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>Falta preencher a tua data de nascimento no perfil Apupu.</p>
+          <p>Falta preencher a tua data de nascimento no perfil do Conta Comigo.</p>
           <p>Podes fazê-lo nas definições da conta.</p>
           <p><a href="${escapeHtml(links.login())}">Abrir definições</a></p>
         `,
@@ -443,7 +473,7 @@ export async function sendManageLink(input: {
     text: [
       `Olá ${input.hostName},`,
       '',
-      `O teu evento ${input.title} foi criado no Apupu.`,
+      `O teu evento ${input.title} foi criado no Conta Comigo.`,
       'Guarda este link: é a única forma de gerir o evento.',
       input.manageUrl,
       '',
@@ -452,7 +482,7 @@ export async function sendManageLink(input: {
     ].join('\n'),
     html: `
       <p>Olá ${escapeHtml(input.hostName)},</p>
-      <p>O teu evento <strong>${escapeHtml(input.title)}</strong> foi criado no Apupu.</p>
+      <p>O teu evento <strong>${escapeHtml(input.title)}</strong> foi criado no Conta Comigo.</p>
       <p>Guarda este link — é a única forma de gerir o evento:</p>
       <p><a href="${escapeHtml(input.manageUrl)}">${escapeHtml(input.manageUrl)}</a></p>
       <p>Quem tiver o link pode gerir o evento e ver a lista de convidados. Não o partilhes com os convidados.</p>

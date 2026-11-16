@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { env } from '../config/env';
 
 /**
@@ -18,6 +18,26 @@ export function generateToken(bytes = 32): string {
 /** HMAC-SHA256 do token com o pepper da aplicação. */
 export function hashToken(token: string): string {
   return createHmac('sha256', env.TOKEN_PEPPER).update(token).digest('hex');
+}
+
+/**
+ * Código OTP numérico de 6 dígitos.
+ *
+ * `randomInt` usa o CSPRNG do sistema; `padStart` preserva zeros à
+ * esquerda (ex.: `004271`), mantendo sempre 6 dígitos.
+ */
+export function generateOtpCode(): string {
+  return randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
+
+/**
+ * HMAC do código OTP ligado ao email.
+ *
+ * O email entra no material HMAC para que um código de uma conta não
+ * seja aceite noutra, mesmo que o código coincida.
+ */
+export function hashOtpCode(email: string, code: string): string {
+  return hashToken(`${email.trim().toLowerCase()}:${code}`);
 }
 
 /**

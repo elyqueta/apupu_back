@@ -10,7 +10,7 @@ Data de fecho: 2026-11-15.
 | # | Tema | Decisão | Estado |
 |---|---|---|---|
 | 1 | Contas de anfitrião | Introduzir contas com email e senha, mantendo o link secreto por evento | Implementado |
-| 2 | Verificação de email | Obrigatória para criar/gerir eventos; login permitido antes | Implementado |
+| 2 | Verificação de email | OTP obrigatório antes de criar a conta; link legado mantido para contas antigas | Implementado |
 | 3 | Data de nascimento | Opcional e não bloqueante, `YYYY-MM-DD`, passado, idade mínima 18 | Implementado |
 | 4 | Categoria e mesas | Manter `events.category` e `invitations.table_name` | Implementado |
 | 5 | Claim automático | Ligar eventos legados à conta após verificação do email | Implementado |
@@ -34,11 +34,18 @@ paralelo; nenhuma rota antiga é removida por causa das contas.
 
 ## 2. Verificação de email
 
-- `POST /auth/register` cria a conta por verificar e não inicia sessão.
-- O login é permitido antes da verificação.
-- Criar, apagar ou gerir eventos exige email verificado
+- O registo tem três passos: `request-code` → `verify-code` →
+  `register`. A conta **só é criada** depois de o código OTP de 6
+  dígitos ser verificado.
+- O `verification_token` devolvido por `verify-code` é de uso único,
+  ligado ao email e de curta duração.
+- A conta é criada já com `email_verified_at` preenchido; não é enviado
+  um link de verificação.
+- Contas antigas por verificar mantêm `POST /auth/email/verify` e o
+  respectivo reenvio.
+- Criar, apagar ou gerir eventos continua a exigir email verificado
   (`403 email_not_verified`).
-- A verificação liga automaticamente eventos legados com o mesmo
+- O registo com OTP liga automaticamente eventos legados com o mesmo
   `host_email` à conta, de forma idempotente.
 
 ## 3. Data de nascimento
@@ -58,9 +65,10 @@ paralelo; nenhuma rota antiga é removida por causa das contas.
 
 ## 5. Claim automático de eventos legados
 
-Ao consumir a verificação de email, os eventos com `host_email` igual
-ao email verificado e `host_id` nulo passam a pertencer à conta. A
-operação é idempotente e só ocorre depois da verificação.
+Ao concluir o registo com o email verificado por OTP (ou ao consumir o
+link legado, em contas antigas), os eventos com `host_email` igual ao
+email verificado e `host_id` nulo passam a pertencer à conta. A operação
+é idempotente e só ocorre depois da verificação.
 
 ## 6. Link de gestão ao criar evento com conta
 

@@ -102,6 +102,18 @@ const envSchema = z.object({
   EMAIL_VERIFICATION_TTL_MINUTES: z.coerce.number().int().positive().default(1440),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(60),
 
+  /**
+   * Verificação de email por OTP no registo.
+   *
+   * O código é de 6 dígitos, tem poucos minutos de vida e um número
+   * limitado de tentativas. O token devolvido após a verificação é de
+   * uso único e antecede a criação da conta.
+   */
+  REGISTRATION_OTP_TTL_MINUTES: z.coerce.number().int().positive().default(10),
+  REGISTRATION_OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  REGISTRATION_OTP_RESEND_SECONDS: z.coerce.number().int().positive().default(60),
+  REGISTRATION_VERIFICATION_TTL_MINUTES: z.coerce.number().int().positive().default(15),
+
   /** Idade mínima (anos) para uma data de nascimento ser aceite. */
   MIN_HOST_AGE_YEARS: z.coerce.number().int().min(0).default(18),
 
@@ -116,7 +128,7 @@ const envSchema = z.object({
   SMTP_SECURE: z.stringbool().default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  EMAIL_FROM: z.string().min(1).default('Apupu <convites@apupu.local>'),
+  EMAIL_FROM: z.string().min(1).default('Conta Comigo <convites@apupu.local>'),
 
   /**
    * Em desenvolvimento (`EMAIL_TRANSPORT=json`) as mensagens são

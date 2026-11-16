@@ -4,7 +4,7 @@
 
 Construir uma plataforma web para criar eventos, escolher um template de convite, registar convidados e enviar convites e lembretes por email. Cada convidado recebe um link individual. O convidado pode consultar os detalhes do evento e responder ao convite; uma recusa deve parar os lembretes desse convidado e notificar a anfitriã ou o anfitrião.
 
-O frontend será desenvolvido com Angular 22, TypeScript e Tailwind CSS. O backend será desenvolvido com Node.js 20, Express, TypeScript e PostgreSQL. A camada de contas de anfitrião (registo e login com email e senha) foi aprovada e implementada; o link secreto de gestão por evento mantém-se válido em paralelo. Continua fora do âmbito: painel administrativo, pagamentos, planos pagos e envio automatizado por SMS ou WhatsApp.
+O frontend será desenvolvido com Angular 22, TypeScript e Tailwind CSS. O backend será desenvolvido com Node.js 20, Express, TypeScript e PostgreSQL. A camada de contas de anfitrião (registo com verificação de email por OTP e login com email e senha) foi aprovada e implementada; o link secreto de gestão por evento mantém-se válido em paralelo. Continua fora do âmbito: painel administrativo, pagamentos, planos pagos e envio automatizado por SMS ou WhatsApp.
 
 ## 2. Fonte de verdade e ordem de leitura
 
@@ -54,7 +54,7 @@ O frontend será desenvolvido com Angular 22, TypeScript e Tailwind CSS. O backe
 
 ## 5. Critérios globais de aceitação
 
-- Um anfitrião consegue criar conta com email e senha, verificar o email e iniciar sessão.
+- Um anfitrião pede um código OTP, verifica o email, cria a conta com email e senha e inicia sessão.
 - Um anfitrião autenticado consegue criar, listar, editar e apagar os seus eventos; outro anfitrião não vê nem altera esses eventos.
 - Um anfitrião consegue preparar um evento sem criar conta e recebe um link secreto de gestão.
 - O perfil permite data de nascimento opcional; a ausência desse campo não bloqueia o uso da conta.
@@ -73,7 +73,7 @@ O frontend será desenvolvido com Angular 22, TypeScript e Tailwind CSS. O backe
 | Tema | Regra |
 |---|---|
 | Autenticação | Contas de anfitrião com email e senha (Argon2id). O link secreto de gestão por evento mantém-se válido em paralelo. |
-| Verificação de email | Necessária para criar/gerir eventos; o login é permitido antes da verificação. |
+| Verificação de email | OTP de 6 dígitos obrigatório antes de criar a conta; contas antigas mantêm o link de verificação. Criar/gerir eventos exige email verificado. |
 | Perfil | Data de nascimento opcional (`YYYY-MM-DD`, passado, idade mínima configurável). A ausência não bloqueia a conta. |
 | Claim do convite | Vinculado ao primeiro navegador/sessão que o reclamar. Não é uma identificação de hardware. |
 | Canal automático | Apenas email. Telefone pode ser guardado como dado opcional, mas não habilita envio nesta fase. |

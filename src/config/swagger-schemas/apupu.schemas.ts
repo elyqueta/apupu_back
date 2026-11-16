@@ -1,5 +1,5 @@
 /**
- * Componentes OpenAPI do Apupu.
+ * Componentes OpenAPI do Conta Comigo.
  *
  * O contrato público usa snake_case. Os DTOs da aplicação são a fonte
  * de verdade; estes schemas apenas documentam a forma observável.
@@ -592,6 +592,35 @@ export const apupuSchemas = {
         type: 'object',
         properties: {
           status: { type: 'string', enum: ['accepted'] },
+        },
+      },
+    },
+  },
+
+  RegistrationCodeEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['accepted'] },
+          email: { type: 'string', format: 'email' },
+          expires_at: { type: 'string', format: 'date-time' },
+          resend_available_at: { type: 'string', format: 'date-time' },
+        },
+      },
+    },
+  },
+
+  RegistrationVerificationEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' },
+          verification_token: { type: 'string' },
+          expires_at: { type: 'string', format: 'date-time' },
         },
       },
     },

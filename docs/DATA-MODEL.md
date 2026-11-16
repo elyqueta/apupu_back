@@ -203,6 +203,34 @@ Tokens de uso único enviados por email.
 Índices por `host_id` e `expires_at`. O token em claro existe apenas no
 link entregue; nunca é persistido.
 
+## `registration_verifications`
+
+Verificação de email por código OTP antes da criação da conta. Cada
+linha representa um pedido de código; o código e o token em claro nunca
+chegam à base de dados.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `email` | citext | email em verificação; pode ainda não ter conta |
+| `code_hash` | text | HMAC do código, ligado ao email |
+| `attempts` | integer | tentativas falhadas; `>= 0` |
+| `expires_at` | timestamptz | validade do código |
+| `verified_at` | timestamptz | preenchido quando o código é aceite |
+| `verification_token_hash` | text | único; HMAC do token de criação |
+| `verification_token_expires_at` | timestamptz | validade do token |
+| `consumed_at` | timestamptz | preenchido no consumo atómico |
+| `created_at` / `updated_at` | timestamptz | |
+
+Constraints: `registration_verifications_attempts_check`. Índices:
+`registration_verifications_email_idx` (`email`, `created_at DESC`),
+`registration_verifications_expiry_idx` e
+`registration_verifications_token_idx` (parcial, só com token).
+
+Pedir um novo código invalida os pedidos anteriores do mesmo email. O
+token de criação é de uso único, ligado ao email e consumido dentro da
+transacção que cria a conta.
+
 ## `event_activity`
 
 Feed de actividade por evento.
@@ -255,7 +283,9 @@ eliminação da conta ou do evento.
 
 Constraints: `host_audit_log_outcome_check` e
 `host_audit_log_action_check`. Acções permitidas: `login_success`,
-`login_failure`, `login_locked`, `email_verified`,
+`login_failure`, `login_locked`, `registration_code_requested`,
+`registration_code_verified`, `registration_code_failed`,
+`registration_completed`, `email_verified`,
 `password_changed`, `password_reset`, `profile_updated`,
 `event_created`, `event_deleted`, `guest_added`, `guest_updated`,
 `guest_deleted`, `guest_invitation_resent`, `guest_access_revoked`,
@@ -287,13 +317,14 @@ nesta fase.
 | `provider_message_id` | text | |
 | `last_error` | text | mensagem operacional, sem tokens |
 | `idempotency_key` | text | único |
-| `token_encrypted` | text | AES-256-GCM; só verificação e reposição de senha |
+| `token_encrypted` | text | AES-256-GCM; verificação, OTP, reposição de senha |
 | `sent_at` | timestamptz | |
 | `created_at` / `updated_at` | timestamptz | |
 
 Tipos de mensagem: `manage_link`, `invitation`, `reminder`,
 `decline_notification`, `event_cancelled`, `email_verification`,
-`host_welcome`, `password_reset`, `profile_reminder`.
+`registration_otp`, `host_welcome`, `password_reset`,
+`profile_reminder`.
 
 Índices: índice parcial `(status, scheduled_for)` para entregas
 pendentes, `event_id`, `invitation_id` e `host_id`.
@@ -311,20 +342,24 @@ Chaves idempotentes usadas:
 | Link de gestão (rotação) | `manage_link:<eventId>:rotate:<uuid>` |
 | Link de gestão (reenvio) | `manage_link:<eventId>:resend:<uuid>` |
 | Verificação de email | `email_verification:<hostId>:<uuid>` |
+| Código OTP de registo | `registration_otp:<email>:<uuid>` |
 | Boas-vindas | `host_welcome:<hostId>` |
 | Reposição de senha | `password_reset:<hostId>:<uuid>` |
 
 O link de gestão é enviado de forma síncrona após a transacção de
 criação; o resultado é registado em `email_deliveries` com
 `message_type=manage_link`, mas essa entrega nunca é reenviada pelo
-worker. As mensagens de conta (`email_verification`, `host_welcome`,
-`password_reset`, `profile_reminder`) usam `host_id` e não dependem de
-um evento.
+worker. As mensagens de conta (`email_verification`, `registration_otp`,
+`host_welcome`, `password_reset`, `profile_reminder`) usam `host_id`
+(nulo no OTP, que antecede a conta) e não dependem de um evento.
 
 ## Relações
 
 - Uma conta (`hosts`) tem um perfil, zero ou mais sessões de conta,
   tokens de verificação/reposição, tarefas e eventos.
+- As verificações de registo (`registration_verifications`) são
+  independentes de `hosts`: existem antes de a conta ser criada e são
+  identificadas pelo email.
 - Um evento pertence a zero ou uma conta (`host_id`; nulo em eventos
   legados) e tem zero ou mais convites, sessões de gestão, actividades e
   entregas de email.
@@ -340,6 +375,10 @@ um evento.
 
 - Registo: a unicidade do email é garantida por `hosts_email_unique`; a
   violação é convertida em `409 email_already_registered`.
+- OTP de registo: pedir um código consome os pendentes do mesmo email;
+  as tentativas são incrementadas atomicamente e o código é invalidado
+  ao atingir `REGISTRATION_OTP_MAX_ATTEMPTS`. O token de criação é
+  consumido com `consumed_at IS NULL` e ligado ao email.
 - Verificação de email e reposição de senha: `consumed_at IS NULL` no
   `UPDATE` torna o consumo atómico; o mesmo link nunca é usado duas
   vezes.

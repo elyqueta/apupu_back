@@ -13,7 +13,9 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
+  registerRequestCodeSchema,
   registerSchema,
+  registerVerifyCodeSchema,
   resendVerificationSchema,
   resetPasswordSchema,
   verifyEmailSchema,
@@ -23,36 +25,156 @@ const router = Router();
 
 /**
  * @openapi
- * /api/v1/auth/register:
+ * /api/v1/auth/register/request-code:
  *   post:
  *     tags: [Conta]
- *     summary: Cria uma conta de anfitrião
+ *     summary: Valida o email e envia um código OTP
  *     description: >
- *       Cria a conta e enfileira o email de verificação. Não inicia
- *       sessão: o frontend deve mostrar "verifique o seu email".
+ *       Primeiro passo do registo. Confirma que o email ainda não está
+ *       registado e envia um código de 6 dígitos, válido por
+ *       `REGISTRATION_OTP_TTL_MINUTES` minutos. Pedidos repetidos antes
+ *       de `REGISTRATION_OTP_RESEND_SECONDS` devolvem `429`
+ *       `otp_resend_too_soon`. A conta só é criada depois de o código
+ *       ser verificado em `/auth/register/verify-code`.
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, password]
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email }
+ *     responses:
+ *       202:
+ *         description: Código enfileirado para envio.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/RegistrationCodeEnvelope' }
+ *       409:
+ *         description: Email já registado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *             example:
+ *               error:
+ *                 code: email_already_registered
+ *                 message: Este email já está registado.
+ *                 fields: { email: [Este email já está registado.] }
+ *                 request_id: 6b1f0a1e-8f6d-4a3e-9c2d-1f2a3b4c5d6e
+ *       422:
+ *         description: Email inválido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       429:
+ *         description: Demasiados pedidos ou reenvio demasiado cedo.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/register/request-code',
+  authIpLimiter,
+  authEmailLimiter,
+  validate({ body: registerRequestCodeSchema }),
+  asyncHandler(authController.requestRegistrationCode)
+);
+
+/**
+ * @openapi
+ * /api/v1/auth/register/verify-code:
+ *   post:
+ *     tags: [Conta]
+ *     summary: Troca o código OTP por um token de criação de conta
+ *     description: >
+ *       Verifica o código de 6 dígitos. Em caso de sucesso devolve um
+ *       `verification_token` de uso único, válido por
+ *       `REGISTRATION_VERIFICATION_TTL_MINUTES` minutos, que deve ser
+ *       enviado em `/auth/register`. Após
+ *       `REGISTRATION_OTP_MAX_ATTEMPTS` falhas o código é invalidado.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, code]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               code: { type: string, pattern: '^[0-9]{6}$' }
+ *     responses:
+ *       200:
+ *         description: Código válido; token de criação emitido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/RegistrationVerificationEnvelope' }
+ *       422:
+ *         description: Código inválido, expirado ou tentativas excedidas.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       429:
+ *         description: Demasiados pedidos.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/register/verify-code',
+  authIpLimiter,
+  authEmailLimiter,
+  validate({ body: registerVerifyCodeSchema }),
+  asyncHandler(authController.verifyRegistrationCode)
+);
+
+/**
+ * @openapi
+ * /api/v1/auth/register:
+ *   post:
+ *     tags: [Conta]
+ *     summary: Cria uma conta de anfitrião já com o email verificado
+ *     description: >
+ *       Terceiro e último passo do registo. Exige o
+ *       `verification_token` devolvido por
+ *       `/auth/register/verify-code`; sem ele devolve `422`
+ *       `verification_required`. A conta é criada com
+ *       `email_verified=true`, os eventos legados com o mesmo email são
+ *       ligados à conta e o email de boas-vindas é enfileirado. Não
+ *       inicia sessão.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password, verification_token]
  *             properties:
  *               email: { type: string, format: email }
  *               password: { type: string, minLength: 8, maxLength: 128 }
  *               display_name: { type: string, nullable: true }
+ *               verification_token: { type: string }
  *     responses:
  *       201:
- *         description: Conta criada.
+ *         description: Conta criada e email verificado.
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  *       409:
  *         description: Email já registado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       422:
- *         description: Dados inválidos.
+ *         description: Dados inválidos ou token de verificação inválido/expirado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       429:
  *         description: Demasiados pedidos.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.post(
   '/register',

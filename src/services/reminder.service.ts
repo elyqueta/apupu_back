@@ -210,6 +210,34 @@ export async function enqueueEmailVerification(
   );
 }
 
+/**
+ * Enfileira o código OTP que antecede a criação da conta.
+ *
+ * O código é guardado cifrado na outbox, tal como os tokens: o worker
+ * precisa dele para renderizar a mensagem, mas não deve ficar em claro
+ * numa tabela.
+ */
+export async function enqueueRegistrationOtp(
+  email: string,
+  code: string,
+  client?: PoolClient
+): Promise<void> {
+  await emailDeliveryRepository.enqueue(
+    {
+      eventId: null,
+      invitationId: null,
+      hostId: null,
+      messageType: 'registration_otp',
+      reminderKind: null,
+      recipientEmail: email,
+      scheduledFor: new Date(),
+      idempotencyKey: `registration_otp:${email}:${randomUUID()}`,
+      tokenEncrypted: encryptToken(code),
+    },
+    client
+  );
+}
+
 /** Enfileira a mensagem de boas-vindas (uma por conta). */
 export async function enqueueHostWelcome(
   hostId: string,

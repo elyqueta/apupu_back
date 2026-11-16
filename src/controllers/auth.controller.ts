@@ -5,6 +5,8 @@ import {
   ForgotPasswordBody,
   LoginBody,
   RegisterBody,
+  RegisterRequestCodeBody,
+  RegisterVerifyCodeBody,
   ResendVerificationBody,
   ResetPasswordBody,
   VerifyEmailBody,
@@ -24,8 +26,35 @@ function userAgent(req: Request): string | null {
 }
 
 export const authController = {
+  requestRegistrationCode: async (req: Request, res: Response): Promise<void> => {
+    const body = req.body as RegisterRequestCodeBody;
+    const result = await authService.requestRegistrationCode(body, auditContext(req));
+
+    res.status(202).json({
+      data: {
+        status: 'accepted',
+        email: body.email,
+        expires_at: result.expiresAt.toISOString(),
+        resend_available_at: result.resendAvailableAt.toISOString(),
+      },
+    });
+  },
+
+  verifyRegistrationCode: async (req: Request, res: Response): Promise<void> => {
+    const body = req.body as RegisterVerifyCodeBody;
+    const result = await authService.verifyRegistrationCode(body, auditContext(req));
+
+    res.status(200).json({
+      data: {
+        email: body.email,
+        verification_token: result.verificationToken,
+        expires_at: result.expiresAt.toISOString(),
+      },
+    });
+  },
+
   register: async (req: Request, res: Response): Promise<void> => {
-    const host = await authService.register(req.body as RegisterBody);
+    const host = await authService.register(req.body as RegisterBody, auditContext(req));
 
     res.status(201).json({ data: { host: toHostDto(host) } });
   },

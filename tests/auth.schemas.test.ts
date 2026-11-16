@@ -3,7 +3,9 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
+  registerRequestCodeSchema,
   registerSchema,
+  registerVerifyCodeSchema,
   resendVerificationSchema,
   resetPasswordSchema,
   verifyEmailSchema,
@@ -14,6 +16,7 @@ describe('schemas de autenticação', () => {
     const parsed = registerSchema.parse({
       email: '  Ana.Silva@Exemplo.AO ',
       password: 'SenhaSegura#2026',
+      verification_token: 'v'.repeat(32),
     });
 
     expect(parsed.email).toBe('ana.silva@exemplo.ao');
@@ -25,6 +28,7 @@ describe('schemas de autenticação', () => {
         email: 'ana@exemplo.ao',
         password: 'SenhaSegura#2026',
         display_name: 'Ana',
+        verification_token: 'v'.repeat(32),
       }).success
     ).toBe(true);
 
@@ -32,8 +36,33 @@ describe('schemas de autenticação', () => {
       registerSchema.safeParse({
         email: 'ana@exemplo.ao',
         password: 'SenhaSegura#2026',
+        verification_token: 'v'.repeat(32),
       }).success
     ).toBe(true);
+  });
+
+  it('exige o token de verificação no registo', () => {
+    expect(
+      registerSchema.safeParse({
+        email: 'ana@exemplo.ao',
+        password: 'SenhaSegura#2026',
+      }).success
+    ).toBe(false);
+  });
+
+  it('valida os pedidos de código OTP', () => {
+    expect(registerRequestCodeSchema.safeParse({ email: 'ana@exemplo.ao' }).success).toBe(true);
+    expect(registerRequestCodeSchema.safeParse({ email: 'inválido' }).success).toBe(false);
+
+    expect(
+      registerVerifyCodeSchema.safeParse({ email: 'ana@exemplo.ao', code: '004271' }).success
+    ).toBe(true);
+    expect(
+      registerVerifyCodeSchema.safeParse({ email: 'ana@exemplo.ao', code: '12345' }).success
+    ).toBe(false);
+    expect(
+      registerVerifyCodeSchema.safeParse({ email: 'ana@exemplo.ao', code: 'abcdef' }).success
+    ).toBe(false);
   });
 
   it('rejeita email inválido, senha curta e senha comum', () => {

@@ -56,7 +56,7 @@ if (env.NODE_ENV !== 'production') {
       <!doctype html>
       <html>
         <head>
-          <title>Apupu API Docs</title>
+          <title>Conta Comigo API Docs</title>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
         </head>
@@ -87,7 +87,7 @@ app.get(
 
       res.status(200).json({
         status: 'ok',
-        service: 'apupu-backend',
+        service: 'conta-comigo-backend',
         database: 'connected',
         timestamp: new Date().toISOString(),
       });
@@ -95,7 +95,7 @@ app.get(
       logger.error({ err: error }, 'Falha no health check ao consultar o banco.');
       res.status(503).json({
         status: 'error',
-        service: 'apupu-backend',
+        service: 'conta-comigo-backend',
         database: 'disconnected',
         timestamp: new Date().toISOString(),
       });

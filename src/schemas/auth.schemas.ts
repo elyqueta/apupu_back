@@ -25,6 +25,11 @@ const passwordSchema = z
 
 const tokenSchema = z.string().min(20, 'Token inválido.').max(200);
 
+const otpCodeSchema = z
+  .string({ error: 'O código é obrigatório.' })
+  .trim()
+  .regex(/^\d{6}$/, 'O código deve ter 6 dígitos.');
+
 const displayNameSchema = z
   .string()
   .trim()
@@ -32,11 +37,25 @@ const displayNameSchema = z
   .nullable()
   .optional();
 
+export const registerRequestCodeSchema = z
+  .object({
+    email: emailSchema,
+  })
+  .strict();
+
+export const registerVerifyCodeSchema = z
+  .object({
+    email: emailSchema,
+    code: otpCodeSchema,
+  })
+  .strict();
+
 export const registerSchema = z
   .object({
     email: emailSchema,
     password: passwordSchema,
     display_name: displayNameSchema,
+    verification_token: tokenSchema,
   })
   .strict();
 
@@ -80,6 +99,8 @@ export const changePasswordSchema = z
   .strict();
 
 export type RegisterBody = z.infer<typeof registerSchema>;
+export type RegisterRequestCodeBody = z.infer<typeof registerRequestCodeSchema>;
+export type RegisterVerifyCodeBody = z.infer<typeof registerVerifyCodeSchema>;
 export type LoginBody = z.infer<typeof loginSchema>;
 export type VerifyEmailBody = z.infer<typeof verifyEmailSchema>;
 export type ResendVerificationBody = z.infer<typeof resendVerificationSchema>;

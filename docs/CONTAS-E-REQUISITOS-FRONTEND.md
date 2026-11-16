@@ -1,7 +1,7 @@
 # Contas de anfitrião e requisitos de backend para o frontend
 
 Este documento especifica **tudo o que o backend tem de acrescentar** para
-suportar as funcionalidades do frontend actual do Apupu e para introduzir a
+suportar as funcionalidades do frontend actual do Conta Comigo e para introduzir a
 camada de autenticação do anfitrião (registo e login com email e senha). É um
 documento de requisitos/planeamento; o contrato efectivamente implementado
 está em [`API-CONTRACT.md`](./API-CONTRACT.md) e o esquema real em
@@ -128,10 +128,12 @@ Tokens de uso único, de vida curta, guardados apenas como HMAC.
 - Registo por **email + senha**. `display_name` opcional no registo.
 - Senha: mínimo 8 caracteres, máximo 128; rejeitar as mais comuns; Argon2id
   (parâmetros definidos por ambiente). Nunca devolver a senha nem o hash.
-- Verificação de email obrigatória antes de criar/gerir eventos (ver decisão em
-  secção 11). O login é permitido com email por verificar, mas o estado é
-  exposto no perfil.
-- Rate limit dedicado por IP **e** por email em `register`, `login`,
+- **O email é verificado por código OTP antes de a conta ser criada.** O
+  registo tem três passos: `request-code` → `verify-code` → `register`.
+  Só o último cria a conta, já com `email_verified_at` preenchido. O login
+  continua a exigir uma conta existente.
+- Rate limit dedicado por IP **e** por email em `register`,
+  `register/request-code`, `register/verify-code`, `login`,
   `password/forgot` e `password/reset`.
 - Bloqueio temporário após N tentativas falhadas (`locked_until`).
 - Respostas de `login` e `password/forgot` não revelam se o email existe
@@ -144,8 +146,10 @@ Respostas de sucesso no envelope `{ "data": ... }`.
 
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
-| `POST` | `/api/v1/auth/register` | pública | Cria conta; enfileira email de verificação |
-| `POST` | `/api/v1/auth/email/verify` | pública | Consome token de verificação |
+| `POST` | `/api/v1/auth/register/request-code` | pública | Valida o email e envia um código OTP de 6 dígitos |
+| `POST` | `/api/v1/auth/register/verify-code` | pública | Troca o código por um `verification_token` de uso único |
+| `POST` | `/api/v1/auth/register` | pública | Cria conta já verificada (exige `verification_token`) |
+| `POST` | `/api/v1/auth/email/verify` | pública | Consome token de verificação (contas antigas) |
 | `POST` | `/api/v1/auth/email/verify/resend` | pública | Reenvia verificação (rate limit) |
 | `POST` | `/api/v1/auth/login` | pública | Cria sessão; devolve `csrf_token` |
 | `POST` | `/api/v1/auth/logout` | sessão | Revoga a sessão e limpa cookies |
@@ -154,10 +158,58 @@ Respostas de sucesso no envelope `{ "data": ... }`.
 | `POST` | `/api/v1/auth/password/reset` | pública | Consome token e define nova senha |
 | `POST` | `/api/v1/auth/password/change` | sessão | Altera senha autenticada |
 
+#### `POST /auth/register/request-code`
+
+```json
+{ "email": "ana@exemplo.ao" }
+```
+
+Resposta `202`:
+
+```json
+{
+  "data": {
+    "status": "accepted",
+    "email": "ana@exemplo.ao",
+    "expires_at": "2026-11-16T02:30:30.588Z",
+    "resend_available_at": "2026-11-16T02:20:30.586Z"
+  }
+}
+```
+
+Erros: `409 email_already_registered`, `422 validation_failed`,
+`429 otp_resend_too_soon`, `429 rate_limited`.
+
+#### `POST /auth/register/verify-code`
+
+```json
+{ "email": "ana@exemplo.ao", "code": "004271" }
+```
+
+Resposta `200`:
+
+```json
+{
+  "data": {
+    "email": "ana@exemplo.ao",
+    "verification_token": "…",
+    "expires_at": "2026-11-16T02:35:49.786Z"
+  }
+}
+```
+
+Erros: `422 otp_invalid`, `422 otp_attempts_exceeded`,
+`422 validation_failed`, `429 rate_limited`.
+
 #### `POST /auth/register`
 
 ```json
-{ "email": "ana@exemplo.ao", "password": "••••••••", "display_name": "Ana" }
+{
+  "email": "ana@exemplo.ao",
+  "password": "••••••••",
+  "display_name": "Ana",
+  "verification_token": "…"
+}
 ```
 
 Resposta `201`:
@@ -168,7 +220,7 @@ Resposta `201`:
     "host": {
       "id": "…",
       "email": "ana@exemplo.ao",
-      "email_verified": false,
+      "email_verified": true,
       "profile": {
         "display_name": "Ana",
         "phone": null,
@@ -183,8 +235,9 @@ Resposta `201`:
 }
 ```
 
-Não devolve sessão: o front mostra "verifique o seu email". Erros: `409`
-`email_already_registered`, `422` `validation_failed`.
+Não devolve sessão: a conta fica criada e verificada, e o front pode
+iniciar sessão. Erros: `409 email_already_registered`,
+`422 verification_required`, `422 validation_failed`, `429 rate_limited`.
 
 #### `POST /auth/login`
 
@@ -443,6 +496,12 @@ UI do cliente (não persistida) e `palette` é novo. Alinhar o front.
   política e bloqueio em 3.1.
 - **Tokens de email/reset:** uso único, TTL curto, apenas HMAC guardado,
   invalidação ao consumir e ao alterar senha.
+- **Código OTP de registo:** 6 dígitos, HMAC ligado ao email, TTL de
+  `REGISTRATION_OTP_TTL_MINUTES`, máximo de
+  `REGISTRATION_OTP_MAX_ATTEMPTS` tentativas e
+  `REGISTRATION_OTP_RESEND_SECONDS` entre pedidos. O
+  `verification_token` emitido após o código é opaco, de uso único e
+  válido por `REGISTRATION_VERIFICATION_TTL_MINUTES`.
 - **Dados pessoais:** `birth_date`, telefone e email são PII; nunca em logs,
   telemetria, URLs de analytics ou mensagens de erro. Expor `birth_date` apenas
   ao próprio.
@@ -481,7 +540,8 @@ Novos `message_type` na outbox, com chaves idempotentes:
 
 | Mensagem | `message_type` | Chave idempotente |
 |---|---|---|
-| Verificação de email | `email_verification` | `email_verification:<hostId>:<uuid>` |
+| Código OTP de registo | `registration_otp` | `registration_otp:<email>:<uuid>` |
+| Verificação de email (contas antigas) | `email_verification` | `email_verification:<hostId>:<uuid>` |
 | Boas-vindas | `host_welcome` | `host_welcome:<hostId>` |
 | Reposição de senha | `password_reset` | `password_reset:<hostId>:<uuid>` |
 | Lembrete de perfil (opcional) | `profile_reminder` | `profile_reminder:<hostId>:<uuid>` |
@@ -493,7 +553,7 @@ verificação/`password_reset` não é reenviado automaticamente pelo worker.
 
 ## 10. Critérios de aceitação
 
-- Um anfitrião cria conta com email e senha, verifica o email e inicia sessão.
+- Um anfitrião pede o código OTP, verifica o email, cria a conta e inicia sessão.
 - A sessão é HttpOnly + CSRF; `GET /auth/session` permite ao front decidir entre
   login e app; `logout` revoga e limpa cookies.
 - O anfitrião completa a **data de nascimento** em `/definicoes`; antes disso
@@ -520,8 +580,8 @@ implementação de cada uma, está em
 [`DECISOES-PRODUTO.md`](./DECISOES-PRODUTO.md). Resumo:
 
 - Contas aprovadas; o link secreto por evento mantém-se válido.
-- Verificação de email exigida apenas para criar/gerir eventos; login
-  permitido antes.
+- Registo exige verificação do email por OTP antes da criação da conta;
+  contas antigas por verificar mantêm o link de verificação.
 - `birth_date` opcional e não bloqueante, com idade mínima de 18 anos.
 - `events.category` e `invitations.table_name` mantidos.
 - Eventos legados são ligados à conta após verificação do email.
