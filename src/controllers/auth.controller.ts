@@ -9,6 +9,7 @@ import {
   ResetPasswordBody,
   VerifyEmailBody,
 } from '../schemas/auth.schemas';
+import { auditContext } from '../services/audit.service';
 import { authService } from '../services/auth.service';
 import {
   clearAuthSession,
@@ -31,7 +32,7 @@ export const authController = {
 
   verifyEmail: async (req: Request, res: Response): Promise<void> => {
     const body = req.body as VerifyEmailBody;
-    const host = await authService.verifyEmail(body.token);
+    const host = await authService.verifyEmail(body.token, auditContext(req));
 
     res.status(200).json({ data: { host: toHostDto(host) } });
   },
@@ -46,7 +47,7 @@ export const authController = {
 
   login: async (req: Request, res: Response): Promise<void> => {
     const body = req.body as LoginBody;
-    const result = await authService.login(body, userAgent(req));
+    const result = await authService.login(body, userAgent(req), auditContext(req));
 
     setAuthSession(res, result.session.sessionToken);
 
@@ -89,7 +90,7 @@ export const authController = {
 
   resetPassword: async (req: Request, res: Response): Promise<void> => {
     const body = req.body as ResetPasswordBody;
-    await authService.resetPassword(body);
+    await authService.resetPassword(body, auditContext(req));
 
     res.status(204).send();
   },
@@ -102,7 +103,8 @@ export const authController = {
     await authService.changePassword(
       req.hostAccount.id,
       req.accountSession.sessionId,
-      req.body as ChangePasswordBody
+      req.body as ChangePasswordBody,
+      auditContext(req)
     );
 
     res.status(204).send();

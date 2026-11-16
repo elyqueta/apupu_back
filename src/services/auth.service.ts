@@ -27,6 +27,7 @@ import {
   RegisterBody,
   ResetPasswordBody,
 } from '../schemas/auth.schemas';
+import { AuditContext, auditService } from './audit.service';
 import { enqueueEmailVerification, enqueueHostWelcome, enqueuePasswordReset } from './reminder.service';
 
 /**
@@ -130,8 +131,8 @@ export const authService = {
    * Consome o token de verificação e, só agora, liga os eventos legados
    * cujo `host_email` coincide com o email verificado.
    */
-  async verifyEmail(token: string): Promise<HostWithProfile> {
-    return withTransaction(async (client) => {
+  async verifyEmail(token: string, context?: AuditContext): Promise<HostWithProfile> {
+    const host = await withTransaction(async (client) => {
       const hostId = await emailVerificationRepository.consume(hashToken(token), client);
 
       if (!hostId) {
@@ -157,6 +158,15 @@ export const authService = {
       await eventRepository.claimByHostEmail(host.id, host.email, client);
       return host;
     });
+
+    await auditService.record({
+      action: 'email_verified',
+      hostId: host.id,
+      ip: context?.ip ?? null,
+      requestId: context?.requestId ?? null,
+    });
+
+    return host;
   },
 
   /**
@@ -188,22 +198,55 @@ export const authService = {
    * Autentica e cria a sessão de conta. O login é permitido com email
    * por verificar; criar/gerir eventos exige verificação.
    */
-  async login(input: LoginBody, userAgent: string | null): Promise<{
+  async login(
+    input: LoginBody,
+    userAgent: string | null,
+    context?: AuditContext
+  ): Promise<{
     host: HostWithProfile;
     session: CreatedAccountSession;
   }> {
+    const auditBase = {
+      ip: context?.ip ?? null,
+      requestId: context?.requestId ?? null,
+    };
+
     const host = await hostRepository.findByEmail(input.email);
 
     if (!host) {
       await verifyAgainstDummy(input.password);
+
+      await auditService.record({
+        ...auditBase,
+        action: 'login_failure',
+        outcome: 'failure',
+        metadata: { reason: 'unknown_account' },
+      });
+
       throw new UnauthorizedError(INVALID_CREDENTIALS, 'invalid_credentials');
     }
 
     if (host.status !== 'active') {
+      await auditService.record({
+        ...auditBase,
+        action: 'login_failure',
+        outcome: 'failure',
+        hostId: host.id,
+        metadata: { reason: 'inactive_account' },
+      });
+
       throw new UnauthorizedError(INVALID_CREDENTIALS, 'invalid_credentials');
     }
 
     if (host.lockedUntil && host.lockedUntil.getTime() > Date.now()) {
+      await auditService.record({
+        ...auditBase,
+        action: 'login_locked',
+        outcome: 'failure',
+        hostId: host.id,
+        metadata: { reason: 'locked' },
+      });
+
       throw new LockedError();
     }
 
@@ -216,7 +259,23 @@ export const authService = {
         env.AUTH_LOCK_MINUTES
       );
 
+      await auditService.record({
+        ...auditBase,
+        action: 'login_failure',
+        outcome: 'failure',
+        hostId: host.id,
+        metadata: { reason: 'invalid_password' },
+      });
+
       if (lockedUntil && lockedUntil.getTime() > Date.now()) {
+        await auditService.record({
+          ...auditBase,
+          action: 'login_locked',
+          outcome: 'failure',
+          hostId: host.id,
+          metadata: { reason: 'too_many_failures' },
+        });
+
         throw new LockedError();
       }
 
@@ -227,6 +286,13 @@ export const authService = {
 
     const session = await createAccountSession(host.id, userAgent);
     const refreshed = (await hostRepository.findById(host.id)) ?? host;
+
+    await auditService.record({
+      ...auditBase,
+      action: 'login_success',
+      hostId: refreshed.id,
+      metadata: { email_verified: refreshed.emailVerifiedAt !== null },
+    });
 
     return { host: refreshed, session };
   },
@@ -276,18 +342,30 @@ export const authService = {
    * O token é de uso único e é invalidado mesmo antes de a senha ser
    * gravada.
    */
-  async resetPassword(input: ResetPasswordBody): Promise<void> {
+  async resetPassword(input: ResetPasswordBody, context?: AuditContext): Promise<void> {
     const passwordHash = await hashPassword(input.password);
 
-    await withTransaction(async (client) => {
-      const hostId = await passwordResetRepository.consume(hashToken(input.token), client);
+    const hostId = await withTransaction(async (client) => {
+      const resolvedHostId = await passwordResetRepository.consume(
+        hashToken(input.token),
+        client
+      );
 
-      if (!hostId) {
+      if (!resolvedHostId) {
         throw new ValidationError(INVALID_RESET, { token: [INVALID_RESET] }, 'reset_invalid');
       }
 
-      await hostRepository.updatePassword(hostId, passwordHash, client);
-      await hostAuthSessionRepository.revokeAllForHost(hostId);
+      await hostRepository.updatePassword(resolvedHostId, passwordHash, client);
+      await hostAuthSessionRepository.revokeAllForHost(resolvedHostId);
+
+      return resolvedHostId;
+    });
+
+    await auditService.record({
+      action: 'password_reset',
+      hostId,
+      ip: context?.ip ?? null,
+      requestId: context?.requestId ?? null,
     });
   },
 
@@ -295,7 +373,8 @@ export const authService = {
   async changePassword(
     hostId: string,
     sessionId: string,
-    input: ChangePasswordBody
+    input: ChangePasswordBody,
+    context?: AuditContext
   ): Promise<void> {
     const host = await hostRepository.findById(hostId);
 
@@ -316,6 +395,13 @@ export const authService = {
     await withTransaction(async (client) => {
       await hostRepository.updatePassword(hostId, passwordHash, client);
       await hostAuthSessionRepository.revokeAllForHost(hostId, sessionId);
+    });
+
+    await auditService.record({
+      action: 'password_changed',
+      hostId,
+      ip: context?.ip ?? null,
+      requestId: context?.requestId ?? null,
     });
   },
 };

@@ -44,6 +44,9 @@ const router = Router();
  *     responses:
  *       201:
  *         description: Conta criada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  *       409:
  *         description: Email já registado.
  *       422:
@@ -80,6 +83,9 @@ router.post(
  *     responses:
  *       200:
  *         description: Email verificado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  *       422:
  *         description: Token inválido ou expirado.
  */
@@ -109,6 +115,9 @@ router.post(
  *     responses:
  *       202:
  *         description: Pedido aceite.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/AcceptedEnvelope' }
  *       429:
  *         description: Demasiados pedidos.
  */
@@ -142,6 +151,9 @@ router.post(
  *     responses:
  *       200:
  *         description: Sessão criada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/LoginEnvelope' }
  *       401:
  *         description: Credenciais inválidas.
  *       423:
@@ -196,6 +208,9 @@ router.post(
  *     responses:
  *       200:
  *         description: Conta e perfil.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/SessionEnvelope' }
  *       401:
  *         description: Sessão ausente ou expirada.
  */
@@ -220,6 +235,9 @@ router.get('/session', asyncHandler(hostAccountAuth), asyncHandler(authControlle
  *     responses:
  *       202:
  *         description: Pedido aceite.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/AcceptedEnvelope' }
  *       429:
  *         description: Demasiados pedidos.
  */

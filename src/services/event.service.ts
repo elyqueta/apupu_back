@@ -15,10 +15,9 @@ import {
 } from '../types/event.types';
 import { Invitation } from '../types/invitation.types';
 import { encryptToken } from '../utils/crypto.util';
-import { links } from '../utils/links.util';
 import { generateToken, hashToken } from '../utils/token.util';
 import { CreateEventBody, UpdateEventBody } from '../schemas/event.schemas';
-import { sendManageLink } from './email.service';
+import { generateManageToken, manageLinkService } from './manageLink.service';
 import {
   cancelMessagesForEvent,
   enqueueEventCancelled,
@@ -177,13 +176,12 @@ export const eventService = {
   ): Promise<CreatedEventResult> {
     await assertTemplateActive(input.event.template_id);
 
-    const manageToken = generateToken();
-    const manageTokenHash = hashToken(manageToken);
+    const manageToken = generateManageToken();
 
     const data: InsertEventData = {
       hostId: options.hostId ?? null,
-      manageTokenHash,
-      manageTokenExpiresAt: null,
+      manageTokenHash: manageToken.hash,
+      manageTokenExpiresAt: manageToken.expiresAt,
       title: input.event.title,
       hostName: input.event.host_name,
       hostEmail: input.event.host_email,
@@ -243,7 +241,11 @@ export const eventService = {
       return { event, invitations };
     });
 
-    const manageEmailStatus = await this.sendManageLink(created.event, manageToken);
+    const manageEmailStatus = await manageLinkService.deliver(
+      created.event,
+      manageToken.token,
+      `manage_link:${created.event.id}`
+    );
 
     return {
       event: created.event,
@@ -253,50 +255,6 @@ export const eventService = {
         status: 'queued' as const,
       })),
     };
-  },
-
-  async sendManageLink(event: Event, manageToken: string): Promise<'sent' | 'failed'> {
-    const idempotencyKey = `manage_link:${event.id}`;
-
-    try {
-      const { providerMessageId } = await sendManageLink({
-        eventId: event.id,
-        title: event.title,
-        hostName: event.hostName,
-        hostEmail: event.hostEmail,
-        manageUrl: links.manageEvent(manageToken),
-      });
-
-      await emailDeliveryRepository
-        .recordDirect({
-          eventId: event.id,
-          recipientEmail: event.hostEmail,
-          messageType: 'manage_link',
-          idempotencyKey,
-          status: 'sent',
-          providerMessageId,
-          lastError: null,
-        })
-        .catch(() => undefined);
-
-      return 'sent';
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro desconhecido.';
-
-      await emailDeliveryRepository
-        .recordDirect({
-          eventId: event.id,
-          recipientEmail: event.hostEmail,
-          messageType: 'manage_link',
-          idempotencyKey,
-          status: 'failed',
-          providerMessageId: null,
-          lastError: message.slice(0, 500),
-        })
-        .catch(() => undefined);
-
-      return 'failed';
-    }
   },
 
   async statsFor(event: Event): Promise<EventStats> {

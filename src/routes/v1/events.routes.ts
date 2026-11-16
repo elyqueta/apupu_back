@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { eventController } from '../../controllers/event.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
+import { writeLimiter } from '../../middlewares/rateLimiter';
 import { validate } from '../../middlewares/validate';
 import { createEventSchema } from '../../schemas/event.schemas';
 
@@ -26,24 +27,15 @@ const router = Router();
  *         description: Evento criado.
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: object
- *                   properties:
- *                     event: { $ref: '#/components/schemas/Event' }
- *                     manage_email_status: { type: string, enum: [sent, failed] }
- *                     deliveries:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           email: { type: string, format: email }
- *                           status: { type: string, enum: [queued, sent, failed] }
+ *             schema: { $ref: '#/components/schemas/EventCreateEnvelope' }
  *       422:
  *         description: Dados inválidos.
  */
-router.post('/', validate({ body: createEventSchema }), asyncHandler(eventController.create));
+router.post(
+  '/',
+  writeLimiter,
+  validate({ body: createEventSchema }),
+  asyncHandler(eventController.create)
+);
 
 export default router;

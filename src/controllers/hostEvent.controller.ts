@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { toEventDto } from '../dto/event.dto';
 import { CreateEventBody } from '../schemas/event.schemas';
 import { HostEventsQuery } from '../schemas/host.schemas';
+import { auditService } from '../services/audit.service';
 import { hostEventService } from '../services/hostEvent.service';
 import { HostTotals } from '../types/event.types';
 
@@ -41,10 +42,15 @@ export const hostEventController = {
   },
 
   create: async (req: Request, res: Response): Promise<void> => {
-    const result = await hostEventService.create(
-      requireHostId(req),
-      req.body as CreateEventBody
-    );
+    const hostId = requireHostId(req);
+    const result = await hostEventService.create(hostId, req.body as CreateEventBody);
+
+    await auditService.recordRequest(req, {
+      action: 'event_created',
+      hostId,
+      eventId: result.event.id,
+      metadata: { guest_count: result.deliveries.length },
+    });
 
     res.status(201).json({
       data: {
@@ -70,7 +76,36 @@ export const hostEventController = {
   },
 
   remove: async (req: Request, res: Response): Promise<void> => {
-    await hostEventService.remove(requireHostId(req), req.params.eventId ?? '');
+    const hostId = requireHostId(req);
+    const eventId = req.params.eventId ?? '';
+    await hostEventService.remove(hostId, eventId);
+
+    await auditService.recordRequest(req, {
+      action: 'event_deleted',
+      hostId,
+      eventId,
+    });
+
     res.status(204).send();
+  },
+
+  resendManageLink: async (req: Request, res: Response): Promise<void> => {
+    const hostId = requireHostId(req);
+    const result = await hostEventService.resendManageLink(hostId, req.params.eventId ?? '');
+
+    await auditService.recordRequest(req, {
+      action: 'manage_link_resent',
+      hostId,
+      eventId: result.eventId,
+      metadata: { manage_email_status: result.status },
+    });
+
+    res.status(202).json({
+      data: {
+        event_id: result.eventId,
+        manage_email_status: result.status,
+        manage_token_expires_at: result.expiresAt?.toISOString() ?? null,
+      },
+    });
   },
 };

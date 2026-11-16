@@ -272,6 +272,10 @@ configurações de perfil**. Regras:
 
 ## 5. Endpoints em falta para suportar os ecrãs do frontend
 
+> **Estado: implementado.** Esta secção mantém-se como registo dos
+> requisitos que motivaram as rotas. Os corpos de resposta concretos e
+> actualizados estão em [`API-CONTRACT.md`](./API-CONTRACT.md#mapa-de-respostas-por-endpoint).
+
 Todas as rotas abaixo são autenticadas pela sessão de conta
 (`apupu_auth` + `X-CSRF-Token` nas mutações) e autorizadas por posse
 (`events.host_id = sessão.host_id`).
@@ -508,21 +512,23 @@ verificação/`password_reset` não é reenviado automaticamente pelo worker.
 
 ---
 
-## 11. Decisões pendentes (requerem o responsável)
+## 11. Decisões fechadas
 
-1. Aprovar a introdução de contas, contrariando a decisão fechada da fase 1.
-2. Verificação de email obrigatória para **iniciar sessão** ou apenas para
-   **criar/gerir eventos**?
-3. `birth_date` é **obrigatória** (bloqueia criar eventos) ou apenas pedida de
-   forma não bloqueante?
-4. Idade mínima da conta (sugestão: 18 anos) e como validar.
-5. Categoria de evento: acrescentar `events.category` (6.2 A) ou remover do
-   front (6.2 B)?
-6. Atribuição de mesas: acrescentar `invitations.table_name` (6.4) ou remover do
-   front?
-7. Reivindicação automática de eventos por email verificado: permitida? com
-   confirmação explícita do anfitrião?
-8. Ao criar evento com conta, o link de gestão continua a ser enviado por email
-   ou passa a ser gerido só pela conta?
-9. Política de retenção/eliminação de conta e PII (`birth_date`, telefone).
-10. TTL e renovação deslizante das sessões de conta; limites de rate limit.
+As decisões que este documento deixava em aberto foram fechadas pelo
+responsável do produto. O registo completo, com o estado de
+implementação de cada uma, está em
+[`DECISOES-PRODUTO.md`](./DECISOES-PRODUTO.md). Resumo:
+
+- Contas aprovadas; o link secreto por evento mantém-se válido.
+- Verificação de email exigida apenas para criar/gerir eventos; login
+  permitido antes.
+- `birth_date` opcional e não bloqueante, com idade mínima de 18 anos.
+- `events.category` e `invitations.table_name` mantidos.
+- Eventos legados são ligados à conta após verificação do email.
+- Ao criar evento com conta, o link de gestão continua a ser enviado.
+- Retenção de conta: 24 meses sem login.
+- Sessão de conta de 7 dias; link de gestão de 30 dias com rotação.
+- Rate limiting em autenticação e escritas.
+- Auditoria de eventos críticos com actor e IP.
+- Webhook assinado do provider de email para delivered/bounced/complained.
+- Unsubscribe por preferências no perfil, mantendo transacionais.

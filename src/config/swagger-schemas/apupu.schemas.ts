@@ -405,4 +405,352 @@ export const apupuSchemas = {
       updated_at: { type: 'string', format: 'date-time' },
     },
   },
+
+  ActivityWithEvent: {
+    allOf: [
+      { $ref: '#/components/schemas/Activity' },
+      {
+        type: 'object',
+        properties: {
+          event_title: { type: 'string' },
+        },
+      },
+    ],
+  },
+
+  DeliveryStatus: {
+    type: 'object',
+    properties: {
+      email: { type: 'string', format: 'email' },
+      status: {
+        type: 'string',
+        enum: ['queued'],
+        description: 'O convite foi enfileirado na outbox.',
+      },
+    },
+  },
+
+  EventCreateResult: {
+    type: 'object',
+    properties: {
+      event: { $ref: '#/components/schemas/Event' },
+      manage_email_status: { type: 'string', enum: ['sent', 'failed'] },
+      deliveries: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/DeliveryStatus' },
+      },
+    },
+  },
+
+  EventCreateEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/EventCreateResult' },
+    },
+  },
+
+  InvitationResendEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['queued'] },
+        },
+      },
+    },
+  },
+
+  EventList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/Event' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  HostGuestList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/HostGuest' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  ActivityList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/ActivityWithEvent' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  EventActivityList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/Activity' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  TaskList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/Task' },
+      },
+    },
+  },
+
+  HostEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          host: { $ref: '#/components/schemas/Host' },
+        },
+      },
+    },
+  },
+
+  EventEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/Event' },
+    },
+  },
+
+  InvitationEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/Invitation' },
+    },
+  },
+
+  InvitationListEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/Invitation' },
+      },
+    },
+  },
+
+  TaskEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/Task' },
+    },
+  },
+
+  LoginEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          host: { $ref: '#/components/schemas/Host' },
+          csrf_token: { type: 'string' },
+          expires_at: { type: 'string', format: 'date-time' },
+        },
+      },
+    },
+  },
+
+  SessionEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          host: { $ref: '#/components/schemas/Host' },
+          csrf_token: { type: 'string' },
+        },
+      },
+    },
+  },
+
+  AcceptedEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['accepted'] },
+        },
+      },
+    },
+  },
+
+  DashboardEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          next_event: {
+            allOf: [{ $ref: '#/components/schemas/Event' }],
+            nullable: true,
+          },
+          upcoming: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/Event' },
+          },
+          totals: {
+            type: 'object',
+            properties: {
+              events: { type: 'integer' },
+              drafts: { type: 'integer' },
+              scheduled: { type: 'integer' },
+              cancelled: { type: 'integer' },
+              completed: { type: 'integer' },
+              total_invitations: { type: 'integer' },
+              accepted: { type: 'integer' },
+              declined: { type: 'integer' },
+              pending: { type: 'integer' },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  ReportEvent: {
+    type: 'object',
+    properties: {
+      event_id: { type: 'string', format: 'uuid' },
+      title: { type: 'string' },
+      status: {
+        type: 'string',
+        enum: ['draft', 'scheduled', 'cancelled', 'completed'],
+      },
+      total_invitations: { type: 'integer' },
+      accepted: { type: 'integer' },
+      declined: { type: 'integer' },
+      pending: { type: 'integer' },
+    },
+  },
+
+  ReportSummaryEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          events: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/ReportEvent' },
+          },
+          totals: {
+            type: 'object',
+            properties: {
+              total_invitations: { type: 'integer' },
+              accepted: { type: 'integer' },
+              declined: { type: 'integer' },
+              pending: { type: 'integer' },
+              response_rate: { type: 'number' },
+              acceptance_rate: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+  },
+
+  DailyReport: {
+    type: 'object',
+    properties: {
+      date: { type: 'string', format: 'date' },
+      invitations: { type: 'integer' },
+      accepted: { type: 'integer' },
+      declined: { type: 'integer' },
+      reminders: { type: 'integer' },
+    },
+  },
+
+  DailyReportEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          event_id: { type: 'string', format: 'uuid' },
+          days: { type: 'integer' },
+          series: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/DailyReport' },
+          },
+        },
+      },
+    },
+  },
+
+  ManageLinkResendEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          event_id: { type: 'string', format: 'uuid' },
+          manage_email_status: { type: 'string', enum: ['sent', 'failed'] },
+          manage_token_expires_at: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true,
+          },
+        },
+      },
+    },
+  },
+
+  HostSessionEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          event: { $ref: '#/components/schemas/Event' },
+          csrf_token: { type: 'string' },
+          expires_at: { type: 'string', format: 'date-time' },
+          manage_email_status: { type: 'string', enum: ['sent', 'failed'] },
+          manage_token_expires_at: {
+            type: 'string',
+            format: 'date-time',
+            nullable: true,
+          },
+        },
+      },
+    },
+  },
+
+  EventDetailEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          event: { $ref: '#/components/schemas/Event' },
+          invitations: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/Invitation' },
+          },
+        },
+      },
+    },
+  },
 } as const;

@@ -311,6 +311,35 @@ export const eventRepository = {
     );
   },
 
+  /**
+   * Substitui o hash do link de gestão e renova a validade.
+   *
+   * O token antigo deixa imediatamente de corresponder ao hash. Quando
+   * `hostId` é indicado, a actualização só acontece se o evento
+   * pertencer à conta — o UUID nunca é autorização por si só.
+   */
+  async rotateManageToken(
+    id: string,
+    data: { hash: string; expiresAt: Date; hostId?: string },
+    client?: PoolClient
+  ): Promise<EventRecord | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<EventRow>(
+      `UPDATE events
+          SET manage_token_hash = $1,
+              manage_token_expires_at = $2,
+              manage_token_revoked_at = NULL,
+              updated_at = now()
+        WHERE id = $3
+          AND ($4::uuid IS NULL OR host_id = $4)
+        RETURNING ${SELECT_COLUMNS}`,
+      [data.hash, data.expiresAt, id, data.hostId ?? null]
+    );
+
+    const row = result.rows[0];
+    return row ? toEvent(row) : null;
+  },
+
   async deleteForHost(id: string, hostId: string): Promise<boolean> {
     const result = await query('DELETE FROM events WHERE id = $1 AND host_id = $2', [id, hostId]);
     return (result.rowCount ?? 0) > 0;

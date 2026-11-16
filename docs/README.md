@@ -39,7 +39,9 @@ O documento de requisitos que motivou a camada de contas continua a ser
 
 O estado **implementado** está descrito em
 [API-CONTRACT.md](./API-CONTRACT.md) e
-[DATA-MODEL.md](./DATA-MODEL.md).
+[DATA-MODEL.md](./DATA-MODEL.md). As decisões de produto fechadas, com
+o respectivo estado de implementação, estão em
+[DECISOES-PRODUTO.md](./DECISOES-PRODUTO.md).
 
 ## Documentação interactiva
 

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { toEventDto } from '../dto/event.dto';
 import { toInvitationDto } from '../dto/invitation.dto';
 import { CreateEventBody, UpdateEventBody } from '../schemas/event.schemas';
+import { auditService } from '../services/audit.service';
 import { eventService } from '../services/event.service';
 import { invitationService } from '../services/invitation.service';
 import { Event } from '../types/event.types';
@@ -25,6 +26,13 @@ export const eventController = {
   create: async (req: Request, res: Response): Promise<void> => {
     const body = req.body as CreateEventBody;
     const result = await eventService.create(body);
+
+    await auditService.recordRequest(req, {
+      action: 'event_created',
+      hostId: result.event.hostId,
+      eventId: result.event.id,
+      metadata: { guest_count: result.deliveries.length },
+    });
 
     res.status(201).json({
       data: {

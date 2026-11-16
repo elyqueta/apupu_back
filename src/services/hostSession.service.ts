@@ -1,10 +1,16 @@
+import { randomUUID } from 'node:crypto';
 import { env } from '../config/env';
+import { withTransaction } from '../database/pool';
 import { NotFoundError } from '../errors';
 import { eventRepository } from '../repositories/event.repository';
 import { hostSessionRepository } from '../repositories/hostSession.repository';
 import { EventRecord } from '../types/event.types';
 import { HostSession } from '../types/hostSession.types';
 import { csrfTokenFor, generateToken, hashToken } from '../utils/token.util';
+import {
+  ManageEmailStatus,
+  manageLinkService,
+} from './manageLink.service';
 
 const INVALID_MANAGE_LINK = 'Link de gestão inválido ou expirado.';
 
@@ -21,6 +27,8 @@ export interface CreatedHostSession {
   sessionToken: string;
   csrfToken: string;
   event: EventRecord;
+  /** Resultado do envio do novo link emitido pela rotação. */
+  manageEmailStatus: ManageEmailStatus;
 }
 
 export const hostSessionService = {
@@ -29,28 +37,71 @@ export const hostSessionService = {
    *
    * O segredo nunca é devolvido nem registado. A sessão é um token
    * aleatório independente; a base de dados guarda apenas o seu hash.
+   *
+   * Ao ser usado, o link roda: é emitido um token novo (enviado por
+   * email) e o anterior deixa de corresponder ao hash guardado. A
+   * criação da sessão e a rotação são atómicas.
    */
   async create(manageToken: string): Promise<CreatedHostSession> {
-    const event = await eventRepository.findByManageTokenHash(hashToken(manageToken));
+    const manageTokenHash = hashToken(manageToken);
+    const found = await eventRepository.findByManageTokenHash(manageTokenHash);
 
-    if (!event || !isManageTokenValid(event)) {
+    if (!found || !isManageTokenValid(found)) {
       throw new NotFoundError(INVALID_MANAGE_LINK, 'manage_link_invalid');
     }
 
     const sessionToken = generateToken();
     const expiresAt = new Date(Date.now() + env.HOST_SESSION_TTL_MINUTES * 60 * 1000);
+    const nextManageToken = manageLinkService.generate();
 
-    const session = await hostSessionRepository.create(
-      event.id,
-      hashToken(sessionToken),
-      expiresAt
+    const rotated = await withTransaction(async (client) => {
+      // Relê com lock: o mesmo link pode ser usado em dois pedidos
+      // concorrentes. Só o primeiro deve conseguir trocá-lo.
+      const current = await eventRepository.findByIdForUpdate(found.id, client);
+
+      if (
+        !current ||
+        current.manageTokenHash !== manageTokenHash ||
+        !isManageTokenValid(current)
+      ) {
+        throw new NotFoundError(INVALID_MANAGE_LINK, 'manage_link_invalid');
+      }
+
+      const session = await hostSessionRepository.create(
+        current.id,
+        hashToken(sessionToken),
+        expiresAt,
+        client
+      );
+
+      const event = await eventRepository.rotateManageToken(
+        current.id,
+        {
+          hash: nextManageToken.hash,
+          expiresAt: nextManageToken.expiresAt,
+        },
+        client
+      );
+
+      if (!event) {
+        throw new NotFoundError(INVALID_MANAGE_LINK, 'manage_link_invalid');
+      }
+
+      return { session, event };
+    });
+
+    const manageEmailStatus = await manageLinkService.deliver(
+      rotated.event,
+      nextManageToken.token,
+      `manage_link:${rotated.event.id}:rotate:${randomUUID()}`
     );
 
     return {
-      session,
+      session: rotated.session,
       sessionToken,
       csrfToken: csrfTokenFor(sessionToken),
-      event,
+      event: rotated.event,
+      manageEmailStatus,
     };
   },
 

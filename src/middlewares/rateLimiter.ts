@@ -56,6 +56,49 @@ export const hostSessionLimiter = rateLimit({
   handler: limitHandler,
 });
 
+/**
+ * Chave do limite de escritas.
+ *
+ * É aplicado depois da autenticação, por isso prefere a identidade
+ * estável (conta ou evento) ao IP. Sem identidade — por exemplo, na
+ * criação pública de eventos — cai para o IP.
+ */
+function writeKey(req: Request): string {
+  if (req.hostAccount) return `host:${req.hostAccount.id}`;
+  if (req.event) return `event:${req.event.id}`;
+  if (req.invitation) return `invitation:${req.invitation.id}`;
+  return `ip:${req.ip ?? 'unknown'}`;
+}
+
+/**
+ * Limite para operações de escrita: criar/remover eventos, adicionar,
+ * alterar, remover e reenviar convites.
+ */
+export const writeLimiter = rateLimit({
+  windowMs: env.WRITE_RATE_LIMIT_WINDOW_MS,
+  limit: env.WRITE_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: writeKey,
+  handler: limitHandler,
+});
+
+/**
+ * Limite específico do RSVP público, por IP + token de convite.
+ *
+ * Complementa o limite público de tokens para que uma capacidade
+ * válida não possa ser usada para alternar o estado em ciclo.
+ */
+export const rsvpLimiter = rateLimit({
+  windowMs: env.RSVP_RATE_LIMIT_WINDOW_MS,
+  limit: env.RSVP_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) =>
+    `rsvp:${req.ip ?? 'unknown'}:${req.params.token ?? 'unknown'}`,
+  handler: limitHandler,
+});
+
 function requestEmail(req: Request): string {
   const value = (req.body as { email?: unknown } | undefined)?.email;
   return typeof value === 'string' ? value.trim().toLowerCase() : '';

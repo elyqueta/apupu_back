@@ -90,6 +90,7 @@ servidor.
 | `GET` | `/api/v1/host/events` | Lista paginada dos eventos da conta |
 | `POST` | `/api/v1/host/events` | Cria evento na conta (email verificado) |
 | `DELETE` | `/api/v1/host/events/:eventId` | Apaga evento da conta |
+| `POST` | `/api/v1/host/events/:eventId/manage-link/resend` | Emite e envia um novo link de gestão (rotação) |
 | `GET` | `/api/v1/host/dashboard` | Próximo evento, próximos e totais |
 | `GET` | `/api/v1/host/guests` | Convidados de todos os eventos (paginado) |
 | `GET` | `/api/v1/host/activity` | Actividade da conta (paginada) |
@@ -129,9 +130,19 @@ A especificação autoritária do produto está em [`backend/`](backend/).
 - Os **tokens de verificação de email e de reposição de senha** são de
   uso único e guardados apenas como HMAC; o token em claro só existe no
   link entregue.
-- O **link de gestão** é um token de 256 bits. A base de dados guarda
-  apenas o HMAC. O token em claro é enviado uma única vez para o email do
-  anfitrião; nunca é devolvido em JSON nem escrito em logs.
+- O **link de gestão** é um token de 256 bits, válido por 30 dias
+  (`MANAGE_TOKEN_TTL_DAYS`). A base de dados guarda apenas o HMAC. O
+  token em claro é enviado uma única vez para o email do anfitrião;
+  nunca é devolvido em JSON nem escrito em logs. Ao ser usado em
+  `POST /host/session`, o link roda: o anterior é revogado e um novo é
+  enviado por email. O mesmo acontece em
+  `POST /host/events/:eventId/manage-link/resend`.
+- **Rate limiting** cobre autenticação, escritas de gestão
+  (`WRITE_RATE_LIMIT_*`) e RSVP público por IP + token
+  (`RSVP_RATE_LIMIT_*`). O excesso devolve `429 rate_limited`.
+- **Auditoria** de eventos críticos em `host_audit_log`, com actor,
+  evento, IP, `request_id` e resultado; nunca guarda senhas, tokens ou
+  `birth_date`.
 - O segredo de gestão é trocado por uma sessão `HttpOnly` curta, por
   evento (`apupu_host_<eventId>`). Operações mutáveis exigem
   `X-CSRF-Token` derivado da sessão.
@@ -209,13 +220,10 @@ backend/            especificação autoritária do produto
 docs/               contrato e modelo de dados da implementação
 ```
 
-## Decisões que exigem confirmação antes de produção
+## Decisões de produto
 
-- Política de retenção e eliminação de dados pessoais (incluindo
-  `host_profiles.birth_date`).
-- Regras de consentimento e unsubscribe para emails transacionais.
-- Domínio definitivo e política de cookies same-site entre aplicação e API.
-- Recuperação de acesso ao link secreto de eventos legados.
-- Rotação/revogação de links de gestão e política de sessões de conta.
-- Limites por recurso e auditoria de acessos.
-- Limites e acessibilidade dos templates finais.
+As decisões que estavam pendentes foram fechadas e estão registadas em
+[`docs/DECISOES-PRODUTO.md`](docs/DECISOES-PRODUTO.md), com o estado de
+implementação de cada uma. A única dependência externa em aberto é o
+fornecimento dos templates finais e respectivos limites de
+acessibilidade.

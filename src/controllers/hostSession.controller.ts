@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { toEventDto } from '../dto/event.dto';
+import { auditService } from '../services/audit.service';
 import { hostSessionService } from '../services/hostSession.service';
 import { clearHostSession, setHostSession } from '../utils/cookie.util';
 
@@ -21,11 +22,20 @@ export const hostSessionController = {
 
     setHostSession(res, result.event.id, result.sessionToken);
 
+    await auditService.recordRequest(req, {
+      action: 'manage_link_rotated',
+      hostId: result.event.hostId,
+      eventId: result.event.id,
+      metadata: { manage_email_status: result.manageEmailStatus },
+    });
+
     res.status(200).json({
       data: {
         event: toEventDto(result.event),
         csrf_token: result.csrfToken,
         expires_at: result.session.expiresAt.toISOString(),
+        manage_email_status: result.manageEmailStatus,
+        manage_token_expires_at: result.event.manageTokenExpiresAt?.toISOString() ?? null,
       },
     });
   },

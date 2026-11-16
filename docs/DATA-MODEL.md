@@ -9,7 +9,9 @@ Migrações:
 [`../migrations/1739900000000_baseline-apupu.js`](../migrations/1739900000000_baseline-apupu.js)
 (base) e
 [`../migrations/1739900000001_host-accounts.js`](../migrations/1739900000001_host-accounts.js)
-(contas, perfil, sessões de conta e suporte ao frontend).
+(contas, perfil, sessões de conta e suporte ao frontend) e
+[`../migrations/1739900000002_host-audit-log.js`](../migrations/1739900000002_host-audit-log.js)
+(auditoria e validade dos links de gestão).
 
 ## `event_templates`
 
@@ -36,7 +38,7 @@ pelo código; o seed garante apenas um template neutro (`base`).
 | `id` | uuid | PK |
 | `host_id` | uuid | FK → `hosts` (`ON DELETE SET NULL`); nulo em eventos legados |
 | `manage_token_hash` | text | único; HMAC-SHA256 do link de gestão |
-| `manage_token_expires_at` | timestamptz | opcional |
+| `manage_token_expires_at` | timestamptz | validade do link (30 dias por omissão); a migração preencheu os links activos existentes |
 | `manage_token_revoked_at` | timestamptz | opcional |
 | `title` | text | |
 | `host_name` / `host_email` | text | |
@@ -233,6 +235,40 @@ Tarefas do workspace, globais ou ligadas a um evento.
 
 Índices: `host_tasks_host_id_idx`, `host_tasks_event_id_idx`.
 
+## `host_audit_log`
+
+Registo append-only de eventos críticos. Não tem chaves estrangeiras:
+`host_id` e `event_id` são UUIDs simples para que o registo sobreviva à
+eliminação da conta ou do evento.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `host_id` | uuid | actor, quando existe conta |
+| `event_id` | uuid | evento relacionado, quando aplicável |
+| `action` | text | ver lista de acções |
+| `outcome` | text | `success` \| `failure` |
+| `ip` | inet | IP do pedido |
+| `request_id` | text | correlação com `X-Request-Id` |
+| `metadata` | jsonb | identificadores e estados; nunca tokens nem PII |
+| `at` | timestamptz | instante UTC |
+
+Constraints: `host_audit_log_outcome_check` e
+`host_audit_log_action_check`. Acções permitidas: `login_success`,
+`login_failure`, `login_locked`, `email_verified`,
+`password_changed`, `password_reset`, `profile_updated`,
+`event_created`, `event_deleted`, `guest_added`, `guest_updated`,
+`guest_deleted`, `guest_invitation_resent`, `guest_access_revoked`,
+`manage_link_rotated`, `manage_link_resent`.
+
+Índices: `host_audit_log_host_at_idx` (`host_id`, `at DESC`),
+`host_audit_log_event_at_idx` (`event_id`, `at DESC`) e
+`host_audit_log_at_idx` (`at DESC`).
+
+A escrita é best-effort: uma falha de auditoria não bloqueia a operação
+de negócio e é registada no log interno. Não existe endpoint de leitura
+nesta fase.
+
 ## `email_deliveries` (outbox)
 
 | Coluna | Tipo | Notas |
@@ -271,7 +307,9 @@ Chaves idempotentes usadas:
 | Lembrete | `reminder:<invitationId>:<scheduledFor ISO>` |
 | Aviso de recusa | `decline_notification:<invitationId>:<rsvpVersion>` |
 | Cancelamento do evento | `event_cancelled:<invitationId>` |
-| Link de gestão | `manage_link:<eventId>` |
+| Link de gestão (criação) | `manage_link:<eventId>` |
+| Link de gestão (rotação) | `manage_link:<eventId>:rotate:<uuid>` |
+| Link de gestão (reenvio) | `manage_link:<eventId>:resend:<uuid>` |
 | Verificação de email | `email_verification:<hostId>:<uuid>` |
 | Boas-vindas | `host_welcome:<hostId>` |
 | Reposição de senha | `password_reset:<hostId>:<uuid>` |

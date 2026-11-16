@@ -6,6 +6,7 @@ import { EventWithStats, HostTotals } from '../types/event.types';
 import { PaginationMeta } from '../types/pagination.types';
 import { buildPaginationMeta, toPageParams } from '../utils/pagination.util';
 import { CreatedEventResult, eventService } from './event.service';
+import { ManageEmailStatus, manageLinkService } from './manageLink.service';
 
 const UPCOMING_LIMIT = 5;
 
@@ -70,5 +71,24 @@ export const hostEventService = {
     if (!deleted) {
       throw new NotFoundError('Evento não encontrado.', 'event_not_found');
     }
+  },
+
+  /**
+   * Reenvia um link de gestão novo para o email do anfitrião.
+   *
+   * A operação roda o token: o link anterior deixa de ser válido assim
+   * que o novo é emitido. Nunca devolve o token em claro.
+   */
+  async resendManageLink(
+    hostId: string,
+    eventId: string
+  ): Promise<{ eventId: string; status: ManageEmailStatus; expiresAt: Date | null }> {
+    const result = await manageLinkService.resendForHost(hostId, eventId);
+
+    return {
+      eventId: result.event.id,
+      status: result.status,
+      expiresAt: result.event.manageTokenExpiresAt,
+    };
   },
 };

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { publicController } from '../../controllers/public.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { guestAuth } from '../../middlewares/guestAuth';
-import { publicTokenLimiter } from '../../middlewares/rateLimiter';
+import { publicTokenLimiter, rsvpLimiter } from '../../middlewares/rateLimiter';
 import { requireGuestCsrf } from '../../middlewares/requireGuestCsrf';
 import { validate } from '../../middlewares/validate';
 import { inviteTokenParamsSchema, rsvpSchema } from '../../schemas/invitation.schemas';
@@ -107,6 +107,12 @@ router.get(
  *     responses:
  *       200:
  *         description: Resposta registada.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data: { $ref: '#/components/schemas/PublicInvitation' }
  *       403:
  *         description: Token CSRF inválido.
  *       404:
@@ -117,6 +123,7 @@ router.get(
 router.put(
   '/:token/rsvp',
   publicTokenLimiter,
+  rsvpLimiter,
   validate({ params: inviteTokenParamsSchema }),
   asyncHandler(guestAuth),
   requireGuestCsrf,

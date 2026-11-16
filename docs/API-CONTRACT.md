@@ -58,8 +58,10 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `403` | `csrf_invalid` | Falta ou não coincide o `X-CSRF-Token` |
 | `403` | `email_not_verified` | A conta ainda não confirmou o email; escrita de eventos bloqueada |
 | `404` | `invitation_not_found` | Token inválido, convite revogado ou reclamado por outro navegador (resposta sempre igual) |
+| `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
 | `404` | `event_not_found` / `invitation_not_found` / `task_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
 | `409` | `event_not_scheduled`, `event_cancelled`, `event_completed`, `rsvp_deadline_passed`, `email_duplicate`, `invitation_limit_reached`, `email_already_registered` | Conflito de estado |
+| `409` | `invitation_revoked`, `invitation_not_resendable` | Convite revogado ou sem link reutilizável para reenvio |
 | `422` | `validation_failed`, `verification_invalid`, `reset_invalid` | Validação Zod ou token de uso único inválido/expirado; inclui `fields` |
 | `423` | `account_locked` | Demasiadas falhas de login; bloqueio temporário |
 | `429` | `rate_limited` | Limite de pedidos excedido (activo em todos os ambientes) |
@@ -203,6 +205,7 @@ Todas as rotas abaixo exigem sessão de conta; as mutações exigem também
 | `GET` | `/api/v1/host/events` | Lista paginada dos eventos da conta |
 | `POST` | `/api/v1/host/events` | Cria evento na conta; exige email verificado |
 | `DELETE` | `/api/v1/host/events/{eventId}` | Apaga evento e dados em cascata; exige email verificado |
+| `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | Emite e envia um novo link de gestão; invalida o anterior |
 | `GET` | `/api/v1/host/dashboard` | Próximo evento, próximos eventos e totais |
 | `GET` | `/api/v1/host/guests` | Lista paginada de convidados de todos os eventos |
 | `GET` | `/api/v1/host/activity` | Feed de actividade da conta (paginado) |
@@ -227,6 +230,258 @@ Criar um evento autenticado devolve o mesmo envelope de
 `POST /events` (`event`, `manage_email_status`, `deliveries`); o link de
 gestão continua a ser enviado para `host_email`. Antes da verificação do
 email, a criação/remoção devolve `403 email_not_verified`.
+
+#### Respostas do workspace
+
+`GET /api/v1/host/events` — cada item é um `Event` com `stats`:
+
+```json
+{
+  "data": [
+    {
+      "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "title": "Casamento da Ana e do Paulo",
+      "host_name": "Ana",
+      "host_email": "ana@exemplo.ao",
+      "category": "wedding",
+      "starts_at": "2027-08-15T17:00:00.000Z",
+      "ends_at": "2027-08-16T01:00:00.000Z",
+      "timezone": "Africa/Luanda",
+      "location": {
+        "type": "venue",
+        "name": "Salão Principal",
+        "address": "Luanda",
+        "online_url": null
+      },
+      "message": "Celebramos o nosso casamento.",
+      "rules": "Traje formal.",
+      "dress_code": "Traje formal",
+      "template_id": null,
+      "theme": { "mode": "dark", "palette": "default" },
+      "contribution": { "enabled": false },
+      "rsvp_deadline": "2027-08-01T22:59:59.000Z",
+      "status": "scheduled",
+      "created_at": "2026-11-16T01:40:07.999Z",
+      "updated_at": "2026-11-16T01:40:07.999Z",
+      "stats": {
+        "total_invitations": 10,
+        "accepted": 4,
+        "declined": 2,
+        "pending": 4
+      }
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+}
+```
+
+`POST /api/v1/host/events` — `201`:
+
+```json
+{
+  "data": {
+    "event": { "id": "...", "title": "...", "status": "scheduled", "...": "..." },
+    "manage_email_status": "sent",
+    "deliveries": [
+      { "email": "joao@exemplo.ao", "status": "queued" }
+    ]
+  }
+}
+```
+
+`DELETE /api/v1/host/events/{eventId}` — `204`, sem corpo.
+
+`POST /api/v1/host/events/{eventId}/manage-link/resend` — `202`:
+
+```json
+{
+  "data": {
+    "event_id": "87b7165f-90fb-4859-ad63-7aa9cc3b657e",
+    "manage_email_status": "sent",
+    "manage_token_expires_at": "2026-12-16T01:40:08.075Z"
+  }
+}
+```
+
+- Gera um token novo, envia-o para `host_email` e invalida o anterior.
+- `404 event_not_found` se o evento não pertencer à conta.
+- `403 email_not_verified` antes da verificação.
+- O token nunca aparece na resposta.
+
+`GET /api/v1/host/dashboard` — `200`:
+
+```json
+{
+  "data": {
+    "next_event": { "id": "...", "title": "...", "stats": { "...": 0 } },
+    "upcoming": [{ "id": "...", "title": "...", "stats": { "...": 0 } }],
+    "totals": {
+      "events": 3,
+      "drafts": 0,
+      "scheduled": 2,
+      "cancelled": 1,
+      "completed": 0,
+      "total_invitations": 30,
+      "accepted": 12,
+      "declined": 3,
+      "pending": 15
+    }
+  }
+}
+```
+
+- `next_event` é `null` quando não há eventos futuros agendados.
+- `upcoming` devolve no máximo 5 eventos, do mais próximo para o mais
+  distante.
+
+`GET /api/v1/host/guests` — `200`; cada item é um `Invitation` com um
+resumo do evento:
+
+```json
+{
+  "data": [
+    {
+      "id": "1a80b39f-cb8c-49d2-86ff-cf4de1b74803",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "guest_name": "João",
+      "guest_email": "joao@exemplo.ao",
+      "guest_phone": "+244900000000",
+      "table_name": "Mesa 1",
+      "rsvp_status": "accepted",
+      "rsvp_responded_at": "2026-11-16T01:00:00.000Z",
+      "send_status": "sent",
+      "send_count": 1,
+      "last_sent_at": "2026-11-15T03:24:52.807Z",
+      "created_at": "2026-11-15T03:24:30.000Z",
+      "updated_at": "2026-11-16T01:00:00.000Z",
+      "event": {
+        "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+        "title": "Casamento da Ana e do Paulo",
+        "starts_at": "2027-08-15T17:00:00.000Z",
+        "status": "scheduled"
+      }
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+}
+```
+
+`GET /api/v1/host/activity` — `200`; inclui `event_title`:
+
+```json
+{
+  "data": [
+    {
+      "id": "9b1f1d0e-6a0c-4a52-9d4d-2f7e3f3a1b10",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "kind": "rsvp_accepted",
+      "guest_name": "João",
+      "at": "2026-11-16T01:00:00.000Z",
+      "event_title": "Casamento da Ana e do Paulo"
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+}
+```
+
+`GET /api/v1/host/events/{eventId}/activity` — `200`; mesma forma, sem
+`event_title`:
+
+```json
+{
+  "data": [
+    {
+      "id": "9b1f1d0e-6a0c-4a52-9d4d-2f7e3f3a1b10",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "kind": "rsvp_accepted",
+      "guest_name": "João",
+      "at": "2026-11-16T01:00:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+}
+```
+
+`GET /api/v1/host/reports/summary` — `200`:
+
+```json
+{
+  "data": {
+    "events": [
+      {
+        "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+        "title": "Casamento da Ana e do Paulo",
+        "status": "scheduled",
+        "total_invitations": 10,
+        "accepted": 4,
+        "declined": 2,
+        "pending": 4
+      }
+    ],
+    "totals": {
+      "total_invitations": 10,
+      "accepted": 4,
+      "declined": 2,
+      "pending": 4,
+      "response_rate": 0.6,
+      "acceptance_rate": 0.4
+    }
+  }
+}
+```
+
+- `response_rate` = `(accepted + declined) / total_invitations`.
+- `acceptance_rate` = `accepted / total_invitations`.
+- Ambos são fracções entre `0` e `1`, arredondadas a 4 casas; `0`
+  quando não há convites.
+
+`GET /api/v1/host/events/{eventId}/reports?days=30` — `200`:
+
+```json
+{
+  "data": {
+    "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+    "days": 30,
+    "series": [
+      {
+        "date": "2026-11-16",
+        "invitations": 3,
+        "accepted": 1,
+        "declined": 0,
+        "reminders": 0
+      }
+    ]
+  }
+}
+```
+
+- `series` tem exactamente `days` pontos, em dias UTC, incluindo dias
+  sem movimento.
+- `date` é `YYYY-MM-DD`.
+
+`GET /api/v1/host/tasks` — `200` (sem paginação):
+
+```json
+{
+  "data": [
+    {
+      "id": "0f0e5f6a-9b1c-4d3e-8a2b-7c6d5e4f3a21",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "label": "Confirmar menu",
+      "done": false,
+      "created_at": "2026-11-16T01:00:00.000Z",
+      "updated_at": "2026-11-16T01:00:00.000Z"
+    }
+  ]
+}
+```
+
+- `event_id` é `null` para tarefas globais da conta.
+- `POST /api/v1/host/tasks` (`{ "label": "...", "event_id": null }`)
+  devolve `201 { "data": { ...Task } }`.
+- `PATCH /api/v1/host/tasks/{taskId}` aceita `label` e/ou `done` e
+  devolve `200 { "data": { ...Task } }`.
+- `DELETE /api/v1/host/tasks/{taskId}` devolve `204`.
 
 ### Categorias e mesas
 
@@ -296,7 +551,8 @@ Resposta `201`:
 O segredo de gestão **não** é devolvido: é enviado uma única vez para
 `host_email` no link de gestão. O envio é síncrono e o resultado é
 comunicado em `manage_email_status` (`sent` | `failed`). Os convites são
-enfileirados na outbox e reportados como `queued`, `sent` ou `failed`.
+enfileirados na outbox e reportados como `queued` (a entrega real é
+assíncrona; consultar `send_status` no convite para o estado final).
 
 ### 2. Trocar o link secreto por sessão
 
@@ -313,10 +569,22 @@ Resposta `200` (define os cookies do evento):
   "data": {
     "event": { "...": "..." },
     "csrf_token": "<valor para X-CSRF-Token>",
-    "expires_at": "2027-08-15T20:00:00.000Z"
+    "expires_at": "2026-11-16T03:38:46.344Z",
+    "manage_email_status": "sent",
+    "manage_token_expires_at": "2026-12-16T01:38:46.345Z"
   }
 }
 ```
+
+- A troca **rota** o link: o token usado deixa imediatamente de ser
+  válido e um novo link é enviado para `host_email`. Repetir o mesmo
+  token devolve `404 manage_link_invalid`.
+- O token em claro nunca é devolvido em JSON. `manage_email_status`
+  (`sent` | `failed`) descreve apenas a tentativa de entrega.
+- `manage_token_expires_at` é o fim da validade do novo link (30 dias
+  por omissão, `MANAGE_TOKEN_TTL_DAYS`).
+- A rotação é atómica: a sessão é criada e o token é substituído na
+  mesma transacção.
 
 `DELETE /api/v1/host/session/{eventId}` revoga a sessão e limpa os
 cookies. Exige `X-CSRF-Token`.
@@ -426,11 +694,281 @@ dados de outros convidados.
 - `409` se o evento estiver cancelado/terminado ou o prazo tiver
   passado.
 
+## Modelos de resposta
+
+Tipos reutilizados nas respostas. Todos os objectos são JSON e os
+campos opcionais só aparecem quando têm valor, salvo indicação em
+contrário.
+
+### `Pagination`
+
+```json
+{ "page": 1, "page_size": 20, "total": 42, "total_pages": 3 }
+```
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `page` | inteiro | Começa em 1 |
+| `page_size` | inteiro | 1 a 100 |
+| `total` | inteiro | Total de registos |
+| `total_pages` | inteiro | `ceil(total / page_size)`; `0` sem registos |
+
+### `Host`
+
+```json
+{
+  "id": "584476e6-c785-4440-9f58-06ccc006efd1",
+  "email": "ana@exemplo.ao",
+  "email_verified": true,
+  "status": "active",
+  "profile": {
+    "display_name": "Ana",
+    "phone": null,
+    "birth_date": "1994-05-20",
+    "locale": "pt-AO",
+    "timezone": "Africa/Luanda",
+    "avatar_url": null
+  },
+  "profile_complete": true,
+  "missing_fields": [],
+  "created_at": "2026-11-15T03:24:13.372Z"
+}
+```
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `email_verified` | booleano | Deriva de `email_verified_at` |
+| `status` | string | `active`, `suspended` ou `deleted` |
+| `profile.birth_date` | string \| null | `YYYY-MM-DD`; nunca incluído noutros recursos |
+| `profile_complete` | booleano | `false` enquanto faltar `birth_date` |
+| `missing_fields` | string[] | Actualmente `["birth_date"]` ou `[]` |
+
+### `Event`
+
+```json
+{
+  "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+  "title": "Casamento da Ana e do Paulo",
+  "host_name": "Ana",
+  "host_email": "ana@exemplo.ao",
+  "category": "wedding",
+  "starts_at": "2027-08-15T17:00:00.000Z",
+  "ends_at": "2027-08-16T01:00:00.000Z",
+  "timezone": "Africa/Luanda",
+  "location": {
+    "type": "venue",
+    "name": "Salão Principal",
+    "address": "Luanda",
+    "online_url": null
+  },
+  "message": "Celebramos o nosso casamento.",
+  "rules": "Traje formal.",
+  "dress_code": "Traje formal",
+  "template_id": null,
+  "theme": { "mode": "dark", "palette": "default" },
+  "contribution": { "enabled": false },
+  "rsvp_deadline": "2027-08-01T22:59:59.000Z",
+  "status": "scheduled",
+  "created_at": "2026-11-16T01:40:07.999Z",
+  "updated_at": "2026-11-16T01:40:07.999Z",
+  "stats": {
+    "total_invitations": 10,
+    "accepted": 4,
+    "declined": 2,
+    "pending": 4
+  }
+}
+```
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `category` | string \| null | `wedding`, `birthday`, `corporate`, `baby`, `other` |
+| `starts_at` / `ends_at` | string \| null | ISO 8601 UTC |
+| `location.type` | string | `venue` ou `online` |
+| `contribution` | object | Com `enabled=false` só este campo é devolvido |
+| `status` | string | `draft`, `scheduled`, `cancelled`, `completed` |
+| `stats` | object | Só nas listas de gestão, `dashboard` e detalhe por sessão de evento |
+
+A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
+`created_at`, `updated_at` e `stats`.
+
+### `Invitation`
+
+```json
+{
+  "id": "1a80b39f-cb8c-49d2-86ff-cf4de1b74803",
+  "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+  "guest_name": "João",
+  "guest_email": "joao@exemplo.ao",
+  "guest_phone": "+244900000000",
+  "table_name": "Mesa 1",
+  "rsvp_status": "pending",
+  "rsvp_responded_at": null,
+  "send_status": "queued",
+  "send_count": 1,
+  "last_sent_at": null,
+  "created_at": "2026-11-15T03:24:30.000Z",
+  "updated_at": "2026-11-15T03:24:30.000Z"
+}
+```
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `rsvp_status` | string | `pending`, `accepted`, `declined` |
+| `send_status` | string | `pending`, `queued`, `sent`, `failed` |
+| `send_count` | inteiro | Número de envios |
+| `table_name` | string \| null | Visível apenas ao anfitrião |
+
+### `HostGuest`
+
+`Invitation` + `event`:
+
+```json
+{
+  "...": "campos de Invitation",
+  "event": {
+    "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+    "title": "Casamento da Ana e do Paulo",
+    "starts_at": "2027-08-15T17:00:00.000Z",
+    "status": "scheduled"
+  }
+}
+```
+
+### `Activity`
+
+```json
+{
+  "id": "9b1f1d0e-6a0c-4a52-9d4d-2f7e3f3a1b10",
+  "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+  "kind": "rsvp_accepted",
+  "guest_name": "João",
+  "at": "2026-11-16T01:00:00.000Z"
+}
+```
+
+O feed da conta acrescenta `event_title`. `kind` é um identificador
+estável do tipo de actividade (por exemplo `rsvp_accepted`,
+`rsvp_declined`, `invitation_sent`).
+
+### `Task`
+
+```json
+{
+  "id": "0f0e5f6a-9b1c-4d3e-8a2b-7c6d5e4f3a21",
+  "event_id": null,
+  "label": "Confirmar menu",
+  "done": false,
+  "created_at": "2026-11-16T01:00:00.000Z",
+  "updated_at": "2026-11-16T01:00:00.000Z"
+}
+```
+
+### `PublicInvitation`
+
+```json
+{
+  "event": {
+    "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+    "title": "Casamento da Ana e do Paulo",
+    "host_name": "Ana",
+    "category": "wedding",
+    "starts_at": "2027-08-15T17:00:00.000Z",
+    "ends_at": "2027-08-16T01:00:00.000Z",
+    "timezone": "Africa/Luanda",
+    "location": {
+      "type": "venue",
+      "name": "Salão Principal",
+      "address": "Luanda",
+      "online_url": null
+    },
+    "message": "Celebramos o nosso casamento.",
+    "rules": "Traje formal.",
+    "dress_code": "Traje formal",
+    "theme": { "mode": "dark", "palette": "default" },
+    "contribution": { "enabled": false },
+    "rsvp_deadline": "2027-08-01T22:59:59.000Z",
+    "status": "scheduled"
+  },
+  "guest": {
+    "name": "João",
+    "rsvp_status": "pending",
+    "rsvp_responded_at": null
+  },
+  "rsvp_deadline_passed": false,
+  "csrf_token": "<valor para X-CSRF-Token>"
+}
+```
+
+Nunca inclui `guest_email`, `guest_phone`, `table_name` nem dados de
+outros convidados.
+
+### `ReportSummary` e `DailyReport`
+
+```json
+{
+  "events": [
+    {
+      "event_id": "...",
+      "title": "...",
+      "status": "scheduled",
+      "total_invitations": 10,
+      "accepted": 4,
+      "declined": 2,
+      "pending": 4
+    }
+  ],
+  "totals": {
+    "total_invitations": 10,
+    "accepted": 4,
+    "declined": 2,
+    "pending": 4,
+    "response_rate": 0.6,
+    "acceptance_rate": 0.4
+  }
+}
+```
+
+```json
+{
+  "date": "2026-11-16",
+  "invitations": 3,
+  "accepted": 1,
+  "declined": 0,
+  "reminders": 0
+}
+```
+
+### Erros
+
+Todos os erros usam o envelope `error` descrito em
+[Convenções](#convenções). `fields` só aparece em `422` de validação e
+`request_id` aparece sempre.
+
 ## Templates
 
 `GET /api/v1/templates` — lista apenas templates activos, com os campos
 e temas suportados. Uma lista vazia é válida. Os templates visuais finais
 serão fornecidos pelo responsável do produto.
+
+Resposta `200`:
+
+```json
+{
+  "data": [
+    {
+      "id": "3f2c1d0e-8b7a-4c6d-9e5f-1a2b3c4d5e6f",
+      "slug": "base",
+      "name": "Base",
+      "description": "Template neutro.",
+      "preview_image_url": null,
+      "supported_fields": ["title", "message", "location"],
+      "themes": [{ "mode": "light", "palette": "default" }],
+      "is_active": true
+    }
+  ]
+}
+```
 
 ## Rate limit
 
@@ -444,7 +982,122 @@ Todos os ambientes aplicam `/api/v1`:
 - Autenticação (`register`, `login`, `email/verify/resend`,
   `password/forgot`): `AUTH_RATE_LIMIT_WINDOW_MS` /
   `AUTH_RATE_LIMIT_MAX`, aplicado por IP e por IP + email.
+- Escritas de gestão (criar/actualizar/apagar eventos, convidados,
+  tarefas, perfil, avatar, reenvio de link de gestão e reenvio de
+  convite): `WRITE_RATE_LIMIT_WINDOW_MS` /
+  `WRITE_RATE_LIMIT_MAX`.
+- RSVP público: `RSVP_RATE_LIMIT_WINDOW_MS` /
+  `RSVP_RATE_LIMIT_MAX`, aplicado por IP + token do convite.
 - Verificação de email e reposição de senha consomem também o limite
   público de tokens.
 
+O limite de escritas escolhe a chave mais específica disponível:
+conta autenticada → evento → convite → IP. O limite de RSVP usa sempre
+IP + token, para que um convite não possa ser usado para esgotar o
+limite de outro.
+
+Os cabeçalhos `RateLimit-Policy`, `RateLimit-Limit`,
+`RateLimit-Remaining` e `RateLimit-Reset` acompanham as respostas
+limitadas. Ao exceder, a resposta é `429` com `error.code =
+"rate_limited"`; nenhum limite interno é revelado no corpo.
+
 `/health` fica fora do limite global para não afectar orquestradores.
+
+## Mapa de respostas por endpoint
+
+Resumo do corpo de sucesso de cada rota. `—` significa `204` sem
+corpo. Todas as rotas podem devolver os erros transversais de
+[Códigos de erro](#códigos-de-erro).
+
+### Autenticação
+
+| Método | Rota | Sucesso | Corpo |
+|---|---|---|---|
+| `POST` | `/api/v1/auth/register` | `201` | `{ "data": { "host": Host } }` |
+| `POST` | `/api/v1/auth/email/verify` | `200` | `{ "data": { "host": Host } }` |
+| `POST` | `/api/v1/auth/email/verify/resend` | `202` | `{ "data": { "status": "accepted" } }` |
+| `POST` | `/api/v1/auth/login` | `200` | `{ "data": { "host": Host, "csrf_token": string, "expires_at": string } }` |
+| `POST` | `/api/v1/auth/logout` | `204` | — |
+| `GET` | `/api/v1/auth/session` | `200` | `{ "data": { "host": Host, "csrf_token": string } }` |
+| `POST` | `/api/v1/auth/password/forgot` | `202` | `{ "data": { "status": "accepted" } }` |
+| `POST` | `/api/v1/auth/password/reset` | `204` | — |
+| `POST` | `/api/v1/auth/password/change` | `204` | — |
+
+### Perfil e workspace
+
+| Método | Rota | Sucesso | Corpo |
+|---|---|---|---|
+| `GET` | `/api/v1/host/profile` | `200` | `{ "data": { "host": Host } }` |
+| `PATCH` | `/api/v1/host/profile` | `200` | `{ "data": { "host": Host } }` |
+| `POST` | `/api/v1/host/profile/avatar` | `200` | `{ "data": { "host": Host } }` |
+| `GET` | `/api/v1/host/events` | `200` | `{ "data": Event[], "pagination": Pagination }` |
+| `POST` | `/api/v1/host/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "sent" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
+| `DELETE` | `/api/v1/host/events/{eventId}` | `204` | — |
+| `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `202` | `{ "data": { "event_id": uuid, "manage_email_status": "sent" \| "failed", "manage_token_expires_at": string \| null } }` |
+| `GET` | `/api/v1/host/dashboard` | `200` | `{ "data": { "next_event": Event \| null, "upcoming": Event[], "totals": Totals } }` |
+| `GET` | `/api/v1/host/guests` | `200` | `{ "data": HostGuest[], "pagination": Pagination }` |
+| `GET` | `/api/v1/host/activity` | `200` | `{ "data": ActivityWithEvent[], "pagination": Pagination }` |
+| `GET` | `/api/v1/host/events/{eventId}/activity` | `200` | `{ "data": Activity[], "pagination": Pagination }` |
+| `GET` | `/api/v1/host/reports/summary` | `200` | `{ "data": ReportSummary }` |
+| `GET` | `/api/v1/host/events/{eventId}/reports` | `200` | `{ "data": { "event_id": uuid, "days": integer, "series": DailyReport[] } }` |
+| `GET` | `/api/v1/host/tasks` | `200` | `{ "data": Task[] }` |
+| `POST` | `/api/v1/host/tasks` | `201` | `{ "data": Task }` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}` | `200` | `{ "data": Task }` |
+| `DELETE` | `/api/v1/host/tasks/{taskId}` | `204` | — |
+
+`Totals` = `{ events, drafts, scheduled, cancelled, completed,
+total_invitations, accepted, declined, pending }`, todos inteiros.
+
+### Fluxo legado por link secreto
+
+| Método | Rota | Sucesso | Corpo |
+|---|---|---|---|
+| `POST` | `/api/v1/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "sent" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
+| `POST` | `/api/v1/host/session` | `200` | `{ "data": { "event": Event, "csrf_token": string, "expires_at": string, "manage_email_status": "sent" \| "failed", "manage_token_expires_at": string \| null } }` |
+| `DELETE` | `/api/v1/host/session/{eventId}` | `204` | — |
+| `GET` | `/api/v1/host/events/{eventId}` | `200` | `{ "data": { "event": Event, "invitations": Invitation[] } }` |
+| `PATCH` | `/api/v1/host/events/{eventId}` | `200` | `{ "data": Event }` |
+| `GET` | `/api/v1/host/events/{eventId}/invitations` | `200` | `{ "data": Invitation[] }` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations` | `201` | `{ "data": Invitation }` |
+| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `200` | `{ "data": Invitation }` |
+| `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `204` | — |
+| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/resend` | `202` | `{ "data": { "status": "queued" } }` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/revoke` | `200` | `{ "data": Invitation }` |
+
+### Convidado público e templates
+
+| Método | Rota | Sucesso | Corpo |
+|---|---|---|---|
+| `POST` | `/api/v1/public/invitations/{token}/claim` | `200` | `{ "data": PublicInvitation }` |
+| `GET` | `/api/v1/public/invitations/{token}` | `200` | `{ "data": PublicInvitation }` |
+| `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `200` | `{ "data": PublicInvitation }` |
+| `GET` | `/api/v1/templates` | `200` | `{ "data": Template[] }` |
+
+## Auditoria
+
+As acções críticas são registadas numa tabela append-only
+(`host_audit_log`) com actor, evento, instante UTC, IP e resultado.
+A auditoria é independente do ciclo de vida da conta e do evento:
+`host_id` e `event_id` são UUIDs sem chave estrangeira.
+
+Acções registadas nesta fase:
+
+- `login_success`, `login_failure`, `login_locked`;
+- `email_verified`;
+- `password_changed`, `password_reset`;
+- `profile_updated` (inclui avatar);
+- `event_created`, `event_deleted`;
+- `guest_added`, `guest_updated`, `guest_deleted`,
+  `guest_invitation_resent`, `guest_access_revoked`;
+- `manage_link_rotated`, `manage_link_resent`.
+
+Regras:
+
+- Nunca são registadas senhas, tokens, `birth_date` ou conteúdo de
+  emails; `metadata` contém apenas identificadores e estados.
+- Uma falha ao escrever auditoria não bloqueia a operação de negócio;
+  é registada no log interno do servidor.
+- O IP vem de `req.ip` (respeitando `TRUST_PROXY`); o actor é
+  `host_id` quando existe sessão de conta, ou o `host_id` do evento no
+  fluxo legado.
+- A tabela não é exposta por nenhum endpoint nesta fase.

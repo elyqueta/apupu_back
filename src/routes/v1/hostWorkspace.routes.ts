@@ -7,6 +7,7 @@ import { reportController } from '../../controllers/report.controller';
 import { taskController } from '../../controllers/task.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
+import { writeLimiter } from '../../middlewares/rateLimiter';
 import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
 import { requireVerifiedEmail } from '../../middlewares/requireVerifiedEmail';
 import { validate } from '../../middlewares/validate';
@@ -43,6 +44,9 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Conta e perfil.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  *       401:
  *         description: Sessão ausente ou expirada.
  *   patch:
@@ -63,6 +67,9 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Perfil actualizado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  *       422:
  *         description: Data de nascimento ou outro campo inválido.
  */
@@ -71,6 +78,7 @@ router.get('/profile', asyncHandler(hostAccountAuth), asyncHandler(profileContro
 router.patch(
   '/profile',
   asyncHandler(hostAccountAuth),
+  writeLimiter,
   requireAuthCsrf,
   validate({ body: updateProfileSchema }),
   asyncHandler(profileController.update)
@@ -101,10 +109,14 @@ router.patch(
  *     responses:
  *       200:
  *         description: Avatar actualizado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  */
 router.post(
   '/profile/avatar',
   asyncHandler(hostAccountAuth),
+  writeLimiter,
   requireAuthCsrf,
   validate({ body: avatarSchema }),
   asyncHandler(profileController.setAvatar)
@@ -140,6 +152,9 @@ router.post(
  *     responses:
  *       200:
  *         description: Eventos com estatísticas e metadados de paginação.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventList' }
  *   post:
  *     tags: [Workspace]
  *     summary: Cria um evento associado à conta
@@ -159,6 +174,9 @@ router.post(
  *     responses:
  *       201:
  *         description: Evento criado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventCreateEnvelope' }
  *       403:
  *         description: Email por verificar.
  */
@@ -172,6 +190,7 @@ router.get(
 router.post(
   '/events',
   asyncHandler(hostAccountAuth),
+  writeLimiter,
   requireAuthCsrf,
   requireVerifiedEmail,
   validate({ body: createEventSchema }),
@@ -205,9 +224,54 @@ router.delete(
   '/events/:eventId',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(hostAccountAuth),
+  writeLimiter,
   requireAuthCsrf,
   requireVerifiedEmail,
   asyncHandler(hostEventController.remove)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/manage-link/resend:
+ *   post:
+ *     tags: [Workspace]
+ *     summary: Emite e reenvia um novo link de gestão
+ *     description: >
+ *       Gera um token novo, substitui o anterior e envia-o por email
+ *       para `host_email`. O link anterior deixa imediatamente de ser
+ *       válido. O token nunca é devolvido em JSON.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       202:
+ *         description: Novo link emitido e entrega tentada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ManageLinkResendEnvelope' }
+ *       403:
+ *         description: Email por verificar.
+ *       404:
+ *         description: Evento não encontrado ou de outra conta.
+ *       429:
+ *         description: Demasiados pedidos.
+ */
+router.post(
+  '/events/:eventId/manage-link/resend',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  requireVerifiedEmail,
+  asyncHandler(hostEventController.resendManageLink)
 );
 
 /**
@@ -221,6 +285,9 @@ router.delete(
  *     responses:
  *       200:
  *         description: Dados do painel.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/DashboardEnvelope' }
  */
 router.get('/dashboard', asyncHandler(hostAccountAuth), asyncHandler(hostEventController.dashboard));
 
@@ -254,6 +321,9 @@ router.get('/dashboard', asyncHandler(hostAccountAuth), asyncHandler(hostEventCo
  *     responses:
  *       200:
  *         description: Convidados com resumo do evento e paginação.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostGuestList' }
  */
 router.get(
   '/guests',
@@ -280,6 +350,9 @@ router.get(
  *     responses:
  *       200:
  *         description: Actividade paginada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ActivityList' }
  */
 router.get(
   '/activity',
@@ -310,6 +383,9 @@ router.get(
  *     responses:
  *       200:
  *         description: Actividade paginada do evento.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventActivityList' }
  *       404:
  *         description: Evento não encontrado.
  */
@@ -331,6 +407,9 @@ router.get(
  *     responses:
  *       200:
  *         description: Resumo de relatórios.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ReportSummaryEnvelope' }
  */
 router.get(
   '/reports/summary',
@@ -358,6 +437,9 @@ router.get(
  *     responses:
  *       200:
  *         description: Série diária.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/DailyReportEnvelope' }
  *       404:
  *         description: Evento não encontrado.
  */
@@ -383,6 +465,9 @@ router.get(
  *     responses:
  *       200:
  *         description: Tarefas.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TaskList' }
  *   post:
  *     tags: [Workspace]
  *     summary: Cria uma tarefa
@@ -406,6 +491,9 @@ router.get(
  *     responses:
  *       201:
  *         description: Tarefa criada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TaskEnvelope' }
  */
 router.get(
   '/tasks',
@@ -417,6 +505,7 @@ router.get(
 router.post(
   '/tasks',
   asyncHandler(hostAccountAuth),
+  writeLimiter,
   requireAuthCsrf,
   validate({ body: createTaskSchema }),
   asyncHandler(taskController.create)
@@ -442,6 +531,9 @@ router.post(
  *     responses:
  *       200:
  *         description: Tarefa actualizada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TaskEnvelope' }
  *       404:
  *         description: Tarefa não encontrada.
  *   delete:
@@ -466,6 +558,7 @@ router.patch(
   '/tasks/:taskId',
   validate({ params: taskIdParamsSchema }),
   asyncHandler(hostAccountAuth),
+  writeLimiter,
   requireAuthCsrf,
   validate({ body: updateTaskSchema }),
   asyncHandler(taskController.update)
@@ -475,6 +568,7 @@ router.delete(
   '/tasks/:taskId',
   validate({ params: taskIdParamsSchema }),
   asyncHandler(hostAccountAuth),
+  writeLimiter,
   requireAuthCsrf,
   asyncHandler(taskController.remove)
 );

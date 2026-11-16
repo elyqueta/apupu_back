@@ -45,6 +45,14 @@ const envSchema = z.object({
   HOST_SESSION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   HOST_SESSION_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
 
+  /** Limite para escritas autenticadas (eventos, convidados, reenvios). */
+  WRITE_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
+  WRITE_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
+
+  /** Limite específico do RSVP público. */
+  RSVP_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
+  RSVP_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
+
   /** Base pública do frontend Angular. */
   APP_BASE_URL: z
     .string({ error: 'APP_BASE_URL é obrigatória' })
@@ -69,6 +77,9 @@ const envSchema = z.object({
 
   HOST_COOKIE_NAME: z.string().min(1).default('apupu_host'),
   HOST_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(120),
+
+  /** Validade máxima do link de gestão (30 dias por decisão de produto). */
+  MANAGE_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
   CSRF_COOKIE_NAME: z.string().min(1).default('apupu_csrf'),
   CSRF_HEADER_NAME: z.string().min(1).default('x-csrf-token'),

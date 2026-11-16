@@ -4,7 +4,7 @@ import { hostSessionController } from '../../controllers/hostSession.controller'
 import { invitationController } from '../../controllers/invitation.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAuth } from '../../middlewares/hostAuth';
-import { hostSessionLimiter } from '../../middlewares/rateLimiter';
+import { hostSessionLimiter, writeLimiter } from '../../middlewares/rateLimiter';
 import { requireHostCsrf } from '../../middlewares/requireHostCsrf';
 import { validate } from '../../middlewares/validate';
 import {
@@ -43,15 +43,7 @@ const router = Router();
  *         description: Sessão criada; cookies definidos.
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: object
- *                   properties:
- *                     event: { $ref: '#/components/schemas/Event' }
- *                     csrf_token: { type: string }
- *                     expires_at: { type: string, format: date-time }
+ *             schema: { $ref: '#/components/schemas/HostSessionEnvelope' }
  *       404:
  *         description: Link de gestão inválido ou expirado.
  *       429:
@@ -89,6 +81,7 @@ router.delete(
   '/session/:eventId',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(hostAuth),
+  writeLimiter,
   requireHostCsrf,
   asyncHandler(hostSessionController.destroy)
 );
@@ -111,16 +104,7 @@ router.delete(
  *         description: Evento e convidados.
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: object
- *                   properties:
- *                     event: { $ref: '#/components/schemas/Event' }
- *                     invitations:
- *                       type: array
- *                       items: { $ref: '#/components/schemas/Invitation' }
+ *             schema: { $ref: '#/components/schemas/EventDetailEnvelope' }
  *       401:
  *         description: Sessão ausente ou expirada.
  *   patch:
@@ -147,10 +131,7 @@ router.delete(
  *         description: Evento actualizado.
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data: { $ref: '#/components/schemas/Event' }
+ *             schema: { $ref: '#/components/schemas/EventEnvelope' }
  *       403:
  *         description: Token CSRF inválido.
  *       422:
@@ -167,6 +148,7 @@ router.patch(
   '/events/:eventId',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(hostAuth),
+  writeLimiter,
   requireHostCsrf,
   validate({ body: updateEventSchema }),
   asyncHandler(eventController.update)
@@ -190,12 +172,7 @@ router.patch(
  *         description: Lista de convidados.
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 data:
- *                   type: array
- *                   items: { $ref: '#/components/schemas/Invitation' }
+ *             schema: { $ref: '#/components/schemas/InvitationListEnvelope' }
  *   post:
  *     tags: [Convidados]
  *     summary: Adiciona um convidado e enfileira o convite
@@ -218,6 +195,9 @@ router.patch(
  *     responses:
  *       201:
  *         description: Convidado criado e convite enfileirado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/InvitationEnvelope' }
  *       409:
  *         description: Email duplicado, evento não agendado ou limite atingido.
  */
@@ -232,6 +212,7 @@ router.post(
   '/events/:eventId/invitations',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(hostAuth),
+  writeLimiter,
   requireHostCsrf,
   validate({ body: createInvitationSchema }),
   asyncHandler(invitationController.add)
@@ -266,6 +247,9 @@ router.post(
  *     responses:
  *       200:
  *         description: Convidado actualizado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/InvitationEnvelope' }
  *       404:
  *         description: Convidado não encontrado.
  *       409:
@@ -296,6 +280,7 @@ router.patch(
   '/events/:eventId/invitations/:invitationId',
   validate({ params: invitationIdParamsSchema }),
   asyncHandler(hostAuth),
+  writeLimiter,
   requireHostCsrf,
   validate({ body: updateInvitationSchema }),
   asyncHandler(invitationController.update)
@@ -305,6 +290,7 @@ router.delete(
   '/events/:eventId/invitations/:invitationId',
   validate({ params: invitationIdParamsSchema }),
   asyncHandler(hostAuth),
+  writeLimiter,
   requireHostCsrf,
   asyncHandler(invitationController.remove)
 );
@@ -333,6 +319,9 @@ router.delete(
  *     responses:
  *       202:
  *         description: Convite enfileirado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/InvitationResendEnvelope' }
  *       409:
  *         description: Convite revogado ou sem link reutilizável.
  *
@@ -358,11 +347,15 @@ router.delete(
  *     responses:
  *       200:
  *         description: Convite revogado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/InvitationEnvelope' }
  */
 router.post(
   '/events/:eventId/invitations/:invitationId/resend',
   validate({ params: invitationIdParamsSchema }),
   asyncHandler(hostAuth),
+  writeLimiter,
   requireHostCsrf,
   asyncHandler(invitationController.resend)
 );
@@ -371,6 +364,7 @@ router.post(
   '/events/:eventId/invitations/:invitationId/revoke',
   validate({ params: invitationIdParamsSchema }),
   asyncHandler(hostAuth),
+  writeLimiter,
   requireHostCsrf,
   asyncHandler(invitationController.revoke)
 );
