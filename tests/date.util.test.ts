@@ -6,6 +6,7 @@ import {
   isValidTimeZone,
   reminderScheduledFor,
   subtractDays,
+  subtractMonths,
   zonedTimeToUtc,
 } from '../src/utils/date.util';
 
@@ -15,6 +16,38 @@ describe('date.util', () => {
   it('subtrai dias preservando o instante', () => {
     const result = subtractDays(new Date('2026-02-01T10:00:00Z'), 7);
     expect(result.toISOString()).toBe('2026-01-25T10:00:00.000Z');
+  });
+
+  it('subtrai meses preservando a hora e o fuso UTC', () => {
+    const result = subtractMonths(new Date('2026-11-16T12:34:56.789Z'), 24);
+    expect(result.toISOString()).toBe('2024-11-16T12:34:56.789Z');
+  });
+
+  it('fixa o dia ao último dia válido do mês de destino', () => {
+    expect(subtractMonths(new Date('2024-03-31T00:00:00Z'), 1).toISOString()).toBe(
+      '2024-02-29T00:00:00.000Z'
+    );
+    expect(subtractMonths(new Date('2026-03-31T00:00:00Z'), 1).toISOString()).toBe(
+      '2026-02-28T00:00:00.000Z'
+    );
+    expect(subtractMonths(new Date('2026-05-31T00:00:00Z'), 3).toISOString()).toBe(
+      '2026-02-28T00:00:00.000Z'
+    );
+  });
+
+  it('atravessa a mudança de ano ao subtrair meses', () => {
+    expect(subtractMonths(new Date('2026-01-15T09:00:00Z'), 1).toISOString()).toBe(
+      '2025-12-15T09:00:00.000Z'
+    );
+    expect(subtractMonths(new Date('2026-02-28T09:00:00Z'), 24).toISOString()).toBe(
+      '2024-02-28T09:00:00.000Z'
+    );
+  });
+
+  it('rejeita meses negativos ou fraccionários', () => {
+    const date = new Date('2026-11-16T00:00:00Z');
+    expect(() => subtractMonths(date, -1)).toThrow(RangeError);
+    expect(() => subtractMonths(date, 1.5)).toThrow(RangeError);
   });
 
   it('extrai componentes no fuso do evento', () => {

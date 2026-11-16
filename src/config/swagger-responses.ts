@@ -188,6 +188,11 @@ export const errorResponses = {
     'service_unavailable',
     'Serviço temporariamente indisponível.'
   ),
+  AvatarUploadUnavailable: errorResponse(
+    'Upload de avatar indisponível: credenciais Cloudinary ausentes ou provider inacessível.',
+    'avatar_upload_unavailable',
+    'O upload de avatar está temporariamente indisponível.'
+  ),
 } as const;
 
 type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -330,6 +335,13 @@ export const operationErrorResponses: Record<
     403: 'CsrfInvalid',
     422: 'ValidationFailed',
     429: 'RateLimited',
+  },
+  'post /api/v1/host/profile/avatar/upload': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+    503: 'AvatarUploadUnavailable',
   },
   'get /api/v1/host/events': {
     401: 'HostSessionInvalid',

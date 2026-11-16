@@ -15,7 +15,7 @@ Data de fecho: 2026-11-15.
 | 4 | Categoria e mesas | Manter `events.category` e `invitations.table_name` | Implementado |
 | 5 | Claim automático | Ligar eventos legados à conta após verificação do email | Implementado |
 | 6 | Link de gestão | Continua a ser enviado por email ao criar evento com conta | Implementado |
-| 7 | Retenção de conta | Apagar conta inativa após 24 meses sem login | Pendente |
+| 7 | Retenção de conta | Apagar conta inativa após 24 meses sem login | Implementado |
 | 8 | Data de nascimento (retenção) | Manter enquanto a conta estiver ativa; apagar com a conta ou quando limpa | Implementado |
 | 9 | Unsubscribe | Preferências no perfil; transacionais continuam; parar lembretes | Pendente |
 | 10 | Domínio e cookies | `api.apupu.ao` + `app.apupu.ao`, SameSite=Lax, CORS restrito | Pendente de configuração |
@@ -79,13 +79,18 @@ email verificado e `host_id` nulo passam a pertencer à conta. A operação
 ## 7. Retenção de conta — 24 meses
 
 - Uma conta sem login durante 24 meses é apagada.
+- O corte usa `COALESCE(last_login_at, created_at)`: contas criadas e
+  nunca usadas também são abrangidas.
 - A eliminação remove perfil, sessões, tokens, tarefas e entregas de
-  email da conta.
+  email da conta. Os OTP de registo associados ao email também são
+  removidos.
 - Os eventos ficam com `host_id` nulo (`ON DELETE SET NULL`); não são
   apagados automaticamente pelo processo de retenção.
-- O processo deve ser idempotente e registar apenas contagens, nunca
-  PII.
-- Falta implementar: tarefa agendada/operacional e métrica de execução.
+- O processo é idempotente e regista apenas contagens, nunca PII.
+- Implementado em `npm run retention:run`
+  (`src/scripts/runRetention.ts`), com lotes
+  (`RETENTION_BATCH_SIZE`) e `FOR UPDATE SKIP LOCKED`. O índice
+  `hosts_retention_idx` apoia o corte. Recomendado em cron diário.
 
 ## 8. Data de nascimento — retenção
 

@@ -92,6 +92,18 @@ const envSchema = z.object({
   AUTH_CSRF_COOKIE_NAME: z.string().min(1).default('apupu_csrf_auth'),
   AUTH_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(10080),
 
+  /**
+   * Retenção de contas inactivas.
+   *
+   * Uma conta sem login durante este número de meses é eliminada pelo
+   * job operacional (`npm run retention:run`). O corte usa
+   * `COALESCE(last_login_at, created_at)`, para que contas criadas e
+   * nunca usadas também sejam abrangidas. Os lotes mantêm as
+   * transacções curtas e os locks previsíveis.
+   */
+  ACCOUNT_RETENTION_MONTHS: z.coerce.number().int().positive().default(24),
+  RETENTION_BATCH_SIZE: z.coerce.number().int().positive().max(10000).default(500),
+
   /** Limites dedicados de registo/login/reposição de senha. */
   AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
@@ -117,18 +129,46 @@ const envSchema = z.object({
   /** Idade mínima (anos) para uma data de nascimento ser aceite. */
   MIN_HOST_AGE_YEARS: z.coerce.number().int().min(0).default(18),
 
+  /**
+   * Cloudinary — armazenamento dos avatares.
+   *
+   * O upload é assinado no servidor; o API secret nunca é enviado ao
+   * frontend. Sem as três variáveis, o endpoint de upload responde
+   * `503 avatar_upload_unavailable`, mas o resto da API continua a
+   * funcionar e o avatar por URL mantém-se disponível.
+   */
+  CLOUDINARY_CLOUD_NAME: z.string().trim().optional(),
+  CLOUDINARY_API_KEY: z.string().trim().optional(),
+  CLOUDINARY_API_SECRET: z.string().trim().optional(),
+  CLOUDINARY_AVATAR_FOLDER: z.string().trim().min(1).default('conta-comigo/avatars'),
+  /** Tamanho máximo do ficheiro de avatar (5 MiB por omissão). */
+  AVATAR_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
+
   /** Parâmetros do Argon2id. Ajustáveis por ambiente, nunca por pedido. */
   ARGON2_MEMORY_KIB: z.coerce.number().int().min(8 * 1024).default(19456),
   ARGON2_TIME_COST: z.coerce.number().int().min(1).default(2),
   ARGON2_PARALLELISM: z.coerce.number().int().min(1).max(255).default(1),
 
-  EMAIL_TRANSPORT: z.enum(['json', 'smtp']).default('json'),
+  EMAIL_TRANSPORT: z.enum(['json', 'smtp', 'resend']).default('json'),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number({ error: 'SMTP_PORT deve ser um número' }).int().positive().default(587),
   SMTP_SECURE: z.stringbool().default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().min(1).default('Conta Comigo <convites@apupu.local>'),
+
+  /**
+   * Chave da API do Resend.
+   *
+   * Pode ser usada de duas formas:
+   * - `EMAIL_TRANSPORT=resend`: envio pela API HTTP do Resend.
+   * - `EMAIL_TRANSPORT=smtp` sem `SMTP_PASS`: fallback para o SMTP do
+   *   Resend (`smtp.resend.com`, utilizador `resend`, porta 465/SSL).
+   *
+   * O `.env.render` já traz esta chave; em produção basta defini-la no
+   * painel do Render, sem duplicar o segredo em `SMTP_PASS`.
+   */
+  RESEND_API_KEY: z.string().trim().optional(),
 
   /**
    * Em desenvolvimento (`EMAIL_TRANSPORT=json`) as mensagens são

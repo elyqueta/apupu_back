@@ -10,6 +10,7 @@ import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
 import { writeLimiter } from '../../middlewares/rateLimiter';
 import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
 import { requireVerifiedEmail } from '../../middlewares/requireVerifiedEmail';
+import { uploadAvatar } from '../../middlewares/uploadAvatar';
 import { validate } from '../../middlewares/validate';
 import { createEventSchema, eventIdParamsSchema } from '../../schemas/event.schemas';
 import {
@@ -120,6 +121,54 @@ router.post(
   requireAuthCsrf,
   validate({ body: avatarSchema }),
   asyncHandler(profileController.setAvatar)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/profile/avatar/upload:
+ *   post:
+ *     tags: [Perfil]
+ *     summary: Envia uma imagem e define-a como avatar (Cloudinary)
+ *     description: >
+ *       Recebe `multipart/form-data` no campo `avatar` (JPEG, PNG ou
+ *       WebP, até `AVATAR_MAX_BYTES`). O backend assina o upload para o
+ *       Cloudinary e guarda o URL seguro no perfil; o segredo da API
+ *       nunca é exposto ao cliente. Sem credenciais Cloudinary
+ *       configuradas responde `503 avatar_upload_unavailable`; nesse
+ *       caso continua a ser possível definir o avatar por URL em
+ *       `POST /api/v1/host/profile/avatar`.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [avatar]
+ *             properties:
+ *               avatar:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Avatar actualizado com o URL do Cloudinary.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
+ */
+router.post(
+  '/profile/avatar/upload',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  uploadAvatar,
+  asyncHandler(profileController.uploadAvatar)
 );
 
 /**

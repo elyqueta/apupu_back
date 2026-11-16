@@ -111,6 +111,33 @@ export function subtractDays(date: Date, days: number): Date {
   return new Date(date.getTime() - days * MS_PER_DAY);
 }
 
+/**
+ * Subtrai meses de calendário em UTC, preservando a hora.
+ *
+ * O dia é fixado ao último dia válido do mês de destino: por exemplo,
+ * 31 de Março menos um mês resulta em 28 ou 29 de Fevereiro, nunca em
+ * 3 de Março. Usado pela retenção de contas, onde a diferença de um
+ * dia não pode antecipar ou atrasar a eliminação.
+ */
+export function subtractMonths(date: Date, months: number): Date {
+  if (!Number.isInteger(months) || months < 0) {
+    throw new RangeError('months deve ser um inteiro não negativo.');
+  }
+
+  const result = new Date(date.getTime());
+  const day = result.getUTCDate();
+
+  result.setUTCDate(1);
+  result.setUTCMonth(result.getUTCMonth() - months);
+
+  const lastDay = new Date(
+    Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+
+  result.setUTCDate(Math.min(day, lastDay));
+  return result;
+}
+
 /** Verdadeiro se `date` ainda está no futuro relativamente a `now`. */
 export function isFuture(date: Date, now: Date = new Date()): boolean {
   return date.getTime() > now.getTime();

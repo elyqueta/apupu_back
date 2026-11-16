@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { toHostDto } from '../dto/host.dto';
 import { AvatarBody, UpdateProfileBody } from '../schemas/host.schemas';
 import { auditService } from '../services/audit.service';
+import { avatarService } from '../services/avatar.service';
 import { profileService } from '../services/profile.service';
 import { HostWithProfile } from '../types/host.types';
 
@@ -42,6 +43,31 @@ export const profileController = {
       action: 'profile_updated',
       hostId,
       metadata: { fields: ['avatar_url'] },
+    });
+
+    res.status(200).json({ data: { host: toHostDto(host) } });
+  },
+
+  uploadAvatar: async (req: Request, res: Response): Promise<void> => {
+    const hostId = requireHost(req).id;
+
+    // O middleware `uploadAvatar` garante `req.file`; a verificação
+    // mantém o contrato explícito caso a rota mude de composição.
+    if (!req.file) {
+      throw new Error('Upload sem ficheiro: falta o middleware uploadAvatar.');
+    }
+
+    const uploaded = await avatarService.upload(req.file.buffer, req.file.mimetype);
+    const host = await profileService.setAvatar(hostId, uploaded.url);
+
+    await auditService.recordRequest(req, {
+      action: 'profile_updated',
+      hostId,
+      metadata: {
+        fields: ['avatar_url'],
+        storage: 'cloudinary',
+        public_id: uploaded.publicId,
+      },
     });
 
     res.status(200).json({ data: { host: toHostDto(host) } });

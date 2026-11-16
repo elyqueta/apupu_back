@@ -9,9 +9,11 @@ Migrações:
 [`../migrations/1739900000000_baseline-apupu.js`](../migrations/1739900000000_baseline-apupu.js)
 (base) e
 [`../migrations/1739900000001_host-accounts.js`](../migrations/1739900000001_host-accounts.js)
-(contas, perfil, sessões de conta e suporte ao frontend) e
+(contas, perfil, sessões de conta e suporte ao frontend),
 [`../migrations/1739900000002_host-audit-log.js`](../migrations/1739900000002_host-audit-log.js)
-(auditoria e validade dos links de gestão).
+(auditoria e validade dos links de gestão) e
+[`../migrations/1739900000004_account-retention-index.js`](../migrations/1739900000004_account-retention-index.js)
+(índice de retenção de contas).
 
 ## `event_templates`
 
@@ -147,7 +149,17 @@ Conta de anfitrião.
 | `created_at` / `updated_at` | timestamptz | |
 
 Constraints: `hosts_email_unique`, `hosts_status_check`,
-`hosts_failed_login_attempts_check`. Índice: `hosts_status_idx`.
+`hosts_failed_login_attempts_check`. Índices: `hosts_status_idx` e
+`hosts_retention_idx` (expressão `COALESCE(last_login_at, created_at)`,
+para o job de retenção).
+
+O job `npm run retention:run` elimina contas com
+`COALESCE(last_login_at, created_at)` anterior a
+`ACCOUNT_RETENTION_MONTHS` (por omissão 24). Perfil, sessões, tokens,
+tarefas e entregas de email são apagados em cascata; os eventos ficam
+com `host_id = NULL`. Os OTP de registo do mesmo email também são
+removidos. A execução é feita em lotes com `FOR UPDATE SKIP LOCKED` e
+regista apenas contagens.
 
 ## `host_profiles`
 
@@ -161,7 +173,7 @@ Perfil da conta, numa relação 1:1 com `hosts`.
 | `birth_date` | date | opcional; data de calendário no passado |
 | `locale` | text | `pt-AO` \| `en`; por omissão `pt-AO` |
 | `timezone` | text | IANA; por omissão `Africa/Luanda` |
-| `avatar_url` | text | opcional; URL, sem upload de ficheiros |
+| `avatar_url` | text | opcional; URL (por URL ou upload assinado para o Cloudinary) |
 | `created_at` / `updated_at` | timestamptz | |
 
 Constraints: `host_profiles_locale_check`,

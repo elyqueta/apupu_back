@@ -12,13 +12,26 @@ import { links } from '../utils/links.util';
 /**
  * Transporte de email.
  *
- * - `smtp`: entrega real através do provider configurado.
+ * - `resend`: API HTTP do Resend, autenticada com `RESEND_API_KEY`.
+ * - `smtp`: entrega real por SMTP. Se `SMTP_PASS` não estiver definido
+ *   mas existir `RESEND_API_KEY`, usa o SMTP do Resend
+ *   (`smtp.resend.com`, utilizador `resend`, porta 465/SSL). Assim a
+ *   mesma chave serve os dois modos e não é preciso duplicá-la.
  * - `json`: desenvolvimento. Escreve a mensagem renderizada em
  *   `EMAIL_JSON_DIR` em vez de a enviar ou de a colocar nos logs — os
  *   links contêm tokens de acesso e nunca devem aparecer em logs.
  */
 function buildTransport(): Transporter | null {
   if (env.EMAIL_TRANSPORT !== 'smtp') return null;
+
+  if (!env.SMTP_PASS && env.RESEND_API_KEY) {
+    return nodemailer.createTransport({
+      host: 'smtp.resend.com',
+      port: 465,
+      secure: true,
+      auth: { user: env.SMTP_USER ?? 'resend', pass: env.RESEND_API_KEY },
+    });
+  }
 
   return nodemailer.createTransport({
     host: env.SMTP_HOST,
@@ -32,6 +45,56 @@ function buildTransport(): Transporter | null {
 }
 
 const transport = buildTransport();
+
+const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+
+interface ResendResponse {
+  id?: unknown;
+  message?: unknown;
+}
+
+/**
+ * Envia uma mensagem pela API HTTP do Resend.
+ *
+ * O corpo de erro do provider é lido apenas para diagnóstico interno;
+ * nunca é devolvido ao cliente nem escrito nos logs com dados do
+ * destinatário. O token de convite/gestão não faz parte do erro.
+ */
+async function sendWithResend(message: MailMessage): Promise<SendResult> {
+  if (!env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY ausente com EMAIL_TRANSPORT=resend.');
+  }
+
+  const response = await fetch(RESEND_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: env.EMAIL_FROM,
+      to: [message.to],
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+    }),
+  });
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const body = (await response.json()) as ResendResponse;
+      detail = typeof body.message === 'string' ? `: ${body.message}` : '';
+    } catch {
+      // Corpo não-JSON: mantém apenas o estado HTTP.
+    }
+
+    throw new Error(`Resend respondeu ${response.status}${detail}`);
+  }
+
+  const body = (await response.json()) as ResendResponse;
+  return { providerMessageId: typeof body.id === 'string' ? body.id : null };
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -61,6 +124,10 @@ export interface SendResult {
 
 /** Envia (ou escreve em disco, em desenvolvimento) uma mensagem. */
 export async function sendMail(message: MailMessage): Promise<SendResult> {
+  if (env.EMAIL_TRANSPORT === 'resend') {
+    return sendWithResend(message);
+  }
+
   if (!transport) {
     const id = randomUUID();
     const directory = path.resolve(process.cwd(), env.EMAIL_JSON_DIR);

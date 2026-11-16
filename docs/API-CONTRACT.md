@@ -73,6 +73,7 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `429` | `rate_limited` | Limite de pedidos excedido (activo em todos os ambientes) |
 | `429` | `otp_resend_too_soon` | Pedido de novo código antes do intervalo mínimo |
 | `500` | `internal_error` | Erro inesperado; sem stack trace |
+| `503` | `avatar_upload_unavailable` | Upload de avatar indisponível: credenciais Cloudinary ausentes ou provider inacessível |
 
 ## Autenticação e cookies
 
@@ -298,7 +299,14 @@ responde `204`; exige `X-CSRF-Token`.
   `missing_fields` lista os campos em falta (atualmente só
   `birth_date`).
 - `POST /api/v1/host/profile/avatar` recebe `{ "avatar_url": "https://…" }`
-  e define o avatar (não há upload de ficheiros nesta fase).
+  e define o avatar por URL.
+- `POST /api/v1/host/profile/avatar/upload` recebe
+  `multipart/form-data` no campo `avatar` (JPEG, PNG ou WebP, até
+  `AVATAR_MAX_BYTES`). O backend assina o upload para o Cloudinary e
+  devolve o perfil já com o URL seguro; o API secret nunca sai do
+  servidor. Sem `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` e
+  `CLOUDINARY_API_SECRET` responde `503 avatar_upload_unavailable`, sem
+  afectar o avatar por URL.
 
 ### Workspace
 
@@ -1138,6 +1146,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `GET` | `/api/v1/host/profile` | `200` | `{ "data": { "host": Host } }` |
 | `PATCH` | `/api/v1/host/profile` | `200` | `{ "data": { "host": Host } }` |
 | `POST` | `/api/v1/host/profile/avatar` | `200` | `{ "data": { "host": Host } }` |
+| `POST` | `/api/v1/host/profile/avatar/upload` | `200` | `{ "data": { "host": Host } }` |
 | `GET` | `/api/v1/host/events` | `200` | `{ "data": Event[], "pagination": Pagination }` |
 | `POST` | `/api/v1/host/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "sent" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
 | `DELETE` | `/api/v1/host/events/{eventId}` | `204` | — |
@@ -1421,6 +1430,7 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `GET` | `/api/v1/host/profile` | `401 host_session_invalid` |
 | `PATCH` | `/api/v1/host/profile` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/profile/avatar` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/profile/avatar/upload` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited`; `503 avatar_upload_unavailable` |
 | `GET` | `/api/v1/host/events` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events` | `401 host_session_invalid`; `403 email_not_verified`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `401 host_session_invalid`; `403 email_not_verified`; `404 event_not_found`; `429 rate_limited` |

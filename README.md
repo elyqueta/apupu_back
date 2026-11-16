@@ -90,6 +90,7 @@ servidor.
 | `GET` | `/api/v1/host/profile` | Perfil da conta |
 | `PATCH` | `/api/v1/host/profile` | Atualiza o perfil (data de nascimento opcional) |
 | `POST` | `/api/v1/host/profile/avatar` | Define o URL do avatar |
+| `POST` | `/api/v1/host/profile/avatar/upload` | Envia imagem (multipart) e define-a como avatar via Cloudinary |
 | `GET` | `/api/v1/host/events` | Lista paginada dos eventos da conta |
 | `POST` | `/api/v1/host/events` | Cria evento na conta (email verificado) |
 | `DELETE` | `/api/v1/host/events/:eventId` | Apaga evento da conta |
@@ -183,6 +184,29 @@ Uma recusa cancela imediatamente os lembretes pendentes desse convidado.
 Cancelar o evento cancela convites/lembretes pendentes e enfileira o
 aviso de cancelamento aos convidados que não recusaram.
 
+## Retenção de contas
+
+Contas sem login durante `ACCOUNT_RETENTION_MONTHS` meses (por omissão
+24) são eliminadas pelo job operacional:
+
+```bash
+npm run retention:run
+```
+
+- O corte usa `COALESCE(last_login_at, created_at)`, por isso contas
+  criadas e nunca usadas também são abrangidas.
+- Perfil, sessões, tokens, tarefas e entregas de email são apagados em
+  cascata. Os eventos não são apagados: ficam com `host_id = NULL`,
+  como os eventos legados.
+- Os OTP de registo associados ao email são removidos.
+- Processa em lotes (`RETENTION_BATCH_SIZE`, por omissão 500) com
+  `FOR UPDATE SKIP LOCKED`, para locks curtos e execuções paralelas
+  seguras.
+- É idempotente e regista apenas contagens — nunca emails, nomes ou
+  outros dados pessoais.
+
+Recomendado em cron diário, por exemplo `0 3 * * *`.
+
 ## Email
 
 - `EMAIL_TRANSPORT=json` (desenvolvimento): não envia; escreve as
@@ -190,11 +214,34 @@ aviso de cancelamento aos convidados que não recusaram.
   `tmp/outbox/`). O conteúdo inclui links com tokens, por isso nunca é
   escrito nos logs.
 - `EMAIL_TRANSPORT=smtp`: usa `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`,
-  `SMTP_USER`, `SMTP_PASS` e `EMAIL_FROM`.
+  `SMTP_USER`, `SMTP_PASS` e `EMAIL_FROM`. Se `SMTP_PASS` estiver vazio
+  mas existir `RESEND_API_KEY`, usa o SMTP do Resend
+  (`smtp.resend.com`, utilizador `resend`, porta `465`, SSL) — a mesma
+  chave serve os dois modos.
+- `EMAIL_TRANSPORT=resend`: envia pela API HTTP do Resend
+  (`https://api.resend.com/emails`) com `RESEND_API_KEY` e
+  `EMAIL_FROM`.
+
+`onboarding@resend.dev` é o remetente de teste do Resend e só entrega
+ao email dono da conta. Para enviar a outros destinatários é preciso
+verificar um domínio no Resend e trocar `EMAIL_FROM`.
 
 A outbox tem retries com backoff exponencial (`EMAIL_MAX_ATTEMPTS`,
 `EMAIL_RETRY_BASE_MS`) e chaves idempotentes que impedem envios
 duplicados.
+
+## Avatares (Cloudinary)
+
+- `POST /api/v1/host/profile/avatar/upload` recebe
+  `multipart/form-data` no campo `avatar` (JPEG, PNG ou WebP, até
+  `AVATAR_MAX_BYTES`, por omissão 5 MiB).
+- O backend assina o upload para o Cloudinary com
+  `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` e
+  `CLOUDINARY_API_SECRET`; o segredo nunca é enviado ao frontend.
+- O URL seguro devolvido pelo Cloudinary fica guardado no perfil.
+- Sem as três variáveis, o endpoint responde
+  `503 avatar_upload_unavailable`. O avatar por URL
+  (`POST /api/v1/host/profile/avatar`) continua disponível.
 
 ## Testes e validação
 
