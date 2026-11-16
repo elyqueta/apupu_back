@@ -607,6 +607,11 @@ export const apupuSchemas = {
           email: { type: 'string', format: 'email' },
           expires_at: { type: 'string', format: 'date-time' },
           resend_available_at: { type: 'string', format: 'date-time' },
+          development_code: {
+            type: 'string',
+            pattern: '^\\d{6}$',
+            description: 'Presente apenas com NODE_ENV=development.',
+          },
         },
       },
     },

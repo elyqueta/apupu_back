@@ -126,6 +126,9 @@ ser verificado por código OTP.
 - Invalida qualquer código anterior do mesmo email.
 - Envia um código numérico de 6 dígitos, válido por
   `REGISTRATION_OTP_TTL_MINUTES` minutos (por omissão 10).
+- Em desenvolvimento (`NODE_ENV=development`), inclui também
+  `development_code` na resposta, independentemente do transporte de email.
+  Este campo não é incluído com `NODE_ENV=production`.
 - Um novo pedido antes de `REGISTRATION_OTP_RESEND_SECONDS` segundos
   (por omissão 60) devolve `429 otp_resend_too_soon`.
 
