@@ -93,6 +93,11 @@ export const errorResponses = {
     'email_not_verified',
     'Confirma o teu email antes de gerir eventos.'
   ),
+  GuestEmailNotVerified: errorResponse(
+    'A conta ainda não confirmou o email; "Meus convites" fica indisponível.',
+    'email_not_verified',
+    'Confirme o seu email para ver os seus convites.'
+  ),
   InvitationNotFound: errorResponse(
     'Token inválido, convite revogado ou reclamado por outro navegador.',
     'invitation_not_found',
@@ -365,6 +370,12 @@ export const operationErrorResponses: Record<
   },
   'get /api/v1/host/guests': {
     401: 'HostSessionInvalid',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'get /api/v1/host/invitations': {
+    401: 'HostSessionInvalid',
+    403: 'GuestEmailNotVerified',
     422: 'ValidationFailed',
     429: 'RateLimited',
   },

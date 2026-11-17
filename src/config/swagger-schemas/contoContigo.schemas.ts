@@ -403,6 +403,69 @@ export const contoContigoSchemas = {
     ],
   },
 
+  GuestEventSummary: {
+    type: 'object',
+    description:
+      'Resumo público do evento visto pela conta convidada. Não inclui ' +
+      'email do anfitrião, contribuições/banca, notas privadas nem ' +
+      'estatísticas de RSVP de terceiros.',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      title: { type: 'string', example: 'Casamento da Ana e do João' },
+      host_name: { type: 'string', example: 'Ana Silva' },
+      starts_at: { type: 'string', format: 'date-time', nullable: true },
+      timezone: { type: 'string', example: 'Africa/Luanda' },
+      status: {
+        type: 'string',
+        enum: ['draft', 'scheduled', 'cancelled', 'completed'],
+      },
+      category: {
+        type: 'string',
+        nullable: true,
+        enum: ['wedding', 'birthday', 'corporate', 'baby', 'other'],
+      },
+      template_id: { type: 'string', nullable: true, example: 'aurora' },
+      location: { $ref: '#/components/schemas/EventLocation' },
+    },
+  },
+
+  GuestInvitation: {
+    type: 'object',
+    description:
+      'Convite dirigido ao email da conta autenticada ("Meus convites"). ' +
+      'Inclui apenas os dados do próprio convite e o resumo público do ' +
+      'evento. Convites revogados não são listados.',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      event_id: { type: 'string', format: 'uuid' },
+      rsvp_status: {
+        type: 'string',
+        enum: ['pending', 'accepted', 'declined'],
+      },
+      rsvp_responded_at: { type: 'string', format: 'date-time', nullable: true },
+      table_name: { type: 'string', nullable: true, example: 'Mesa 3' },
+      invitation_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description:
+          'URL absoluto do próprio convite. O convidado pode abri-lo. ' +
+          'É `null` quando o token não pode ser reconstruído.',
+        example: 'https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0',
+      },
+      invitation_url_expires_at: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+        description:
+          'Hoje é sempre `null`: o token do convite não expira e só é ' +
+          'invalidado pela revogação (que remove o convite da lista).',
+      },
+      created_at: { type: 'string', format: 'date-time' },
+      event: { $ref: '#/components/schemas/GuestEventSummary' },
+    },
+  },
+
   Activity: {
     type: 'object',
     properties: {
@@ -498,6 +561,17 @@ export const contoContigoSchemas = {
       data: {
         type: 'array',
         items: { $ref: '#/components/schemas/HostGuest' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  GuestInvitationList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/GuestInvitation' },
       },
       pagination: { $ref: '#/components/schemas/PaginationMeta' },
     },

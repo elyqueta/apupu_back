@@ -76,6 +76,19 @@ const hostGuestsQuerySchema = z.object({
   ...paginationQueryFields,
 });
 
+/**
+ * "Meus convites": lista da conta autenticada como convidada.
+ *
+ * A ordenação por omissão é `starts_at asc` — próximos eventos
+ * primeiro. Não há filtro por evento: a lista é sempre a do email da
+ * sessão.
+ */
+const guestInvitationsQuerySchema = z.object({
+  sort: z.enum(['starts_at']).default('starts_at'),
+  order: z.enum(SORT_ORDERS).default('asc'),
+  ...paginationQueryFields,
+});
+
 const paginatedQuerySchema = z.object({
   ...paginationQueryFields,
 });
@@ -117,6 +130,7 @@ const taskIdParamsSchema = z.object({
 export {
   hostEventsQuerySchema,
   hostGuestsQuerySchema,
+  guestInvitationsQuerySchema,
   paginatedQuerySchema,
   eventReportQuerySchema,
   tasksQuerySchema,
@@ -129,6 +143,7 @@ export type UpdateProfileBody = z.infer<typeof updateProfileSchema>;
 export type AvatarBody = z.infer<typeof avatarSchema>;
 export type HostEventsQuery = z.infer<typeof hostEventsQuerySchema>;
 export type HostGuestsQuery = z.infer<typeof hostGuestsQuerySchema>;
+export type GuestInvitationsQuery = z.infer<typeof guestInvitationsQuerySchema>;
 export type EventReportQuery = z.infer<typeof eventReportQuerySchema>;
 export type TasksQuery = z.infer<typeof tasksQuerySchema>;
 export type CreateTaskBody = z.infer<typeof createTaskSchema>;

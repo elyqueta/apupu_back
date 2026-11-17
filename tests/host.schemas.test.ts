@@ -3,6 +3,7 @@ import {
   avatarSchema,
   createTaskSchema,
   eventReportQuerySchema,
+  guestInvitationsQuerySchema,
   hostEventsQuerySchema,
   hostGuestsQuerySchema,
   updateProfileSchema,
@@ -91,6 +92,27 @@ describe('schemas de listas do workspace', () => {
     expect(eventReportQuerySchema.parse({ days: '7' })).toEqual({ days: 7 });
     expect(eventReportQuerySchema.safeParse({ days: 0 }).success).toBe(false);
     expect(eventReportQuerySchema.safeParse({ days: 366 }).success).toBe(false);
+  });
+
+  it('aplica a ordenação ascendente de "Meus convites"', () => {
+    expect(guestInvitationsQuerySchema.parse({})).toEqual({
+      sort: 'starts_at',
+      order: 'asc',
+      page: 1,
+      page_size: 20,
+    });
+    expect(
+      guestInvitationsQuerySchema.parse({ sort: 'starts_at', order: 'desc', page: '2' })
+    ).toEqual({
+      sort: 'starts_at',
+      order: 'desc',
+      page: 2,
+      page_size: 20,
+    });
+
+    expect(guestInvitationsQuerySchema.safeParse({ sort: 'title' }).success).toBe(false);
+    expect(guestInvitationsQuerySchema.safeParse({ order: 'sideways' }).success).toBe(false);
+    expect(guestInvitationsQuerySchema.safeParse({ page_size: '101' }).success).toBe(false);
   });
 });
 

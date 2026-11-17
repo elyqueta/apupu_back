@@ -107,8 +107,8 @@ sessão legada do evento, depois a sessão de conta com verificação de
 `events.host_id`. Uma conta válida sem posse do evento recebe `404`
 `event_not_found`; sem sessão válida, `401` genérico. As rotas de
 workspace (`/host/events` sem `:eventId`, `/host/profile`,
-`/host/dashboard`, `/host/guests`, `/host/activity`, `/host/reports`,
-`/host/tasks`) usam apenas a sessão de conta.
+`/host/dashboard`, `/host/guests`, `/host/invitations`, `/host/activity`,
+`/host/reports`, `/host/tasks`) usam apenas a sessão de conta.
 
 ## Conta do anfitrião
 
@@ -334,6 +334,7 @@ Todas as rotas abaixo exigem sessão de conta; as mutações exigem também
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | Emite e envia um novo link de gestão; invalida o anterior |
 | `GET` | `/api/v1/host/dashboard` | Próximo evento, próximos eventos e totais |
 | `GET` | `/api/v1/host/guests` | Lista paginada de convidados de todos os eventos |
+| `GET` | `/api/v1/host/invitations` | "Meus convites": eventos em que a conta foi convidada |
 | `GET` | `/api/v1/host/activity` | Feed de actividade da conta (paginado) |
 | `GET` | `/api/v1/host/events/{eventId}/activity` | Feed de actividade do evento (paginado) |
 | `GET` | `/api/v1/host/reports/summary` | Agregados por evento e taxas |
@@ -349,6 +350,9 @@ Parâmetros de lista:
   (`asc` \| `desc`), `page`, `page_size`.
 - Convidados: `event_id`, `rsvp_status`, `send_status`, `q`, `page`,
   `page_size`.
+- "Meus convites": `sort` (`starts_at`), `order` (`asc` \| `desc`,
+  omissão `asc`), `page`, `page_size`. Não há filtro por email: a lista
+  é sempre a do email da conta autenticada.
 - Relatório diário: `days` (1 a 365, por omissão 30); a série usa dias
   UTC, um ponto por dia, incluindo dias sem movimento.
 
@@ -493,6 +497,69 @@ resumo do evento:
   "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
 }
 ```
+
+`GET /api/v1/host/invitations` — "Meus convites" — `200`; cada item é o
+próprio convite com um resumo público do evento:
+
+```json
+{
+  "data": [
+    {
+      "id": "1a80b39f-cb8c-49d2-86ff-cf4de1b74803",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "rsvp_status": "pending",
+      "rsvp_responded_at": null,
+      "table_name": "Mesa 3",
+      "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
+      "invitation_url_expires_at": null,
+      "created_at": "2026-11-01T10:00:00.000Z",
+      "event": {
+        "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+        "title": "Casamento da Ana e do João",
+        "host_name": "Ana Silva",
+        "starts_at": "2026-12-01T17:00:00.000Z",
+        "timezone": "Africa/Luanda",
+        "status": "scheduled",
+        "category": "wedding",
+        "template_id": "aurora",
+        "location": {
+          "type": "venue",
+          "name": "Salão X",
+          "address": "Luanda",
+          "online_url": null
+        }
+      }
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+}
+```
+
+Regras de "Meus convites":
+
+- Associação **opção A**: `invitations.guest_email` = `hosts.email` da
+  conta autenticada, comparado sem distinguir maiúsculas/minúsculas. Não
+  há ligação explícita convite↔conta nem migração.
+- Só a conta com o email verificado vê a lista; antes disso a resposta é
+  `403 email_not_verified`. Isto impede que alguém registe o email de
+  outra pessoa e reclame convites alheios.
+- Um convite criado antes de a conta existir aparece automaticamente
+  assim que a conta com esse email estiver verificada.
+- Se a conta mudar de email, os convites antigos deixam de aparecer: a
+  associação segue sempre o email **atual** da conta. Voltar ao email
+  anterior faz reaparecer os convites.
+- Convites revogados não aparecem (`claim_revoked_at IS NOT NULL`).
+- Eventos `cancelled`/`completed` continuam a aparecer com o respectivo
+  `event.status`.
+- Lista vazia devolve `200` com `data: []` e paginação a zeros.
+- Ordenação por omissão: `starts_at asc` (próximos primeiro), com
+  `NULLS LAST`; desempate por `id`. `order=desc` inverte.
+- Não expõe outros convidados, contagens, email/telefone de convidados,
+  contribuições/banca, notas privadas, `host_email`, `message`, `rules`
+  nem estatísticas.
+- `invitation_url` é o mesmo link do email, apontando para
+  `<APP_BASE_URL>/convite/<token>`; o convidado pode abri-lo. Não expira
+  nesta fase (`invitation_url_expires_at` é `null`).
 
 `GET /api/v1/host/activity` — `200`; inclui `event_title`:
 
@@ -970,9 +1037,10 @@ Semântica do link de partilha:
 - `POST .../invitations/{id}/resend` mantém o mesmo token/link.
 - `POST .../invitations/{id}/revoke` invalida o link para sempre; a
   resposta seguinte devolve `invitation_url: null`.
-- `GET /host/guests` e `GET /host/events/{eventId}/invitations` (e o
-  detalhe do evento) incluem o campo; as respostas públicas
-  (`/public/invitations/*`) nunca o incluem.
+- `GET /host/guests`, `GET /host/invitations` e
+  `GET /host/events/{eventId}/invitations` (e o detalhe do evento)
+  incluem o campo; as respostas públicas (`/public/invitations/*`)
+  nunca o incluem.
 
 ### `HostGuest`
 
@@ -989,6 +1057,44 @@ Semântica do link de partilha:
   }
 }
 ```
+
+### `GuestInvitation`
+
+Item de "Meus convites" (`GET /api/v1/host/invitations`). Contém apenas
+o próprio convite e um resumo público do evento:
+
+```json
+{
+  "id": "1a80b39f-cb8c-49d2-86ff-cf4de1b74803",
+  "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+  "rsvp_status": "pending",
+  "rsvp_responded_at": null,
+  "table_name": "Mesa 3",
+  "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
+  "invitation_url_expires_at": null,
+  "created_at": "2026-11-01T10:00:00.000Z",
+  "event": {
+    "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+    "title": "Casamento da Ana e do João",
+    "host_name": "Ana Silva",
+    "starts_at": "2026-12-01T17:00:00.000Z",
+    "timezone": "Africa/Luanda",
+    "status": "scheduled",
+    "category": "wedding",
+    "template_id": "aurora",
+    "location": {
+      "type": "venue",
+      "name": "Salão X",
+      "address": "Luanda",
+      "online_url": null
+    }
+  }
+}
+```
+
+Não inclui `guest_name`, `guest_email`, `guest_phone`, `send_status`,
+`send_count`, `updated_at`, `host_email`, `contribution`, `message`,
+`rules` nem `stats`.
 
 ### `Activity`
 
@@ -1195,6 +1301,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `202` | `{ "data": { "event_id": uuid, "manage_email_status": "queued" \| "failed", "manage_token_expires_at": string \| null } }` |
 | `GET` | `/api/v1/host/dashboard` | `200` | `{ "data": { "next_event": Event \| null, "upcoming": Event[], "totals": Totals } }` |
 | `GET` | `/api/v1/host/guests` | `200` | `{ "data": HostGuest[], "pagination": Pagination }` |
+| `GET` | `/api/v1/host/invitations` | `200` | `{ "data": GuestInvitation[], "pagination": Pagination }` |
 | `GET` | `/api/v1/host/activity` | `200` | `{ "data": ActivityWithEvent[], "pagination": Pagination }` |
 | `GET` | `/api/v1/host/events/{eventId}/activity` | `200` | `{ "data": Activity[], "pagination": Pagination }` |
 | `GET` | `/api/v1/host/reports/summary` | `200` | `{ "data": ReportSummary }` |
@@ -1478,6 +1585,7 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `401 host_session_invalid`; `403 email_not_verified`; `404 event_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/host/dashboard` | `401 host_session_invalid` |
 | `GET` | `/api/v1/host/guests` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/invitations` | `401 host_session_invalid`; `403 email_not_verified`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/activity` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}/activity` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/reports/summary` | `401 host_session_invalid` |

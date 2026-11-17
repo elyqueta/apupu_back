@@ -104,7 +104,9 @@ Constraints:
 - `invitations_event_email_unique`: `(event_id, guest_email)` único.
 
 Índices: `event_id`, `(event_id, rsvp_status)`,
-`(event_id, send_status)`.
+`(event_id, send_status)` e `invitations_account_email_idx` —
+`lower(guest_email)` parcial (`WHERE claim_revoked_at IS NULL`) para
+"Meus convites".
 
 Invariantes:
 
@@ -121,6 +123,27 @@ Invariantes:
    Não existe, nesta fase, rotação/reativação do token: o convite
    revogado devolve `invitation_url: null` e o link público passa a
    `404 invitation_not_found`.
+
+### "Meus convites" (conta convidada)
+
+A lista `GET /api/v1/host/invitations` associa convites à conta pelo
+**email**, sem coluna nova nem migração:
+
+- `lower(invitations.guest_email) = lower(hosts.email)`.
+- `hosts.email` é `citext`; `guest_email` é `text`, daí o `lower()` nos
+  dois lados.
+- Só contas com `hosts.email_verified_at` preenchido podem consultar.
+- Convites com `claim_revoked_at` preenchido são excluídos.
+- A associação é avaliada em cada pedido: um convite criado antes da
+  conta aparece assim que o registo/verificação desse email termina; se
+  a conta mudar de email, deixa de ver os convites do email antigo.
+- Ordenação: `events.starts_at ASC NULLS LAST, invitations.id ASC`
+  (aceita `order=desc`).
+
+Não é criada uma FK convite↔conta (opção B) nesta fase. Se no futuro
+for necessário manter o histórico após mudança de email, ou impedir que
+um email reutilizado veja convites antigos, será preciso adicionar uma
+coluna explícita (`account_id`) e migrar os convites existentes.
 
 ## `event_host_sessions`
 

@@ -44,6 +44,7 @@ describe('app', () => {
         '/api/v1/host/events',
         '/api/v1/host/dashboard',
         '/api/v1/host/guests',
+        '/api/v1/host/invitations',
         '/api/v1/host/reports/summary',
         '/api/v1/host/tasks',
         '/api/v1/host/session',
@@ -66,6 +67,7 @@ describe('app', () => {
     expect(schemas).toHaveProperty('HostProfile');
     expect(schemas).toHaveProperty('PaginationMeta');
     expect(schemas).toHaveProperty('EventCategory');
+    expect(schemas).toHaveProperty('GuestInvitation');
     expect(response.body.components?.securitySchemes).toHaveProperty('accountSession');
     expect(invitationCreate.security).toEqual([
       { hostSession: [] },

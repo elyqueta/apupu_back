@@ -98,6 +98,7 @@ servidor.
 | `POST` | `/api/v1/host/events/:eventId/manage-link/resend` | Emite e envia um novo link de gestão (rotação) |
 | `GET` | `/api/v1/host/dashboard` | Próximo evento, próximos e totais |
 | `GET` | `/api/v1/host/guests` | Convidados de todos os eventos (paginado) |
+| `GET` | `/api/v1/host/invitations` | "Meus convites": eventos em que a conta foi convidada (email verificado) |
 | `GET` | `/api/v1/host/activity` | Actividade da conta (paginada) |
 | `GET` | `/api/v1/host/events/:eventId/activity` | Actividade do evento (paginada) |
 | `GET` | `/api/v1/host/reports/summary` | Agregados por evento e taxas |

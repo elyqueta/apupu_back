@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { activityController } from '../../controllers/activity.controller';
+import { guestInvitationController } from '../../controllers/guestInvitation.controller';
 import { hostEventController } from '../../controllers/hostEvent.controller';
 import { hostGuestController } from '../../controllers/hostGuest.controller';
 import { profileController } from '../../controllers/profile.controller';
@@ -9,7 +10,10 @@ import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
 import { writeLimiter } from '../../middlewares/rateLimiter';
 import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
-import { requireVerifiedEmail } from '../../middlewares/requireVerifiedEmail';
+import {
+  requireVerifiedEmail,
+  requireVerifiedGuestEmail,
+} from '../../middlewares/requireVerifiedEmail';
 import { uploadAvatar } from '../../middlewares/uploadAvatar';
 import { validate } from '../../middlewares/validate';
 import { createEventSchema, eventIdParamsSchema } from '../../schemas/event.schemas';
@@ -17,6 +21,7 @@ import {
   avatarSchema,
   createTaskSchema,
   eventReportQuerySchema,
+  guestInvitationsQuerySchema,
   hostEventsQuerySchema,
   hostGuestsQuerySchema,
   paginatedQuerySchema,
@@ -379,6 +384,63 @@ router.get(
   asyncHandler(hostAccountAuth),
   validate({ query: hostGuestsQuerySchema }),
   asyncHandler(hostGuestController.list)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/invitations:
+ *   get:
+ *     tags: [Convidados]
+ *     summary: Lista os convites dirigidos ao email da conta autenticada
+ *     description: >
+ *       "Meus convites": eventos em que a conta autenticada foi
+ *       convidada. A associação é feita por
+ *       `invitations.guest_email` = email da conta, comparado sem
+ *       distinguir maiúsculas/minúsculas (opção A). Exige email
+ *       verificado; uma conta por verificar recebe `403
+ *       email_not_verified`. Convites revogados não aparecem.
+ *
+ *       Cada item inclui apenas o próprio convite e um resumo público
+ *       do evento (título, anfitrião, data, fuso, estado, categoria,
+ *       template e local). Nunca expõe outros convidados, contagens,
+ *       contribuições/banca ou notas privadas do evento.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: query
+ *         name: sort
+ *         schema: { type: string, enum: [starts_at], default: starts_at }
+ *       - in: query
+ *         name: order
+ *         schema: { type: string, enum: [asc, desc], default: asc }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1, default: 1 }
+ *       - in: query
+ *         name: page_size
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+ *     responses:
+ *       200:
+ *         description: >
+ *           Convites da conta, ordenados por `starts_at` ascendente
+ *           (eventos sem data ficam no fim). Lista vazia devolve
+ *           `data: []` e paginação a zeros.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/GuestInvitationList' }
+ *       401:
+ *         description: Sessão ausente ou expirada (`host_session_invalid`).
+ *       403:
+ *         description: Email da conta por verificar (`email_not_verified`).
+ *       422:
+ *         description: Parâmetros de paginação/ordenação inválidos.
+ */
+router.get(
+  '/invitations',
+  asyncHandler(hostAccountAuth),
+  requireVerifiedGuestEmail,
+  validate({ query: guestInvitationsQuerySchema }),
+  asyncHandler(guestInvitationController.listMine)
 );
 
 /**

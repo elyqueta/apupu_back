@@ -1,11 +1,11 @@
 import { logger } from '../config/logger';
 import { Event } from '../types/event.types';
-import { Invitation, InvitationWithEvent } from '../types/invitation.types';
+import { AccountInvitation, Invitation, InvitationWithEvent } from '../types/invitation.types';
 import { EmailDelivery } from '../types/emailDelivery.types';
 import { EventTemplate } from '../types/template.types';
 import { decryptToken } from '../utils/crypto.util';
 import { links } from '../utils/links.util';
-import { PublicEventDto, toPublicEventDto } from './event.dto';
+import { EventLocationDto, PublicEventDto, toPublicEventDto } from './event.dto';
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -103,6 +103,66 @@ export function toHostGuestDto(invitation: InvitationWithEvent): HostGuestDto {
       title: invitation.eventTitle,
       starts_at: iso(invitation.eventStartsAt),
       status: invitation.eventStatus,
+    },
+  };
+}
+
+export interface GuestEventSummaryDto {
+  id: string;
+  title: string;
+  host_name: string;
+  starts_at: string | null;
+  timezone: string;
+  status: string;
+  category: string | null;
+  template_id: string | null;
+  location: EventLocationDto;
+}
+
+/**
+ * "Meus convites": o próprio convite + resumo público do evento.
+ *
+ * Não inclui nome/email/telefone do convidado (nem de terceiros),
+ * estado de envio, contagens, contribuições ou notas privadas.
+ */
+export interface GuestInvitationDto {
+  id: string;
+  event_id: string;
+  rsvp_status: string;
+  rsvp_responded_at: string | null;
+  table_name: string | null;
+  invitation_url: string | null;
+  invitation_url_expires_at: string | null;
+  created_at: string;
+  event: GuestEventSummaryDto;
+}
+
+/** Vista da conta convidada ("Meus convites"). */
+export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvitationDto {
+  return {
+    id: invitation.id,
+    event_id: invitation.eventId,
+    rsvp_status: invitation.rsvpStatus,
+    rsvp_responded_at: iso(invitation.rsvpRespondedAt),
+    table_name: invitation.tableName,
+    invitation_url: invitationUrl(invitation),
+    invitation_url_expires_at: null,
+    created_at: invitation.createdAt.toISOString(),
+    event: {
+      id: invitation.eventId,
+      title: invitation.eventTitle,
+      host_name: invitation.eventHostName,
+      starts_at: iso(invitation.eventStartsAt),
+      timezone: invitation.eventTimezone,
+      status: invitation.eventStatus,
+      category: invitation.eventCategory,
+      template_id: invitation.eventTemplateId,
+      location: {
+        type: invitation.eventLocation.type,
+        name: invitation.eventLocation.name,
+        address: invitation.eventLocation.address,
+        online_url: invitation.eventLocation.onlineUrl,
+      },
     },
   };
 }

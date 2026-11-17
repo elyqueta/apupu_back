@@ -375,6 +375,25 @@ Parâmetros: `event_id`, `rsvp_status`, `send_status`, `q`, `page`, `page_size`.
 Cada item inclui os campos do convite + o evento a que pertence (`event`:
 `{id,title,starts_at,status}`). Reutiliza o esquema `Invitation`.
 
+### 5.2.1 Meus convites (`/convites`)
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/api/v1/host/invitations` | Eventos em que a conta autenticada foi convidada |
+
+Parâmetros: `sort` (`starts_at`), `order` (`asc` \| `desc`, omissão `asc`),
+`page`, `page_size`. Exige sessão de conta com email verificado
+(`403 email_not_verified` antes disso). A associação é feita pelo email da
+conta (`invitations.guest_email`, case-insensitive); se a conta mudar de
+email, os convites antigos deixam de aparecer. Convites revogados não são
+listados; eventos cancelados/concluídos aparecem com `event.status`.
+
+Cada item (`GuestInvitation`) inclui o próprio convite (`rsvp_status`,
+`rsvp_responded_at`, `table_name`, `invitation_url`, `created_at`) e um
+resumo público do evento (`id`, `title`, `host_name`, `starts_at`,
+`timezone`, `status`, `category`, `template_id`, `location`). Nunca inclui
+outros convidados, contagens, contribuições ou notas privadas.
+
 ### 5.3 Actividade (feed)
 
 | Método | Rota | Descrição |

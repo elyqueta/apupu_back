@@ -1,6 +1,8 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../database/pool';
+import { EventCategory, EventLocation, EventStatus } from '../types/event.types';
 import {
+  AccountInvitation,
   Invitation,
   InvitationWithEvent,
   RsvpStatus,
@@ -76,6 +78,41 @@ function toInvitationWithEvent(row: InvitationWithEventRow): InvitationWithEvent
   };
 }
 
+interface AccountInvitationRow extends InvitationRow {
+  event_title: string;
+  event_host_name: string;
+  event_starts_at: Date;
+  event_timezone: string;
+  event_status: EventStatus;
+  event_category: EventCategory | null;
+  event_template_id: string | null;
+  event_location_type: 'venue' | 'online';
+  event_location_name: string | null;
+  event_location_address: string | null;
+  event_online_url: string | null;
+}
+
+function toAccountInvitation(row: AccountInvitationRow): AccountInvitation {
+  const eventLocation: EventLocation = {
+    type: row.event_location_type,
+    name: row.event_location_name,
+    address: row.event_location_address,
+    onlineUrl: row.event_online_url,
+  };
+
+  return {
+    ...toInvitation(row),
+    eventTitle: row.event_title,
+    eventHostName: row.event_host_name,
+    eventStartsAt: row.event_starts_at,
+    eventTimezone: row.event_timezone,
+    eventStatus: row.event_status,
+    eventCategory: row.event_category,
+    eventTemplateId: row.event_template_id,
+    eventLocation,
+  };
+}
+
 export interface InsertInvitationData {
   eventId: string;
   guestName: string;
@@ -92,6 +129,21 @@ export interface HostGuestListFilters {
   rsvpStatus?: RsvpStatus;
   sendStatus?: SendStatus;
   q?: string;
+  offset: number;
+  limit: number;
+}
+
+/**
+ * Filtros de "Meus convites".
+ *
+ * `email` vem sempre da sessão, nunca do pedido. A comparação é
+ * case-insensitive porque `hosts.email` é `citext` e `guest_email` é
+ * `text`.
+ */
+export interface AccountInvitationListFilters {
+  email: string;
+  sort: 'starts_at';
+  order: 'asc' | 'desc';
   offset: number;
   limit: number;
 }
@@ -245,6 +297,61 @@ export const invitationRepository = {
 
     return {
       items: result.rows.map(toInvitationWithEvent),
+      total: Number(countResult.rows[0]?.total ?? '0'),
+    };
+  },
+
+  /**
+   * Lista paginada dos convites dirigidos ao email de uma conta.
+   *
+   * Regras de "Meus convites":
+   * - associação por `guest_email` (case-insensitive) ao email da
+   *   conta autenticada — opção A, sem migração;
+   * - convites revogados não aparecem;
+   * - `ORDER BY starts_at` com `NULLS LAST` para que eventos sem data
+   *   fiquem no fim (hoje `starts_at` é obrigatório, mas o contrato
+   *   fica robusto a eventos legados);
+   * - apenas o resumo público do evento acompanha o convite.
+   */
+  async listForAccountEmail(
+    filters: AccountInvitationListFilters
+  ): Promise<{ items: AccountInvitation[]; total: number }> {
+    const where = 'lower(i.guest_email) = lower($1) AND i.claim_revoked_at IS NULL';
+    const values: unknown[] = [filters.email];
+    const direction = filters.order === 'asc' ? 'ASC' : 'DESC';
+
+    const countResult = await query<{ total: string }>(
+      `SELECT count(*)::text AS total
+         FROM invitations i
+         JOIN events e ON e.id = i.event_id
+        WHERE ${where}`,
+      values
+    );
+
+    const listValues = [...values, filters.limit, filters.offset];
+    const result = await query<AccountInvitationRow>(
+      `SELECT ${SELECT_COLUMNS.split(',').map((column) => `i.${column.trim()}`).join(', ')},
+              e.title AS event_title,
+              e.host_name AS event_host_name,
+              e.starts_at AS event_starts_at,
+              e.timezone AS event_timezone,
+              e.status AS event_status,
+              e.category AS event_category,
+              e.template_id AS event_template_id,
+              e.location_type AS event_location_type,
+              e.location_name AS event_location_name,
+              e.location_address AS event_location_address,
+              e.online_url AS event_online_url
+         FROM invitations i
+         JOIN events e ON e.id = i.event_id
+        WHERE ${where}
+        ORDER BY e.${filters.sort} ${direction} NULLS LAST, i.id ${direction}
+        LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,
+      listValues
+    );
+
+    return {
+      items: result.rows.map(toAccountInvitation),
       total: Number(countResult.rows[0]?.total ?? '0'),
     };
   },

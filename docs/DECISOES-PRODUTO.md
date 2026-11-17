@@ -264,3 +264,32 @@ mantém-se como ponto de extensão.
   (por exemplo, para recuperar de um claim indevido), terá de ser
   adicionada explicitamente com nova chave idempotente e reset de
   `claim_hash`.
+
+## 20. "Meus convites" — conta convidada (opção A)
+
+- `GET /api/v1/host/invitations` devolve os convites dirigidos ao email
+  da conta autenticada. A rota usa apenas `accountSession`; não aceita a
+  sessão de gestão de um evento.
+- Associação escolhida: **opção A** — `invitations.guest_email` =
+  `hosts.email`, comparado sem distinguir maiúsculas/minúsculas
+  (`lower()` nos dois lados). Não há coluna nova, migração nem impacto
+  nos convites existentes.
+- Só contas com email verificado podem consultar (`403
+  email_not_verified`). Sem esta barreira, alguém poderia registar o
+  email de outra pessoa e reclamar os convites antes do dono.
+- A associação é dinâmica: convites anteriores à conta aparecem assim
+  que o email é verificado; se a conta mudar de email, deixa de ver os
+  convites do email antigo (voltar atrás faz reaparecer).
+- Convites revogados são excluídos. Eventos cancelados/concluídos
+  aparecem com o `event.status`, para o convidado perceber que já não se
+  realiza ou já passou.
+- A resposta expõe apenas o próprio convite (RSVP, mesa, `created_at`,
+  `invitation_url`) e um resumo público do evento (título, anfitrião,
+  data, fuso, estado, categoria, template, local). Nunca outros
+  convidados, contagens, contribuições/banca, notas privadas,
+  `host_email` ou estatísticas.
+- `invitation_url` é o mesmo link do email; o convidado pode abri-lo.
+  Não expira nesta fase e é `null` se o token não puder ser reconstruído.
+- A opção B (FK explícita `account_id` no convite) fica reservada para
+  quando for necessário preservar o histórico após mudança de email ou
+  impedir que um email reutilizado veja convites antigos.
