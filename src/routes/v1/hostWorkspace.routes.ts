@@ -10,6 +10,7 @@ import { reportController } from '../../controllers/report.controller';
 import { taskController } from '../../controllers/task.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
+import { hostAuth } from '../../middlewares/hostAuth';
 import { writeLimiter } from '../../middlewares/rateLimiter';
 import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
 import {
@@ -647,6 +648,7 @@ router.get(
  *     tags: [Workspace]
  *     summary: Feed de actividade de um evento
  *     security:
+ *       - hostSession: []
  *       - accountSession: []
  *     parameters:
  *       - in: path
@@ -671,7 +673,7 @@ router.get(
 router.get(
   '/events/:eventId/activity',
   validate({ params: eventIdParamsSchema, query: paginatedQuerySchema }),
-  asyncHandler(hostAccountAuth),
+  asyncHandler(hostAuth),
   asyncHandler(activityController.listForEvent)
 );
 

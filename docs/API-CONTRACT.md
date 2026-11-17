@@ -107,11 +107,11 @@ Pedidos mutáveis autenticados por cookie exigem o cabeçalho
 cookie legível). O valor esperado é recalculado no servidor a partir da
 capacidade `HttpOnly`; um site cross-site não o consegue ler.
 
-As rotas `GET/PATCH /host/events/{eventId}` e as rotas de convidados por
-evento aceitam **qualquer** das duas sessões de anfitrião: primeiro a
-sessão legada do evento, depois a sessão de conta com verificação de
-`events.host_id`. Uma conta válida sem posse do evento recebe `404`
-`event_not_found`; sem sessão válida, `401` genérico. As rotas de
+As rotas `GET/PATCH /host/events/{eventId}`, `GET /host/events/{eventId}/activity`
+e as rotas de convidados por evento aceitam **qualquer** das duas sessões de
+anfitrião: primeiro a sessão legada do evento, depois a sessão de conta com
+verificação de `events.host_id`. Uma conta válida sem posse do evento recebe
+`404 event_not_found`; sem sessão válida, `401` genérico. As rotas de
 workspace (`/host/events` sem `:eventId`, `/host/profile`,
 `/host/dashboard`, `/host/guests`, `/host/invitations`, `/host/activity`,
 `/host/reports`, `/host/tasks`) usam apenas a sessão de conta.
