@@ -1,16 +1,16 @@
 import path from 'node:path';
 import swaggerJsdoc from 'swagger-jsdoc';
 import { env } from './env';
-import { apupuSchemas } from './swagger-schemas/apupu.schemas';
+import { contoContigoSchemas } from './swagger-schemas/contoContigo.schemas';
 import { errorResponses, operationErrorResponses } from './swagger-responses';
 
 const swaggerDefinition: swaggerJsdoc.OAS3Definition = {
   openapi: '3.0.0',
   info: {
-    title: 'Conta Comigo API',
+    title: 'Conto Contigo API',
     version: '0.1.0',
     description:
-      'API REST do Conta Comigo — plataforma de convites para eventos. ' +
+      'API REST do Conto Contigo — plataforma de convites para eventos. ' +
       'Os anfitriões podem criar conta (email + senha) e gerir eventos no ' +
       'workspace autenticado; o fluxo legado por link secreto continua ' +
       'válido e o aceite público do convite não exige conta. ' +
@@ -25,7 +25,7 @@ const swaggerDefinition: swaggerJsdoc.OAS3Definition = {
     },
   ],
   components: {
-    schemas: apupuSchemas,
+    schemas: contoContigoSchemas,
     securitySchemes: {
       hostSession: {
         type: 'apiKey',

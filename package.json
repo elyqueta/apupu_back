@@ -1,7 +1,7 @@
 {
-  "name": "apupu-backend",
+  "name": "conto-contigo-backend",
   "version": "0.1.0",
-  "description": "API REST do Conta Comigo — plataforma de convites para eventos",
+  "description": "API REST do Conto Contigo — plataforma de convites para eventos",
   "main": "dist/server.js",
   "engines": {
     "node": ">=20.0.0"
@@ -29,7 +29,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "keywords": [
-    "apupu",
+    "conto-contigo",
     "convites",
     "eventos",
     "api"

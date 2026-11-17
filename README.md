@@ -1,6 +1,6 @@
-# Conta Comigo — Backend
+# Conto Contigo — Backend
 
-API REST do **Conta Comigo**, uma plataforma de convites para eventos.
+API REST do **Conto Contigo**, uma plataforma de convites para eventos.
 
 - **Stack:** Node.js 20 + Express 4 + TypeScript 5 + PostgreSQL 16
 - **Porta da API:** `3000`

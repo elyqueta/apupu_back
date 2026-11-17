@@ -8,10 +8,12 @@ import { DeliveryContext } from '../repositories/emailDelivery.repository';
 import { formatDateTime } from '../utils/date.util';
 import { decryptToken } from '../utils/crypto.util';
 import { links } from '../utils/links.util';
+import { emailSender } from './emailSender.service';
 
 /**
  * Transporte de email.
  *
+ * - `brevo`: SMTP transaccional autenticado com as credenciais Brevo.
  * - `resend`: API HTTP do Resend, autenticada com `RESEND_API_KEY`.
  * - `smtp`: entrega real por SMTP. Se `SMTP_PASS` não estiver definido
  *   mas existir `RESEND_API_KEY`, usa o SMTP do Resend
@@ -124,6 +126,10 @@ export interface SendResult {
 
 /** Envia (ou escreve em disco, em desenvolvimento) uma mensagem. */
 export async function sendMail(message: MailMessage): Promise<SendResult> {
+  if (env.EMAIL_TRANSPORT === 'brevo') {
+    return emailSender.send(message);
+  }
+
   if (env.EMAIL_TRANSPORT === 'resend') {
     return sendWithResend(message);
   }
@@ -295,19 +301,19 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
 
       return {
         to: context.recipientEmail,
-        subject: 'Confirma o teu email — Conta Comigo',
+        subject: 'Confirma o teu email — Conto Contigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'Criaste uma conta no Conta Comigo. Confirma o teu email para poderes criar e gerir eventos:',
+          'Criaste uma conta no Conto Contigo. Confirma o teu email para poderes criar e gerir eventos:',
           url,
           '',
           'Este link expira ao fim de 24 horas e só pode ser usado uma vez.',
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>Criaste uma conta no Conta Comigo. Confirma o teu email para poderes criar e gerir eventos:</p>
+          <p>Criaste uma conta no Conto Contigo. Confirma o teu email para poderes criar e gerir eventos:</p>
           <p><a href="${escapeHtml(url)}">Confirmar email</a></p>
           <p>Este link expira ao fim de 24 horas e só pode ser usado uma vez.</p>
         `,
@@ -320,12 +326,12 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
 
       return {
         to: context.recipientEmail,
-        subject: 'O teu código de confirmação — Conta Comigo',
+        subject: 'O teu código de confirmação — Conto Contigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'O teu código de confirmação da Conta Comigo é:',
+          'O teu código de confirmação do Conto Contigo é:',
           code,
           '',
           `O código expira ao fim de ${minutes} minutos e só pode ser usado uma vez.`,
@@ -333,7 +339,7 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>O teu código de confirmação da Conta Comigo é:</p>
+          <p>O teu código de confirmação do Conto Contigo é:</p>
           <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px;">${escapeHtml(code)}</p>
           <p>O código expira ao fim de ${minutes} minutos e só pode ser usado uma vez.</p>
           <p>Se não pediste este código, ignora este email.</p>
@@ -346,19 +352,19 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
 
       return {
         to: context.recipientEmail,
-        subject: 'Reposição de senha — Conta Comigo',
+        subject: 'Reposição de senha — Conto Contigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'Recebemos um pedido para repor a senha da tua conta no Conta Comigo:',
+          'Recebemos um pedido para repor a senha da tua conta no Conto Contigo:',
           url,
           '',
           'Se não fizeste este pedido, ignora este email. O link expira ao fim de 60 minutos.',
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>Recebemos um pedido para repor a senha da tua conta no Conta Comigo:</p>
+          <p>Recebemos um pedido para repor a senha da tua conta no Conto Contigo:</p>
           <p><a href="${escapeHtml(url)}">Definir nova senha</a></p>
           <p>Se não fizeste este pedido, ignora este email. O link expira ao fim de 60 minutos.</p>
         `,
@@ -368,20 +374,20 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
     case 'host_welcome': {
       return {
         to: context.recipientEmail,
-        subject: 'Bem-vindo ao Conta Comigo',
+        subject: 'Bem-vindo ao Conto Contigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'A tua conta no Conta Comigo foi criada e o teu email já está confirmado.',
+          'A tua conta no Conto Contigo foi criada e o teu email já está confirmado.',
           'Já podes criar e gerir os teus eventos.',
           links.login(),
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>A tua conta no Conta Comigo foi criada e o teu email já está confirmado.</p>
+          <p>A tua conta no Conto Contigo foi criada e o teu email já está confirmado.</p>
           <p>Já podes criar e gerir os teus eventos.</p>
-          <p><a href="${escapeHtml(links.login())}">Entrar no Conta Comigo</a></p>
+          <p><a href="${escapeHtml(links.login())}">Entrar no Conto Contigo</a></p>
         `,
       };
     }
@@ -389,18 +395,18 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
     case 'profile_reminder': {
       return {
         to: context.recipientEmail,
-        subject: 'Completa o teu perfil — Conta Comigo',
+        subject: 'Completa o teu perfil — Conto Contigo',
         messageKey: context.idempotencyKey,
         text: [
           'Olá,',
           '',
-          'Falta preencher a tua data de nascimento no perfil do Conta Comigo.',
+          'Falta preencher a tua data de nascimento no perfil do Conto Contigo.',
           'Podes fazê-lo nas definições da conta.',
           links.login(),
         ].join('\n'),
         html: `
           <p>Olá,</p>
-          <p>Falta preencher a tua data de nascimento no perfil do Conta Comigo.</p>
+          <p>Falta preencher a tua data de nascimento no perfil do Conto Contigo.</p>
           <p>Podes fazê-lo nas definições da conta.</p>
           <p><a href="${escapeHtml(links.login())}">Abrir definições</a></p>
         `,
@@ -540,7 +546,7 @@ export async function sendManageLink(input: {
     text: [
       `Olá ${input.hostName},`,
       '',
-      `O teu evento ${input.title} foi criado no Conta Comigo.`,
+      `O teu evento ${input.title} foi criado no Conto Contigo.`,
       'Guarda este link: é a única forma de gerir o evento.',
       input.manageUrl,
       '',
@@ -549,7 +555,7 @@ export async function sendManageLink(input: {
     ].join('\n'),
     html: `
       <p>Olá ${escapeHtml(input.hostName)},</p>
-      <p>O teu evento <strong>${escapeHtml(input.title)}</strong> foi criado no Conta Comigo.</p>
+      <p>O teu evento <strong>${escapeHtml(input.title)}</strong> foi criado no Conto Contigo.</p>
       <p>Guarda este link — é a única forma de gerir o evento:</p>
       <p><a href="${escapeHtml(input.manageUrl)}">${escapeHtml(input.manageUrl)}</a></p>
       <p>Quem tiver o link pode gerir o evento e ver a lista de convidados. Não o partilhes com os convidados.</p>

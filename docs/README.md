@@ -1,4 +1,4 @@
-# Documentação — Conta Comigo
+# Documentação — Conto Contigo
 
 Índice da documentação do backend.
 

@@ -149,13 +149,23 @@ const envSchema = z.object({
   ARGON2_TIME_COST: z.coerce.number().int().min(1).default(2),
   ARGON2_PARALLELISM: z.coerce.number().int().min(1).max(255).default(1),
 
-  EMAIL_TRANSPORT: z.enum(['json', 'smtp', 'resend']).default('json'),
+  EMAIL_TRANSPORT: z.enum(['json', 'smtp', 'resend', 'brevo']).default('json'),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number({ error: 'SMTP_PORT deve ser um número' }).int().positive().default(587),
   SMTP_SECURE: z.stringbool().default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  EMAIL_FROM: z.string().min(1).default('Conta Comigo <convites@apupu.local>'),
+  EMAIL_FROM: z.string().min(1).default('Conto Contigo <convites@apupu.local>'),
+  BREVO_SMTP_HOST: z.string().trim().min(1).default('smtp-relay.brevo.com'),
+  BREVO_SMTP_PORT: z.coerce.number().int().positive().default(587),
+  BREVO_SMTP_LOGIN: z.string().trim().optional(),
+  BREVO_SMTP_KEY: z.string().optional(),
+  BREVO_API_KEY: z.string().trim().optional(),
+  BREVO_FROM_NAME: z.string().trim().min(1).default('Conto Contigo'),
+  BREVO_FROM_EMAIL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().email().optional()
+  ),
 
   /**
    * Chave da API do Resend.
@@ -206,6 +216,24 @@ const envSchema = z.object({
   OUTBOX_SCAN_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
 
   MAX_INVITATIONS_PER_EVENT: z.coerce.number().int().positive().default(1000),
+}).superRefine((values, context) => {
+  if (values.EMAIL_TRANSPORT !== 'brevo') return;
+
+  const requiredBrevoFields = [
+    ['BREVO_SMTP_LOGIN', values.BREVO_SMTP_LOGIN],
+    ['BREVO_SMTP_KEY', values.BREVO_SMTP_KEY],
+    ['BREVO_FROM_EMAIL', values.BREVO_FROM_EMAIL],
+  ] as const;
+
+  for (const [field, value] of requiredBrevoFields) {
+    if (!value) {
+      context.addIssue({
+        code: 'custom',
+        path: [field],
+        message: `${field} é obrigatória quando EMAIL_TRANSPORT=brevo.`,
+      });
+    }
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

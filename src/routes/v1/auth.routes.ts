@@ -35,8 +35,8 @@ const router = Router();
  *       `REGISTRATION_OTP_TTL_MINUTES` minutos. Pedidos repetidos antes
  *       de `REGISTRATION_OTP_RESEND_SECONDS` devolvem `429`
  *       `otp_resend_too_soon`. A conta só é criada depois de o código
- *       ser verificado em `/auth/register/verify-code`. Em desenvolvimento,
- *       a resposta inclui `development_code` para facilitar testes.
+ *       ser verificado em `/auth/register/verify-code`. O código não é
+ *       devolvido na resposta da API.
  *     requestBody:
  *       required: true
  *       content:
@@ -48,7 +48,7 @@ const router = Router();
  *               email: { type: string, format: email }
  *     responses:
  *       202:
- *         description: Código enfileirado; em desenvolvimento a resposta também inclui o OTP.
+ *         description: Código enfileirado para envio por email.
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/RegistrationCodeEnvelope' }

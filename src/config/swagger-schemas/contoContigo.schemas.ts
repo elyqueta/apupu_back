@@ -1,10 +1,10 @@
 /**
- * Componentes OpenAPI do Conta Comigo.
+ * Componentes OpenAPI do Conto Contigo.
  *
  * O contrato público usa snake_case. Os DTOs da aplicação são a fonte
  * de verdade; estes schemas apenas documentam a forma observável.
  */
-export const apupuSchemas = {
+export const contoContigoSchemas = {
   Error: {
     type: 'object',
     required: ['error'],
@@ -607,11 +607,6 @@ export const apupuSchemas = {
           email: { type: 'string', format: 'email' },
           expires_at: { type: 'string', format: 'date-time' },
           resend_available_at: { type: 'string', format: 'date-time' },
-          development_code: {
-            type: 'string',
-            pattern: '^\\d{6}$',
-            description: 'Presente apenas com NODE_ENV=development.',
-          },
         },
       },
     },

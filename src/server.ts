@@ -5,7 +5,7 @@ import { logger } from './config/logger';
 import { startOutboxScheduler, stopOutboxScheduler } from './services/outbox.service';
 
 const server = app.listen(env.PORT, () => {
-  logger.info(`Conta Comigo Backend a correr em http://localhost:${env.PORT} [${env.NODE_ENV}]`);
+  logger.info(`Conto Contigo Backend a correr em http://localhost:${env.PORT} [${env.NODE_ENV}]`);
 });
 
 if (env.OUTBOX_ENABLED) {

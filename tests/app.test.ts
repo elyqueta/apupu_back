@@ -21,7 +21,7 @@ describe('app', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       openapi: '3.0.0',
-      info: { title: 'Conta Comigo API' },
+      info: { title: 'Conto Contigo API' },
     });
     expect(Object.keys(response.body.paths ?? {}).length).toBeGreaterThan(0);
   });

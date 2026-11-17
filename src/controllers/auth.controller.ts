@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { env } from '../config/env';
 import { toHostDto } from '../dto/host.dto';
 import {
   ChangePasswordBody,
@@ -37,7 +36,6 @@ export const authController = {
         email: body.email,
         expires_at: result.expiresAt.toISOString(),
         resend_available_at: result.resendAvailableAt.toISOString(),
-        ...(env.NODE_ENV === 'development' ? { development_code: result.code } : {}),
       },
     });
   },
