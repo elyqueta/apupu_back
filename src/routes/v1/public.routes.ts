@@ -17,8 +17,11 @@ const router = Router();
  *     summary: Reclama o convite no primeiro navegador
  *     description: >
  *       O primeiro claim válido é atómico e emite um cookie HttpOnly de
- *       capacidade. Um browser diferente, um token inválido ou um convite
- *       revogado recebem sempre o mesmo 404 genérico.
+ *       capacidade. Um token inválido ou um convite revogado recebem
+ *       sempre o mesmo 404 genérico. Se o pedido trouxer uma sessão de
+ *       conta cujo email verificado coincide com o do convite, o convite
+ *       é devolvido mesmo que já tenha sido reclamado noutro navegador;
+ *       nesse caso o `claim_hash` existente não é alterado.
  *     parameters:
  *       - in: path
  *         name: token
@@ -50,7 +53,10 @@ router.post(
  * /api/v1/public/invitations/{token}:
  *   get:
  *     tags: [Convites públicos]
- *     summary: Consulta o convite com a capacidade do navegador
+ *     summary: Consulta o convite com a capacidade do navegador ou a conta
+ *     description: >
+ *       Aceita a capacidade HttpOnly emitida no claim ou uma sessão de
+ *       conta cujo email verificado coincide com o email do convite.
  *     parameters:
  *       - in: path
  *         name: token
@@ -73,7 +79,7 @@ router.get(
   publicTokenLimiter,
   validate({ params: inviteTokenParamsSchema }),
   asyncHandler(guestAuth),
-  publicController.get
+  asyncHandler(publicController.get)
 );
 
 /**
@@ -83,9 +89,11 @@ router.get(
  *     tags: [Convites públicos]
  *     summary: Aceita, altera ou recusa o convite
  *     description: >
- *       Exige a capacidade do navegador e o token CSRF derivado. Recusar
- *       cancela os lembretes futuros e notifica o anfitrião; repetir o
- *       mesmo estado não duplica a notificação.
+ *       Exige a capacidade do navegador ou uma sessão de conta cujo
+ *       email verificado coincide com o do convite, mais o token CSRF
+ *       derivado desse segredo. Recusar cancela os lembretes futuros e
+ *       notifica o anfitrião; repetir o mesmo estado não duplica a
+ *       notificação.
  *     parameters:
  *       - in: path
  *         name: token

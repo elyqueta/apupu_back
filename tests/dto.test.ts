@@ -124,14 +124,15 @@ describe('DTOs', () => {
   });
 
   it('a vista pública do convite só mostra os dados do próprio convidado', () => {
-    const dto = toPublicInvitationDto(event, invitation, false);
+    const dto = toPublicInvitationDto(event, invitation, false, true);
     const serialized = JSON.stringify(dto);
 
     expect(dto.guest.name).toBe('João');
+    expect(dto.guest.email).toBe(invitation.guestEmail);
+    expect(dto.guest.email_has_account).toBe(true);
     expect(dto.guest.rsvp_status).toBe('pending');
     expect(dto).not.toHaveProperty('invitations');
     expect(dto).not.toHaveProperty('invitation_url');
-    expect(serialized).not.toContain(invitation.guestEmail);
     expect(serialized).not.toContain(invitation.tokenHash);
     expect(serialized).not.toContain(INVITE_TOKEN);
   });

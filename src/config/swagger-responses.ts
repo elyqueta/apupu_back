@@ -213,6 +213,21 @@ export const errorResponses = {
     'avatar_upload_unavailable',
     'O upload de avatar está temporariamente indisponível.'
   ),
+  EventCoverUploadUnavailable: errorResponse(
+    'Upload da imagem de capa indisponível: credenciais Cloudinary ausentes ou provider inacessível.',
+    'event_cover_upload_unavailable',
+    'O upload da imagem de capa está temporariamente indisponível.'
+  ),
+  NotificationNotFound: errorResponse(
+    'Notificação inexistente ou já removida.',
+    'notification_not_found',
+    'Notificação não encontrada.'
+  ),
+  ActivityNotFound: errorResponse(
+    'Actividade inexistente neste evento.',
+    'activity_not_found',
+    'Actividade não encontrada.'
+  ),
 } as const;
 
 type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -427,6 +442,64 @@ export const operationErrorResponses: Record<
     401: 'HostSessionInvalid',
     404: 'EventNotFound',
     422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'delete /api/v1/host/events/{eventId}/activity/{activityId}': {
+    401: 'HostSessionInvalid',
+    403: 'HostActionForbidden',
+    404: 'ActivityNotFound',
+    429: 'RateLimited',
+  },
+  'put /api/v1/host/events/{eventId}/cover': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'EventNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'post /api/v1/host/events/{eventId}/cover/upload': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'EventNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+    503: 'EventCoverUploadUnavailable',
+  },
+  'delete /api/v1/host/events/{eventId}/cover': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'EventNotFound',
+    429: 'RateLimited',
+  },
+  'get /api/v1/host/notifications': {
+    401: 'HostSessionInvalid',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'delete /api/v1/host/notifications': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    429: 'RateLimited',
+  },
+  'get /api/v1/host/notifications/unread-count': {
+    401: 'HostSessionInvalid',
+  },
+  'post /api/v1/host/notifications/read-all': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    429: 'RateLimited',
+  },
+  'patch /api/v1/host/notifications/{notificationId}': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'NotificationNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'delete /api/v1/host/notifications/{notificationId}': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'NotificationNotFound',
     429: 'RateLimited',
   },
   'get /api/v1/host/reports/summary': {

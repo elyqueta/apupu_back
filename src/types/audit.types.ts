@@ -25,6 +25,9 @@ export const AUDIT_ACTIONS = [
   'manager_removed',
   'manager_invite_resent',
   'manager_link_used',
+  'event_cover_updated',
+  'event_cover_removed',
+  'activity_deleted',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

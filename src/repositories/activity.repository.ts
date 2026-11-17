@@ -5,6 +5,7 @@ import {
   EventActivity,
   EventActivityWithEvent,
 } from '../types/host.types';
+import { notificationRepository } from './notification.repository';
 
 interface ActivityRow {
   id: string;
@@ -68,7 +69,21 @@ export const activityRepository = {
 
     const row = result.rows[0];
     if (!row) throw new Error('Falha ao registar actividade.');
-    return toActivity(row);
+
+    const activity = toActivity(row);
+
+    await notificationRepository.createForActivity(
+      {
+        eventId: activity.eventId,
+        activityId: activity.id,
+        kind: activity.kind,
+        guestName: activity.guestName,
+        metadata: activity.metadata,
+      },
+      client
+    );
+
+    return activity;
   },
 
   async listForHost(
@@ -139,5 +154,19 @@ export const activityRepository = {
       items: result.rows.map(toActivity),
       total: Number(countResult.rows[0]?.total ?? '0'),
     };
+  },
+
+  /**
+   * Remove uma actividade do histórico do evento.
+   *
+   * Só é chamado pela rota de gestão do evento. A notificação associada
+   * é removida por `ON DELETE CASCADE`.
+   */
+  async deleteForEvent(eventId: string, activityId: string): Promise<boolean> {
+    const result = await query(
+      'DELETE FROM event_activity WHERE id = $1 AND event_id = $2',
+      [activityId, eventId]
+    );
+    return (result.rowCount ?? 0) > 0;
   },
 };

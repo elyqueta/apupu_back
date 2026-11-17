@@ -313,8 +313,9 @@ configurações de perfil**. Regras:
 
 - `birth_date` é `null` no registo e permanece opcional para concluir o registo.
 - Formato `YYYY-MM-DD` (data, sem hora); validar como data de calendário válida.
-- Tem de ser uma data no passado; idade mínima configurável (sugestão: 18 anos,
-  ver secção 11).
+- Tem de ser uma data no passado e resultar em idade igual ou superior
+  a `MIN_HOST_AGE_YEARS` (por omissão **5 anos**). Idade inferior devolve
+  `422 validation_failed`.
 - O objeto `host` devolve `birth_date` e um indicador de completude:
   `profile_complete: boolean` e, opcionalmente, `missing_fields: string[]`
   (ex.: `["birth_date"]`).
@@ -394,17 +395,39 @@ resumo público do evento (`id`, `title`, `host_name`, `starts_at`,
 `timezone`, `status`, `category`, `template_id`, `location`). Nunca inclui
 outros convidados, contagens, contribuições ou notas privadas.
 
+### 5.2.2 Abrir um convite em qualquer navegador
+
+O convite público pode ser autorizado de duas formas:
+
+1. pela capacidade HttpOnly do navegador emitida no primeiro `claim`;
+2. por uma sessão de conta (`apupu_auth`) cujo email verificado coincide
+   com o email do convite.
+
+O `PublicInvitation` inclui `guest.email` e `guest.email_has_account`.
+Quando o convite é aberto sem sessão, o frontend deve:
+
+- se `email_has_account=true`, sugerir **entrar** com esse email;
+- se `false`, sugerir **criar conta** com o email pré-preenchido;
+- permitir sempre continuar sem conta (capacidade do navegador).
+
+Com a conta correspondente, o convidado pode abrir e alterar o RSVP em
+qualquer navegador; o `claim_hash` original não é alterado. Um email de
+outra conta continua a receber o `404 invitation_not_found` genérico.
+
 ### 5.3 Actividade (feed)
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `GET` | `/api/v1/host/activity` | Feed do anfitrião (todos os eventos) |
-| `GET` | `/api/v1/host/events/{eventId}/activity` | Feed de um evento |
+| `GET` | `/api/v1/host/activity` | Feed do anfitrião (todos os eventos), paginado |
+| `GET` | `/api/v1/host/events/{eventId}/activity` | Feed de um evento, paginado |
+| `DELETE` | `/api/v1/host/events/{eventId}/activity/{activityId}` | Elimina uma actividade; só o anfitrião, na gestão do evento |
 
 Item: `{ id, event_id, kind, guest_name, at }` com `kind` em
 `rsvp_accepted \| rsvp_declined \| guest_added \| reminder_sent \| event_created`.
 Requer uma tabela `event_activity` (nova) alimentada nas transacções de
-RSVP/criação/reenvio.
+RSVP/criação/reenvio. O feed é append-only: a única remoção permitida é
+pelo anfitrião, dentro da página de gestão do evento, e remove também a
+notificação associada. Gestores recebem `403 host_action_forbidden`.
 
 ### 5.4 Relatórios (`/relatorios`)
 
@@ -421,15 +444,52 @@ gráficos. Definir granularidade e janela temporal.
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `GET` | `/api/v1/host/tasks` | Tarefas (filtro `event_id`, inclui `null` = globais) |
-| `POST` | `/api/v1/host/tasks` | Cria tarefa |
+| `GET` | `/api/v1/host/tasks` | Tarefas paginadas (filtros `event_id`, `status`, `assignee`, `manager_id`, `q`) |
+| `POST` | `/api/v1/host/tasks` | Cria tarefa (só o anfitrião); aceita `manager_id` |
 | `PATCH` | `/api/v1/host/tasks/{taskId}` | Actualiza `label`/`done` |
-| `DELETE` | `/api/v1/host/tasks/{taskId}` | Remove tarefa |
+| `DELETE` | `/api/v1/host/tasks/{taskId}` | Remove tarefa (só o anfitrião) |
 
-Tabela nova `host_tasks`: `id`, `host_id` FK, `event_id` FK nullable,
-`label`, `done`, `created_at`, `updated_at`.
+Tabela `host_tasks`: `id`, `host_id` FK, `event_id` FK nullable,
+`manager_id` FK nullable, `label`, `done`, `completed_at`, `created_at`,
+`updated_at`. Uma tarefa atribuída a um gestor exige `event_id` e um
+gestor activo desse evento.
 
-### 5.6 Templates (`/templates`)
+O anfitrião cria e cumpre tarefas próprias e pode criar tarefas para
+gestores. Um gestor vê apenas as tarefas que lhe foram atribuídas e só
+pode marcar `done`; alterar `label` devolve `403 host_action_forbidden`.
+A página global `/tarefas` usa `{ data, pagination }` e os filtros acima;
+o detalhe de cada evento mostra as tarefas desse evento (incluindo as
+globais do anfitrião).
+
+### 5.6 Notificações (sino + `/notificacoes`)
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/api/v1/host/notifications` | Lista paginada com filtros `status`, `kind`, `event_id`, `q`; devolve `unread_count` |
+| `GET` | `/api/v1/host/notifications/unread-count` | Contagem para o badge do sino |
+| `PATCH` | `/api/v1/host/notifications/{notificationId}` | Marca como lida/não lida (`{ read }`) |
+| `DELETE` | `/api/v1/host/notifications/{notificationId}` | Remove uma notificação |
+| `POST` | `/api/v1/host/notifications/read-all` | Marca todas como lidas |
+| `DELETE` | `/api/v1/host/notifications` | Limpa todas as notificações |
+
+O sino abre um modal com lembretes e últimas actividades; “ver tudo”
+abre a página de notificações com pesquisa, filtros e paginação. Marcar
+como lida/vista, remover e limpar tudo usam estas rotas. As notificações
+são uma camada separada de `event_activity` e nunca substituem o feed.
+
+### 5.7 Imagem de capa do evento
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `PUT` | `/api/v1/host/events/{eventId}/cover` | Define por URL (`{ cover_url }`) |
+| `POST` | `/api/v1/host/events/{eventId}/cover/upload` | Upload `multipart/form-data`, campo `cover` |
+| `DELETE` | `/api/v1/host/events/{eventId}/cover` | Remove a capa |
+
+O upload deve mostrar barra de progresso e botão de cancelar no front
+(`XMLHttpRequest`/`HttpClient` com `reportProgress`). As três operações
+são idempotentes e devolvem o `Event` com `cover_url` actualizado.
+
+### 5.8 Templates (`/templates`)
 
 `GET /api/v1/templates` já existe. Melhorias para o front:
 
@@ -523,17 +583,33 @@ UI do cliente (não persistida) e `palette` é novo. Alinhar o front.
   `REGISTRATION_OTP_MAX_ATTEMPTS` tentativas e
   `REGISTRATION_OTP_RESEND_SECONDS` entre pedidos. O
   `verification_token` emitido após o código é opaco, de uso único e
-  válido por `REGISTRATION_VERIFICATION_TTL_MINUTES`.
+  válido por `REGISTRATION_VERIFICATION_TTL_MINUTES`. O código só viaja
+  no email, com link para `/criar-conta?email=...&codigo=...`; nunca na
+  resposta da API.
+- **Convite público:** a capacidade do navegador ou uma sessão de conta
+  com email verificado igual ao do convite. Qualquer falha devolve o
+  mesmo `404 invitation_not_found`. O CSRF deriva do segredo usado
+  (capacidade ou token de sessão).
+- **Gestão por link:** `POST /host/session` devolve `email` e
+  `email_has_account`, sem devolver o segredo do link. Só depois de
+  entrar/criar conta com esse email o evento aparece no workspace.
+- **Uploads:** avatar e capa do evento passam pelo servidor; as
+  credenciais Cloudinary nunca chegam ao frontend. Sem configuração,
+  respondem `503 avatar_upload_unavailable` /
+  `event_cover_upload_unavailable`.
 - **Dados pessoais:** `birth_date`, telefone e email são PII; nunca em logs,
   telemetria, URLs de analytics ou mensagens de erro. Expor `birth_date` apenas
-  ao próprio.
+  ao próprio. O email do convidado só aparece na apresentação pública do
+  próprio convite.
 - **Rate limit:** novas rotas de `register`/`login`/`forgot`/`reset` com limites
   dedicados por IP e por email; manter os limites actuais.
 - **CORS/cookies:** origem exacta (não `*` com credenciais), `SameSite=Lax`,
   `Secure` fora de local.
 - **Novos códigos de erro:** `invalid_credentials`, `account_locked`,
   `email_already_registered`, `email_not_verified`, `verification_invalid`,
-  `reset_invalid`, `host_session_invalid` (reutilizado para a sessão de conta).
+  `reset_invalid`, `host_session_invalid` (reutilizado para a sessão de conta),
+  `host_action_forbidden`, `notification_not_found`, `activity_not_found`,
+  `task_not_found`, `event_cover_upload_unavailable`.
 
 ---
 
@@ -570,6 +646,9 @@ Novos `message_type` na outbox, com chaves idempotentes:
 
 Regras: tokens nunca em logs; links com TTL; reenvio limitado; o email de
 verificação/`password_reset` não é reenviado automaticamente pelo worker.
+O email `registration_otp` inclui o código e um link para
+`https://apupu-front.vercel.app/criar-conta?email=...&codigo=...`; o
+código nunca aparece na resposta da API nem em logs.
 
 ---
 
@@ -587,6 +666,20 @@ verificação/`password_reset` não é reenviado automaticamente pelo worker.
   consistente).
 - Eventos legados por link continuam geríveis; eventos reivindicados ficam
   associados à conta de forma idempotente e só após verificação de email.
+- O sino mostra lembretes e últimas actividades; “ver tudo” abre a página de
+  notificações com filtros, pesquisa, paginação, marcar como lida, remover e
+  limpar tudo.
+- O detalhe do evento permite criar/gerir tarefas; o anfitrião cria tarefas
+  para gestores e os gestores só as marcam como cumpridas. `/tarefas` lista,
+  filtra, pesquisa e pagina.
+- A capa do evento pode ser definida por URL ou upload (com progresso e
+  cancelar) e removida; repetir a operação é idempotente.
+- Um convite aberto noutro navegador com a conta do email convidado permite
+  consultar e alterar o RSVP; sem conta correspondente continua `404`.
+- O OTP de registo chega apenas por email, com link que pré-preenche
+  `/criar-conta?email=...&codigo=...`; a API nunca devolve o código.
+- A data de nascimento aceita idade a partir de 5 anos; telefones mostram a
+  máscara de grupos de três dígitos e indicam que `+244` é opcional.
 - Nenhuma resposta expõe senha, hash, token de sessão, `birth_date` de terceiros
   ou PII em logs/erros.
 - Testes cobrem autorização negativa entre contas, registo/login/reset, bloqueio
@@ -604,7 +697,8 @@ implementação de cada uma, está em
 - Contas aprovadas; o link secreto por evento mantém-se válido.
 - Registo exige verificação do email por OTP antes da criação da conta;
   contas antigas por verificar mantêm o link de verificação.
-- `birth_date` opcional e não bloqueante, com idade mínima de 18 anos.
+- `birth_date` opcional e não bloqueante, com idade mínima de 5 anos
+  (`MIN_HOST_AGE_YEARS`).
 - `events.category` e `invitations.table_name` mantidos.
 - Eventos legados são ligados à conta após verificação do email.
 - Ao criar evento com conta, o link de gestão continua a ser enviado.

@@ -104,14 +104,24 @@ const eventReportQuerySchema = z.object({
 
 const tasksQuerySchema = z.object({
   event_id: z.uuid('Identificador de evento inválido.').optional(),
+  status: z.enum(['all', 'pending', 'done']).default('all'),
+  assignee: z.enum(['all', 'host', 'manager']).default('all'),
+  manager_id: z.uuid('Identificador de gestor inválido.').optional(),
+  q: z.string().trim().max(150).optional(),
+  ...paginationQueryFields,
 });
 
 const createTaskSchema = z
   .object({
     label: z.string().trim().min(1, 'A tarefa precisa de uma descrição.').max(200),
     event_id: z.uuid('Identificador de evento inválido.').nullable().optional(),
+    manager_id: z.uuid('Identificador de gestor inválido.').nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => value.manager_id == null || value.event_id != null, {
+    message: 'Uma tarefa atribuída a um gestor exige um evento.',
+    path: ['event_id'],
+  });
 
 const updateTaskSchema = z
   .object({
@@ -126,6 +136,47 @@ const updateTaskSchema = z
 const taskIdParamsSchema = z.object({
   taskId: z.uuid('Identificador de tarefa inválido.'),
 });
+
+const notificationsQuerySchema = z.object({
+  status: z.enum(['all', 'unread', 'read']).default('all'),
+  kind: z
+    .enum([
+      'rsvp_accepted',
+      'rsvp_declined',
+      'guest_added',
+      'reminder_sent',
+      'event_created',
+      'event_upcoming',
+      'rsvp_deadline',
+      'task_assigned',
+      'task_completed',
+    ])
+    .optional(),
+  event_id: z.uuid('Identificador de evento inválido.').optional(),
+  q: z.string().trim().max(150).optional(),
+  ...paginationQueryFields,
+});
+
+const notificationIdParamsSchema = z.object({
+  notificationId: z.uuid('Identificador de notificação inválido.'),
+});
+
+const updateNotificationSchema = z
+  .object({
+    read: z.boolean(),
+  })
+  .strict();
+
+const activityIdParamsSchema = z.object({
+  eventId: z.uuid('Identificador de evento inválido.'),
+  activityId: z.uuid('Identificador de actividade inválido.'),
+});
+
+const coverUrlSchema = z
+  .object({
+    cover_url: z.url('URL de imagem inválida.').max(2048),
+  })
+  .strict();
 
 const addEventManagerSchema = z
   .object({
@@ -148,6 +199,11 @@ export {
   createTaskSchema,
   updateTaskSchema,
   taskIdParamsSchema,
+  notificationsQuerySchema,
+  notificationIdParamsSchema,
+  updateNotificationSchema,
+  activityIdParamsSchema,
+  coverUrlSchema,
   addEventManagerSchema,
   eventManagerParamsSchema,
 };
@@ -161,4 +217,7 @@ export type EventReportQuery = z.infer<typeof eventReportQuerySchema>;
 export type TasksQuery = z.infer<typeof tasksQuerySchema>;
 export type CreateTaskBody = z.infer<typeof createTaskSchema>;
 export type UpdateTaskBody = z.infer<typeof updateTaskSchema>;
+export type NotificationsQuery = z.infer<typeof notificationsQuerySchema>;
+export type UpdateNotificationBody = z.infer<typeof updateNotificationSchema>;
+export type CoverUrlBody = z.infer<typeof coverUrlSchema>;
 export type AddEventManagerBody = z.infer<typeof addEventManagerSchema>;

@@ -1,17 +1,17 @@
 import { Request, Response } from 'express';
 import { toPublicInvitationDto } from '../dto/invitation.dto';
-import { NotFoundError } from '../errors';
+import { hostRepository } from '../repositories/host.repository';
 import { RsvpBody } from '../schemas/invitation.schemas';
 import {
   invitationService,
   isRsvpDeadlinePassed,
 } from '../services/invitation.service';
+import { resolveAccountIdentity } from '../services/guestAccess.service';
 import { Event } from '../types/event.types';
+import { GuestAccess } from '../types/guestAccess.types';
 import { Invitation } from '../types/invitation.types';
 import { readGuestSession, setGuestSession } from '../utils/cookie.util';
 import { csrfTokenFor } from '../utils/token.util';
-
-const INVITATION_NOT_FOUND = 'Convite não encontrado.';
 
 function requireEvent(req: Request): Event {
   if (!req.event) {
@@ -29,14 +29,41 @@ function requireInvitation(req: Request): Invitation {
   return req.invitation;
 }
 
+function requireAccess(req: Request): GuestAccess {
+  if (!req.guestAccess) {
+    throw new Error('Acesso não resolvido: falta o middleware guestAuth.');
+  }
+
+  return req.guestAccess;
+}
+
 type PublicPresentation = ReturnType<typeof toPublicInvitationDto> & {
   csrf_token: string;
 };
 
-function present(event: Event, invitation: Invitation, capability: string): PublicPresentation {
+/**
+ * Monta a apresentação pública do convite.
+ *
+ * Inclui o email do convidado e `email_has_account`, para o frontend
+ * poder sugerir criar conta ou entrar quando o convite é aberto sem
+ * sessão. O valor é calculado por pedido (não é persistido) e nunca
+ * expõe se o convite pertence a outro navegador.
+ */
+async function present(
+  event: Event,
+  invitation: Invitation,
+  access: GuestAccess
+): Promise<PublicPresentation> {
+  const emailHasAccount = await hostRepository.emailExists(invitation.guestEmail);
+
   return {
-    ...toPublicInvitationDto(event, invitation, isRsvpDeadlinePassed(event)),
-    csrf_token: csrfTokenFor(capability),
+    ...toPublicInvitationDto(
+      event,
+      invitation,
+      isRsvpDeadlinePassed(event),
+      emailHasAccount
+    ),
+    csrf_token: csrfTokenFor(access.secret),
   };
 }
 
@@ -45,59 +72,52 @@ export const publicController = {
    * Primeiro claim do convite. Emite o cookie de capacidade apenas
    * quando é criada uma nova; um browser que já tenha capacidade
    * reutiliza-a para reclamar convites adicionais.
+   *
+   * Uma conta autenticada com o email do convidado pode reclamar o
+   * convite mesmo que ele já pertença a outro navegador.
    */
   claim: async (req: Request, res: Response): Promise<void> => {
+    const account = await resolveAccountIdentity(req);
     const result = await invitationService.claim(
       req.params.token ?? '',
-      readGuestSession(req)
+      readGuestSession(req),
+      account
     );
 
     if (result.newCapability) {
-      setGuestSession(res, result.capability);
+      setGuestSession(res, result.newCapability);
     }
 
     res.status(200).json({
-      data: present(result.event, result.invitation, result.capability),
+      data: await present(result.event, result.invitation, result.access),
     });
   },
 
   /**
-   * Consulta autenticada pela capacidade do navegador.
+   * Consulta autenticada pela capacidade do navegador ou pela conta.
    *
-   * É síncrono: o `guestAuth` já carregou evento e convite. Como o
-   * Express 4 captura excepções síncronas, não precisa do wrapper
-   * `asyncHandler`.
+   * O `guestAuth` já carregou evento, convite e acesso. É assíncrono
+   * porque `email_has_account` consulta a tabela de contas.
    */
-  get: (req: Request, res: Response): void => {
-    const capability = readGuestSession(req);
-
-    if (!capability) {
-      throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
-    }
-
+  get: async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({
-      data: present(requireEvent(req), requireInvitation(req), capability),
+      data: await present(requireEvent(req), requireInvitation(req), requireAccess(req)),
     });
   },
 
   /** RSVP do próprio convidado (aceitar, alterar ou recusar). */
   rsvp: async (req: Request, res: Response): Promise<void> => {
-    const capability = readGuestSession(req);
-
-    if (!capability) {
-      throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
-    }
-
+    const access = requireAccess(req);
     const body = req.body as RsvpBody;
     const result = await invitationService.respond(
       requireEvent(req).id,
       requireInvitation(req).id,
-      capability,
+      access,
       body.status
     );
 
     res.status(200).json({
-      data: present(result.event, result.invitation, capability),
+      data: await present(result.event, result.invitation, access),
     });
   },
 };

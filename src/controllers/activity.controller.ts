@@ -4,14 +4,19 @@ import { activityService } from '../services/activity.service';
 import { EventAccessScope } from '../types/event.types';
 
 function accessScope(req: Request): EventAccessScope {
-  if (!req.hostAccount) {
-    throw new Error('Conta não resolvida: falta o middleware hostAccountAuth.');
+  if (req.hostAccount) {
+    return {
+      hostId: req.hostAccount.id,
+      managerEmail: req.hostAccount.emailVerifiedAt ? req.hostAccount.email : null,
+    };
   }
 
-  return {
-    hostId: req.hostAccount.id,
-    managerEmail: req.hostAccount.emailVerifiedAt ? req.hostAccount.email : null,
-  };
+  // Sessão legada por link de gestão: o hostAuth já validou o acesso.
+  if (req.event?.hostId) {
+    return { hostId: req.event.hostId, managerEmail: null };
+  }
+
+  throw new Error('Conta não resolvida: falta o middleware hostAccountAuth.');
 }
 
 interface ActivityQuery {
@@ -47,5 +52,15 @@ export const activityController = {
       data: result.items.map(toActivityDto),
       pagination: result.pagination,
     });
+  },
+
+  remove: async (req: Request, res: Response): Promise<void> => {
+    await activityService.remove(
+      accessScope(req),
+      req.params.eventId ?? '',
+      req.params.activityId ?? ''
+    );
+
+    res.status(204).send();
   },
 };

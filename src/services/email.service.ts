@@ -378,6 +378,7 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
     case 'registration_otp': {
       const code = hostToken(context);
       const minutes = env.REGISTRATION_OTP_TTL_MINUTES;
+      const url = links.registerOtp(context.recipientEmail, code);
 
       return {
         to: context.recipientEmail,
@@ -389,6 +390,9 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
           'O teu código de confirmação do Conto Contigo é:',
           code,
           '',
+          'Para continuares com o código já preenchido, abre este link:',
+          url,
+          '',
           `O código expira ao fim de ${minutes} minutos e só pode ser usado uma vez.`,
           'Se não pediste este código, ignora este email.',
         ].join('\n'),
@@ -396,6 +400,7 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
           <p>Olá,</p>
           <p>O teu código de confirmação do Conto Contigo é:</p>
           <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px;">${escapeHtml(code)}</p>
+          <p><a href="${escapeHtml(url)}">Continuar com o código preenchido</a></p>
           <p>O código expira ao fim de ${minutes} minutos e só pode ser usado uma vez.</p>
           <p>Se não pediste este código, ignora este email.</p>
         `,

@@ -45,7 +45,7 @@ describe('authController.requestRegistrationCode', () => {
     env.NODE_ENV = 'test';
   });
 
-  it('fora de produção inclui dev_code para o protótipo', async () => {
+  it('nunca inclui o código OTP na resposta, mesmo fora de produção', async () => {
     const body = (await requestRegistrationCodeResponse()) as {
       data: Record<string, unknown>;
     };
@@ -53,8 +53,10 @@ describe('authController.requestRegistrationCode', () => {
     expect(body.data).toMatchObject({
       status: 'accepted',
       email: 'ana@example.test',
-      dev_code: '004271',
     });
+    expect(body.data).not.toHaveProperty('dev_code');
+    expect(body.data).not.toHaveProperty('code');
+    expect(JSON.stringify(body)).not.toContain('004271');
   });
 
   it('em produção nunca inclui o código OTP na resposta', async () => {

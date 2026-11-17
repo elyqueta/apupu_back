@@ -56,6 +56,9 @@ pelo código; o seed garante apenas um template neutro (`base`).
 | `location_name` / `location_address` | text | exigidos conforme o tipo |
 | `online_url` | text | exigido quando `location_type=online` |
 | `message` / `rules` / `dress_code` | text | opcionais |
+| `cover_url` | text | imagem de capa (upload ou URL); `NULL` usa a arte do template |
+| `cover_hash` | text | SHA-256 do último ficheiro carregado; idempotência do upload |
+| `cover_public_id` | text | identificador Cloudinary para remoção/substituição |
 | `template_id` | uuid | FK → `event_templates` (`ON DELETE SET NULL`) |
 | `theme` | jsonb | `{ mode, palette }` |
 | `contribution_enabled` | boolean | |
@@ -342,6 +345,41 @@ Feed de actividade por evento.
 Constraints: `event_activity_kind_check`. Índices:
 `event_activity_event_id_idx` e `event_activity_at_idx`.
 
+O feed é append-only. O anfitrião pode eliminar uma actividade apenas na
+área de gestão do evento (`DELETE /host/events/{eventId}/activity/{activityId}`);
+a notificação associada em `host_notifications` é removida na mesma
+operação.
+
+## `host_notifications`
+
+Notificações in-app por anfitrião, geradas a partir de actividades e
+lembretes. É uma camada separada de `event_activity` (que continua
+append-only).
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`) |
+| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`); nulo em notificações globais |
+| `activity_id` | uuid | FK → `event_activity` (`ON DELETE CASCADE`); nulo em lembretes |
+| `kind` | text | `rsvp_accepted`, `rsvp_declined`, `guest_added`, `reminder_sent`, `event_created`, `event_upcoming`, `rsvp_deadline`, `task_assigned`, `task_completed` |
+| `title` | text | |
+| `body` | text | opcional |
+| `metadata` | jsonb | por omissão `{}`; apenas identificadores |
+| `dedupe_key` | text | único por anfitrião; garante lembretes idempotentes |
+| `read_at` | timestamptz | nulo = não lida |
+| `dismissed_at` | timestamptz | remoção lógica; nulo = visível |
+| `created_at` | timestamptz | |
+
+Índices: `host_notifications_host_created_idx`
+(`host_id, created_at DESC, id DESC`),
+`host_notifications_host_unread_idx` (`host_id` parcial, não lidas e não
+removidas), `host_notifications_host_activity_uidx` (único por
+`host_id, activity_id`) e `host_notifications_host_dedupe_uidx` (único
+por `host_id, dedupe_key`). Os lembretes (`event_upcoming`,
+`rsvp_deadline`) são sincronizados na leitura e deduplicados por
+`dedupe_key`.
+
 ## `host_tasks`
 
 Tarefas do workspace, globais ou ligadas a um evento.
@@ -349,13 +387,22 @@ Tarefas do workspace, globais ou ligadas a um evento.
 | Coluna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid | PK |
-| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`) |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`); proprietário |
 | `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`); nulo = global |
+| `manager_id` | uuid | FK → `event_managers` (`ON DELETE SET NULL`); nulo = tarefa do anfitrião |
 | `label` | text | |
 | `done` | boolean | por omissão `false` |
+| `completed_at` | timestamptz | preenchido quando `done=true` |
 | `created_at` / `updated_at` | timestamptz | |
 
-Índices: `host_tasks_host_id_idx`, `host_tasks_event_id_idx`.
+Constraints: `host_tasks_manager_event_check` (`manager_id IS NULL OR
+event_id IS NOT NULL`). Índices: `host_tasks_host_id_idx`,
+`host_tasks_event_id_idx`, `host_tasks_host_created_idx`
+(`host_id, created_at DESC, id DESC`) e `host_tasks_manager_idx`
+(`manager_id` parcial).
+
+Um gestor só vê as tarefas atribuídas ao seu email (gestor activo) e só
+pode alternar `done`; o anfitrião vê e gere todas as suas.
 
 ## `host_audit_log`
 
@@ -480,8 +527,16 @@ como fallback para lembretes agendados e notificações perdidas.
   entregas de email.
 - Um convite pertence a exactamente um evento e pode originar
   actividades e entregas.
-- Apagar uma conta remove em cascata perfil, sessões, tokens, tarefas e
-  entregas; os eventos ficam com `host_id` nulo (`ON DELETE SET NULL`).
+- Uma notificação (`host_notifications`) pertence a uma conta e,
+  opcionalmente, a um evento e a uma actividade. Apagar a actividade (na
+  gestão do evento) remove a notificação associada; apagar o evento
+  remove as notificações do evento.
+- Uma tarefa pertence a uma conta (`host_id`) e, opcionalmente, a um
+  evento e a um gestor. Apagar o gestor mantém a tarefa, mas limpa
+  `manager_id` (`ON DELETE SET NULL`).
+- Apagar uma conta remove em cascata perfil, sessões, tokens, tarefas,
+  notificações e entregas; os eventos ficam com `host_id` nulo
+  (`ON DELETE SET NULL`).
 - Apagar um evento remove em cascata convites, sessões de gestão,
   actividades, tarefas ligadas e entregas.
 - Apagar um convite remove em cascata as suas entregas.
@@ -519,3 +574,12 @@ como fallback para lembretes agendados e notificações perdidas.
 - Adicionar um gestor é atómico por `(event_id, email)`: a violação de
   unicidade é convertida em `409 manager_already_exists`. Remover revoga
   a linha e as sessões do gestor na mesma transacção.
+- A sincronização de lembretes em `host_notifications` é idempotente
+  graças aos índices únicos por `(host_id, dedupe_key)` e
+  `(host_id, activity_id)`. Marcar como lida e remover são limitados ao
+  `host_id` da sessão.
+- O upload da capa compara o SHA-256 com `cover_hash`: repetir o mesmo
+  ficheiro não volta a subir. A remoção/substituição apaga o asset
+  antigo do Cloudinary só depois de o evento ficar com o novo valor.
+- Eliminar uma actividade exige o papel `host` e remove a notificação
+  associada; um gestor recebe `403 host_action_forbidden`.

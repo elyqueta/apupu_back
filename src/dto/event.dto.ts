@@ -43,6 +43,7 @@ export interface EventDto {
   rules: string | null;
   dress_code: string | null;
   template_id: string | null;
+  cover_url: string | null;
   theme: EventThemeDto;
   contribution: ContributionDto;
   rsvp_deadline: string | null;
@@ -106,6 +107,7 @@ export function toEventDto(
     rules: event.rules,
     dress_code: event.dressCode,
     template_id: event.templateId,
+    cover_url: event.coverUrl,
     theme: {
       mode: event.theme.mode,
       palette: event.theme.palette,
@@ -151,6 +153,7 @@ export function toPublicEventDto(event: Event): PublicEventDto {
     message: event.message,
     rules: event.rules,
     dress_code: event.dressCode,
+    cover_url: event.coverUrl,
     theme: {
       mode: event.theme.mode,
       palette: event.theme.palette,

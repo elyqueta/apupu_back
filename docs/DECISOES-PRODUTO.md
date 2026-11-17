@@ -11,7 +11,7 @@ Data de fecho: 2026-11-15.
 |---|---|---|---|
 | 1 | Contas de anfitrião | Introduzir contas com email e senha, mantendo o link secreto por evento | Implementado |
 | 2 | Verificação de email | OTP obrigatório antes de criar a conta; link legado mantido para contas antigas | Implementado |
-| 3 | Data de nascimento | Opcional e não bloqueante, `YYYY-MM-DD`, passado, idade mínima 18 | Implementado |
+| 3 | Data de nascimento | Opcional e não bloqueante, `YYYY-MM-DD`, passado, idade mínima 5 | Implementado |
 | 4 | Categoria e mesas | Manter `events.category` e `invitations.table_name` | Implementado |
 | 5 | Claim automático | Ligar eventos legados à conta após verificação do email | Implementado |
 | 6 | Link de gestão | Continua a ser enviado por email ao criar evento com conta | Implementado |
@@ -26,6 +26,10 @@ Data de fecho: 2026-11-15.
 | 15 | Auditoria | Eventos críticos com actor e IP | Implementado |
 | 16 | Callbacks de email | Webhook assinado: delivered, bounced, complained; supressão | Pendente |
 | 17 | Templates finais | Fornecidos pelo responsável, com limites e acessibilidade | Dependência externa |
+| 21 | Notificações in-app | Sino com lembretes e actividades; página com filtros, marcar como lida e remover | Implementado |
+| 22 | Tarefas por evento | Anfitrião cria para gestores; gestor só marca como cumprida; página global paginada | Implementado |
+| 23 | Capa do evento | Upload com progresso/cancelar ou URL; remoção idempotente | Implementado |
+| 24 | Convite em qualquer navegador | Conta com o email verificado do convite abre e altera o RSVP | Implementado |
 
 ## 1. Contas de anfitrião
 
@@ -52,7 +56,7 @@ paralelo; nenhuma rota antiga é removida por causa das contas.
 
 - Campo opcional `host_profiles.birth_date`, data de calendário
   `YYYY-MM-DD`, no passado.
-- Idade mínima `MIN_HOST_AGE_YEARS` (por omissão 18).
+- Idade mínima `MIN_HOST_AGE_YEARS` (por omissão 5).
 - A ausência não bloqueia a conta; apenas faz `profile_complete=false`
   e acrescenta `birth_date` a `missing_fields`.
 
@@ -293,3 +297,46 @@ mantém-se como ponto de extensão.
 - A opção B (FK explícita `account_id` no convite) fica reservada para
   quando for necessário preservar o histórico após mudança de email ou
   impedir que um email reutilizado veja convites antigos.
+
+## 21. Notificações in-app
+
+- Nova tabela `host_notifications`, por conta, separada do feed
+  append-only `event_activity`.
+- O sino da navbar abre um modal com lembretes e últimas actividades;
+  “ver tudo” abre a página de notificações com pesquisa, filtros
+  (`status`, `kind`, `event_id`), paginação, marcar como lida,
+  remover e limpar tudo.
+- Os lembretes (`event_upcoming`, `rsvp_deadline`) são sincronizados na
+  leitura e deduplicados por `dedupe_key`.
+- Remover uma notificação é lógico (`dismissed_at`) e não toca no
+  histórico do evento.
+
+## 22. Tarefas por evento e por gestor
+
+- `host_tasks` ganhou `manager_id` e `completed_at`; uma tarefa de
+  gestor exige `event_id`.
+- O anfitrião cria tarefas próprias ou para gestores de um evento; os
+  gestores vêem apenas as que lhes foram atribuídas e só marcam
+  `done`.
+- A página global `/tarefas` pagina, filtra (`status`, `assignee`,
+  `manager_id`, `event_id`) e pesquisa; o detalhe do evento mostra as
+  tarefas desse evento.
+
+## 23. Capa do evento
+
+- `events.cover_url` é a imagem apresentada no evento e no convite.
+- Pode ser definida por URL ou por upload (`multipart/form-data`).
+- O upload é idempotente por SHA-256 (`cover_hash`) e o asset antigo é
+  removido do Cloudinary ao substituir/remover (`cover_public_id`).
+- O frontend deve mostrar progresso e permitir cancelar o upload.
+
+## 24. Convite acessível em qualquer navegador
+
+- Além da capacidade do navegador, o convite aceita uma sessão de conta
+  cujo email verificado coincide com `invitations.guest_email`.
+- O `PublicInvitation` expõe `guest.email` e `guest.email_has_account`
+  para o frontend sugerir entrar ou criar conta.
+- O `claim_hash` original não é alterado quando a conta abre o convite
+  noutro navegador; ambos os acessos coexistem.
+- Sem conta correspondente, a resposta continua a ser o `404`
+  genérico.

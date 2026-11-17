@@ -4,6 +4,7 @@ import { eventManagerController } from '../../controllers/eventManager.controlle
 import { guestInvitationController } from '../../controllers/guestInvitation.controller';
 import { hostEventController } from '../../controllers/hostEvent.controller';
 import { hostGuestController } from '../../controllers/hostGuest.controller';
+import { notificationController } from '../../controllers/notification.controller';
 import { profileController } from '../../controllers/profile.controller';
 import { reportController } from '../../controllers/report.controller';
 import { taskController } from '../../controllers/task.controller';
@@ -27,9 +28,12 @@ import {
   guestInvitationsQuerySchema,
   hostEventsQuerySchema,
   hostGuestsQuerySchema,
+  notificationIdParamsSchema,
+  notificationsQuerySchema,
   paginatedQuerySchema,
   taskIdParamsSchema,
   tasksQuerySchema,
+  updateNotificationSchema,
   updateProfileSchema,
   updateTaskSchema,
 } from '../../schemas/host.schemas';
@@ -669,6 +673,178 @@ router.get(
   validate({ params: eventIdParamsSchema, query: paginatedQuerySchema }),
   asyncHandler(hostAccountAuth),
   asyncHandler(activityController.listForEvent)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/notifications:
+ *   get:
+ *     tags: [Notificações]
+ *     summary: Lista paginada de notificações da conta
+ *     description: >
+ *       Inclui actividades, lembretes de eventos a aproximar-se, prazos
+ *       de RSVP e tarefas. Filtros por estado, tipo, evento e pesquisa.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [all, unread, read], default: all }
+ *       - in: query
+ *         name: kind
+ *         schema:
+ *           type: string
+ *           enum: [rsvp_accepted, rsvp_declined, guest_added, reminder_sent, event_created, event_upcoming, rsvp_deadline, task_assigned, task_completed]
+ *       - in: query
+ *         name: event_id
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: q
+ *         schema: { type: string, maxLength: 150 }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1 }
+ *       - in: query
+ *         name: page_size
+ *         schema: { type: integer, minimum: 1, maximum: 100 }
+ *     responses:
+ *       200:
+ *         description: Notificações paginadas e contagem de não lidas.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/NotificationList' }
+ *   delete:
+ *     tags: [Notificações]
+ *     summary: Limpa todas as notificações (remoção lógica)
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Quantidade removida.
+ *
+ * /api/v1/host/notifications/unread-count:
+ *   get:
+ *     tags: [Notificações]
+ *     summary: Contagem de notificações não lidas
+ *     security:
+ *       - accountSession: []
+ *     responses:
+ *       200:
+ *         description: Contagem actual.
+ *
+ * /api/v1/host/notifications/read-all:
+ *   post:
+ *     tags: [Notificações]
+ *     summary: Marca todas as notificações como lidas
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Quantidade actualizada.
+ *
+ * /api/v1/host/notifications/{notificationId}:
+ *   patch:
+ *     tags: [Notificações]
+ *     summary: Marca uma notificação como lida ou não lida
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: notificationId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [read]
+ *             properties:
+ *               read: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Notificação actualizada.
+ *       404:
+ *         description: Notificação não encontrada.
+ *   delete:
+ *     tags: [Notificações]
+ *     summary: Remove uma notificação
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: notificationId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       204:
+ *         description: Notificação removida.
+ */
+router.get(
+  '/notifications/unread-count',
+  asyncHandler(hostAccountAuth),
+  asyncHandler(notificationController.unreadCount)
+);
+
+router.post(
+  '/notifications/read-all',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(notificationController.markAllRead)
+);
+
+router.get(
+  '/notifications',
+  asyncHandler(hostAccountAuth),
+  validate({ query: notificationsQuerySchema }),
+  asyncHandler(notificationController.list)
+);
+
+router.delete(
+  '/notifications',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(notificationController.dismissAll)
+);
+
+router.patch(
+  '/notifications/:notificationId',
+  validate({ params: notificationIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: updateNotificationSchema }),
+  asyncHandler(notificationController.setRead)
+);
+
+router.delete(
+  '/notifications/:notificationId',
+  validate({ params: notificationIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(notificationController.dismiss)
 );
 
 /**

@@ -2,26 +2,33 @@ import { Request, Response } from 'express';
 import { toTaskDto } from '../dto/task.dto';
 import { CreateTaskBody, TasksQuery, UpdateTaskBody } from '../schemas/host.schemas';
 import { taskService } from '../services/task.service';
+import { EventAccessScope } from '../types/event.types';
 
-function requireHostId(req: Request): string {
+function accessScope(req: Request): EventAccessScope {
   if (!req.hostAccount) {
     throw new Error('Conta não resolvida: falta o middleware hostAccountAuth.');
   }
 
-  return req.hostAccount.id;
+  return {
+    hostId: req.hostAccount.id,
+    managerEmail: req.hostAccount.emailVerifiedAt ? req.hostAccount.email : null,
+  };
 }
 
 export const taskController = {
   list: async (req: Request, res: Response): Promise<void> => {
-    const { event_id } = req.query as unknown as TasksQuery;
-    const tasks = await taskService.list(requireHostId(req), event_id);
+    const query = req.query as unknown as TasksQuery;
+    const result = await taskService.list(accessScope(req), query);
 
-    res.status(200).json({ data: tasks.map(toTaskDto) });
+    res.status(200).json({
+      data: result.items.map(toTaskDto),
+      pagination: result.pagination,
+    });
   },
 
   create: async (req: Request, res: Response): Promise<void> => {
     const task = await taskService.create(
-      requireHostId(req),
+      accessScope(req),
       req.body as CreateTaskBody
     );
 
@@ -30,7 +37,7 @@ export const taskController = {
 
   update: async (req: Request, res: Response): Promise<void> => {
     const task = await taskService.update(
-      requireHostId(req),
+      accessScope(req),
       req.params.taskId ?? '',
       req.body as UpdateTaskBody
     );
@@ -39,7 +46,7 @@ export const taskController = {
   },
 
   remove: async (req: Request, res: Response): Promise<void> => {
-    await taskService.remove(requireHostId(req), req.params.taskId ?? '');
+    await taskService.remove(accessScope(req), req.params.taskId ?? '');
     res.status(204).send();
   },
 };

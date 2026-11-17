@@ -127,7 +127,7 @@ const envSchema = z.object({
   REGISTRATION_VERIFICATION_TTL_MINUTES: z.coerce.number().int().positive().default(15),
 
   /** Idade mínima (anos) para uma data de nascimento ser aceite. */
-  MIN_HOST_AGE_YEARS: z.coerce.number().int().min(0).default(18),
+  MIN_HOST_AGE_YEARS: z.coerce.number().int().min(0).default(5),
 
   /**
    * Cloudinary — armazenamento dos avatares.
@@ -141,8 +141,11 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().trim().optional(),
   CLOUDINARY_API_SECRET: z.string().trim().optional(),
   CLOUDINARY_AVATAR_FOLDER: z.string().trim().min(1).default('conta-comigo/avatars'),
+  CLOUDINARY_EVENT_FOLDER: z.string().trim().min(1).default('conta-comigo/events'),
   /** Tamanho máximo do ficheiro de avatar (5 MiB por omissão). */
   AVATAR_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
+  /** Tamanho máximo da imagem de capa do evento (8 MiB por omissão). */
+  EVENT_COVER_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
 
   /** Parâmetros do Argon2id. Ajustáveis por ambiente, nunca por pedido. */
   ARGON2_MEMORY_KIB: z.coerce.number().int().min(8 * 1024).default(19456),

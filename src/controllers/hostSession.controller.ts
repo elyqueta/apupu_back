@@ -37,6 +37,8 @@ export const hostSessionController = {
         event: toEventDto(result.event, undefined, result.role),
         role: result.role,
         access_role: result.role,
+        email: result.email,
+        email_has_account: result.emailHasAccount,
         csrf_token: result.csrfToken,
         expires_at: result.session.expiresAt.toISOString(),
         manage_email_status: result.manageEmailStatus,

@@ -87,12 +87,47 @@ export interface EventActivityWithEvent extends EventActivity {
   eventTitle: string;
 }
 
+/** Notificações in-app: actividades, lembretes e tarefas. */
+export const NOTIFICATION_KINDS = [
+  'rsvp_accepted',
+  'rsvp_declined',
+  'guest_added',
+  'reminder_sent',
+  'event_created',
+  'event_upcoming',
+  'rsvp_deadline',
+  'task_assigned',
+  'task_completed',
+] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+
+export const NOTIFICATION_STATUSES = ['all', 'unread', 'read'] as const;
+export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
+
+export interface HostNotification {
+  id: string;
+  hostId: string;
+  eventId: string | null;
+  eventTitle: string | null;
+  activityId: string | null;
+  kind: NotificationKind;
+  title: string;
+  body: string | null;
+  metadata: Record<string, unknown>;
+  readAt: Date | null;
+  createdAt: Date;
+}
+
 export interface HostTask {
   id: string;
   hostId: string;
   eventId: string | null;
+  eventTitle: string | null;
+  managerId: string | null;
+  managerEmail: string | null;
   label: string;
   done: boolean;
+  completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

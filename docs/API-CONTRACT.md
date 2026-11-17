@@ -61,7 +61,7 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `403` | `host_action_forbidden` | A ação está reservada ao anfitrião (proprietário); um gestor tentou executá-la |
 | `404` | `invitation_not_found` | Token inválido, convite revogado ou reclamado por outro navegador (resposta sempre igual) |
 | `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
-| `404` | `event_not_found` / `invitation_not_found` / `task_not_found` / `manager_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
+| `404` | `event_not_found` / `invitation_not_found` / `task_not_found` / `manager_not_found` / `notification_not_found` / `activity_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
 | `404` | `route_not_found` | Rota inexistente |
 | `409` | `event_not_scheduled`, `event_cancelled`, `event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`, `invitation_limit_reached`, `email_already_registered` | Conflito de estado |
 | `409` | `invitation_revoked`, `invitation_not_resendable` | Convite revogado ou sem link reutilizável para reenvio |
@@ -76,6 +76,7 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `429` | `otp_resend_too_soon` | Pedido de novo código antes do intervalo mínimo |
 | `500` | `internal_error` | Erro inesperado; sem stack trace |
 | `503` | `avatar_upload_unavailable` | Upload de avatar indisponível: credenciais Cloudinary ausentes ou provider inacessível |
+| `503` | `event_cover_upload_unavailable` | Upload da imagem de capa indisponível: credenciais Cloudinary ausentes ou provider inacessível |
 
 ## Autenticação e cookies
 
@@ -134,9 +135,10 @@ ser verificado por código OTP.
 - Invalida qualquer código anterior do mesmo email.
 - Envia um código numérico de 6 dígitos, válido por
   `REGISTRATION_OTP_TTL_MINUTES` minutos (por omissão 10).
-- O código é enviado por email. Fora de produção (`NODE_ENV` diferente de
-  `production`) a resposta inclui também `dev_code` para o protótipo
-  pré-preencher o ecrã de verificação; em produção o código só existe no email.
+- O código é enviado exclusivamente por email, com um link
+  `https://apupu-front.vercel.app/criar-conta?email=...&codigo=...` que
+  pré-preenche o ecrã de verificação. O código **nunca** é devolvido na
+  resposta da API.
 - Um novo pedido antes de `REGISTRATION_OTP_RESEND_SECONDS` segundos
   (por omissão 60) devolve `429 otp_resend_too_soon`.
 
@@ -148,13 +150,14 @@ Resposta `202`:
     "status": "accepted",
     "email": "ana@exemplo.ao",
     "expires_at": "2026-11-16T02:30:30.588Z",
-    "resend_available_at": "2026-11-16T02:20:30.586Z",
-    "dev_code": "004271"
+    "resend_available_at": "2026-11-16T02:20:30.586Z"
   }
 }
 ```
 
-> `dev_code` só aparece quando `NODE_ENV` não é `production`.
+> Não existe `dev_code`: o código só existe no email. O frontend deve
+> ler `email`/`codigo` da query string do link para abrir directamente o
+> passo de verificação.
 
 Erros: `409 email_already_registered`, `422 validation_failed`,
 `429 otp_resend_too_soon` ou `429 rate_limited`.
@@ -335,8 +338,13 @@ As leituras (`GET`) incluem os eventos próprios da conta e aqueles em
 que a conta é **gestora activa** — ou seja, o email verificado da conta
 foi adicionado como gestor pelo anfitrião. As mutações estruturais
 (criar, apagar, reenviar o link do anfitrião e gerir gestores) continuam
-reservadas ao proprietário. As tarefas são sempre pessoais: cada conta
-só vê as suas.
+reservadas ao proprietário.
+
+As tarefas pertencem sempre ao anfitrião (`host_id`), mas podem ser
+atribuídas a um gestor de um evento (`manager_id`). O anfitrião vê e
+gere todas as suas tarefas; um gestor vê apenas as que lhe foram
+atribuídas e só pode marcar `done`. A listagem global pagina, filtra e
+pesquisa.
 
 | Método | Rota | Efeito |
 |---|---|---|
@@ -353,12 +361,22 @@ só vê as suas.
 | `GET` | `/api/v1/host/invitations` | "Meus convites": eventos em que a conta foi convidada |
 | `GET` | `/api/v1/host/activity` | Feed de actividade da conta (paginado) |
 | `GET` | `/api/v1/host/events/{eventId}/activity` | Feed de actividade do evento (paginado) |
+| `DELETE` | `/api/v1/host/events/{eventId}/activity/{activityId}` | Elimina uma actividade do evento; só o anfitrião, na gestão do evento |
+| `PUT` | `/api/v1/host/events/{eventId}/cover` | Define a capa por URL (idempotente) |
+| `POST` | `/api/v1/host/events/{eventId}/cover/upload` | Carrega a capa por `multipart/form-data` |
+| `DELETE` | `/api/v1/host/events/{eventId}/cover` | Remove a capa (idempotente) |
 | `GET` | `/api/v1/host/reports/summary` | Agregados por evento e taxas |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | Série diária do evento |
-| `GET` | `/api/v1/host/tasks` | Tarefas da conta (filtro opcional `event_id`) |
-| `POST` | `/api/v1/host/tasks` | Cria tarefa |
-| `PATCH` | `/api/v1/host/tasks/{taskId}` | Atualiza descrição/estado |
-| `DELETE` | `/api/v1/host/tasks/{taskId}` | Remove tarefa |
+| `GET` | `/api/v1/host/notifications` | Notificações da conta (paginadas, com filtros e pesquisa) |
+| `GET` | `/api/v1/host/notifications/unread-count` | Contagem de notificações não lidas |
+| `PATCH` | `/api/v1/host/notifications/{notificationId}` | Marca uma notificação como lida/não lida |
+| `DELETE` | `/api/v1/host/notifications/{notificationId}` | Remove uma notificação |
+| `POST` | `/api/v1/host/notifications/read-all` | Marca todas como lidas |
+| `DELETE` | `/api/v1/host/notifications` | Limpa todas as notificações |
+| `GET` | `/api/v1/host/tasks` | Tarefas da conta/gestor (paginadas, com filtros e pesquisa) |
+| `POST` | `/api/v1/host/tasks` | Cria tarefa (só o anfitrião) |
+| `PATCH` | `/api/v1/host/tasks/{taskId}` | Actualiza descrição/estado |
+| `DELETE` | `/api/v1/host/tasks/{taskId}` | Remove tarefa (só o anfitrião) |
 
 Parâmetros de lista:
 
@@ -371,6 +389,13 @@ Parâmetros de lista:
   é sempre a do email da conta autenticada.
 - Relatório diário: `days` (1 a 365, por omissão 30); a série usa dias
   UTC, um ponto por dia, incluindo dias sem movimento.
+- Tarefas: `event_id`, `status` (`all` \| `pending` \| `done`, omissão
+  `all`), `assignee` (`all` \| `host` \| `manager`, omissão `all`),
+  `manager_id`, `q`, `page`, `page_size`. A resposta é
+  `{ data, pagination }`.
+- Notificações: `status` (`all` \| `unread` \| `read`), `kind`,
+  `event_id`, `q`, `page`, `page_size`. A resposta é
+  `{ data, pagination, unread_count }`.
 
 Criar um evento autenticado devolve o mesmo envelope de
 `POST /events` (`event`, `manage_email_status`, `deliveries`); o link de
@@ -751,7 +776,7 @@ Regras de "Meus convites":
   sem movimento.
 - `date` é `YYYY-MM-DD`.
 
-`GET /api/v1/host/tasks` — `200` (sem paginação):
+`GET /api/v1/host/tasks` — `200`, paginado:
 
 ```json
 {
@@ -759,21 +784,113 @@ Regras de "Meus convites":
     {
       "id": "0f0e5f6a-9b1c-4d3e-8a2b-7c6d5e4f3a21",
       "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "event_title": "Casamento da Ana e do Paulo",
+      "manager_id": "b2d5f4a1-3c47-4a3e-9c2d-1f2a3b4c5d6e",
+      "manager_email": "paulo@exemplo.ao",
       "label": "Confirmar menu",
       "done": false,
+      "completed_at": null,
       "created_at": "2026-11-16T01:00:00.000Z",
       "updated_at": "2026-11-16T01:00:00.000Z"
     }
-  ]
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
 }
 ```
 
 - `event_id` é `null` para tarefas globais da conta.
-- `POST /api/v1/host/tasks` (`{ "label": "...", "event_id": null }`)
-  devolve `201 { "data": { ...Task } }`.
+- `manager_id`/`manager_email` são `null` nas tarefas do próprio
+  anfitrião; quando preenchidos, a tarefa foi atribuída a esse gestor.
+- Só o anfitrião cria tarefas. `POST /api/v1/host/tasks`
+  (`{ "label": "...", "event_id": null, "manager_id": null }`) devolve
+  `201 { "data": Task }`. Atribuir a um gestor exige `event_id` e um
+  gestor activo desse evento; caso contrário `422 validation_failed`.
 - `PATCH /api/v1/host/tasks/{taskId}` aceita `label` e/ou `done` e
-  devolve `200 { "data": { ...Task } }`.
-- `DELETE /api/v1/host/tasks/{taskId}` devolve `204`.
+  devolve `200 { "data": Task }`. Um gestor só pode alternar `done` nas
+  tarefas que lhe foram atribuídas; tentar alterar `label` devolve
+  `403 host_action_forbidden`.
+- `DELETE /api/v1/host/tasks/{taskId}` devolve `204` e está reservado ao
+  anfitrião.
+- Ao atribuir uma tarefa, o gestor recebe a notificação `task_assigned`;
+  ao concluí-la, o anfitrião recebe `task_completed`.
+
+#### Capa do evento
+
+A imagem de capa pode ser definida por URL ou por upload. Ambas as
+operações são idempotentes: repetir o mesmo URL ou o mesmo ficheiro
+(comparado por SHA-256) não volta a gravar nem a enviar para o
+Cloudinary. O evento devolvido inclui `cover_url`.
+
+- `PUT /api/v1/host/events/{eventId}/cover` — corpo
+  `{ "cover_url": "https://..." }` (URL `https` válido), resposta
+  `200 { "data": Event }`.
+- `POST /api/v1/host/events/{eventId}/cover/upload` —
+  `multipart/form-data` com o campo `cover` (imagem até
+  `EVENT_COVER_MAX_BYTES`, por omissão 8 MiB), resposta
+  `200 { "data": Event }`. Sem credenciais Cloudinary devolve
+  `503 event_cover_upload_unavailable`.
+- `DELETE /api/v1/host/events/{eventId}/cover` — resposta
+  `200 { "data": Event }` com `cover_url: null`; repetir é inofensivo.
+
+Todas exigem `X-CSRF-Token` e devolvem `404 event_not_found` quando o
+evento não é acessível à conta.
+
+#### Actividade
+
+`GET /api/v1/host/activity` e
+`GET /api/v1/host/events/{eventId}/activity` são paginados.
+
+`DELETE /api/v1/host/events/{eventId}/activity/{activityId}` — `204`.
+Apenas o anfitrião, e apenas na área de gestão do evento, pode eliminar
+uma actividade; a notificação associada é removida. Um gestor recebe
+`403 host_action_forbidden`; uma actividade inexistente devolve
+`404 activity_not_found`.
+
+#### Notificações
+
+As notificações são uma camada persistida (`host_notifications`) por
+anfitrião, gerada a partir de actividades e lembretes. O feed nunca
+altera `event_activity`.
+
+`GET /api/v1/host/notifications` — `200`:
+
+```json
+{
+  "data": [
+    {
+      "id": "3c2b1a09-8f7e-4d6c-9b5a-4e3d2c1b0a98",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "event_title": "Casamento da Ana e do Paulo",
+      "activity_id": "9b1f1d0e-6a0c-4a52-9d4d-2f7e3f3a1b10",
+      "kind": "rsvp_accepted",
+      "title": "João aceitou o convite",
+      "body": null,
+      "metadata": { "invitation_id": "..." },
+      "read": false,
+      "read_at": null,
+      "created_at": "2026-11-16T01:00:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 },
+  "unread_count": 1
+}
+```
+
+- `kind`: `rsvp_accepted`, `rsvp_declined`, `guest_added`,
+  `reminder_sent`, `event_created`, `event_upcoming`, `rsvp_deadline`,
+  `task_assigned`, `task_completed`.
+- `GET /api/v1/host/notifications/unread-count` — `200`
+  `{ "data": { "unread_count": 3 } }`.
+- `PATCH /api/v1/host/notifications/{notificationId}` — corpo
+  `{ "read": true }`, resposta `200 { "data": Notification }`;
+  `404 notification_not_found` se não existir.
+- `DELETE /api/v1/host/notifications/{notificationId}` — `204`.
+- `POST /api/v1/host/notifications/read-all` — `200`
+  `{ "data": { "updated": 3 } }`.
+- `DELETE /api/v1/host/notifications` — `200`
+  `{ "data": { "removed": 3 } }` (remoção lógica).
+- Os lembretes (`event_upcoming`, `rsvp_deadline`) são derivados no
+  momento da leitura e deduplicados, pelo que a operação é idempotente.
 
 ### Categorias e mesas
 
@@ -863,6 +980,8 @@ Resposta `200` (define os cookies do evento):
     "event": { "...": "..." },
     "role": "host",
     "access_role": "host",
+    "email": "ana@exemplo.ao",
+    "email_has_account": true,
     "csrf_token": "<valor para X-CSRF-Token>",
     "expires_at": "2026-11-16T03:38:46.344Z",
     "manage_email_status": "queued",
@@ -875,6 +994,9 @@ O mesmo endpoint aceita o segredo de um link de gestor:
 
 - `role`/`access_role` valem `host` para o link do anfitrião e
   `manager` para o link de um gestor.
+- `email` é o email associado ao link (do anfitrião ou do gestor) e
+  `email_has_account` indica se esse email já tem conta registada. O
+  frontend usa estes campos para sugerir entrar ou criar conta.
 - Sessões de gestor devolvem `manage_email_status: null`: o link do
   gestor **não roda** ao ser usado. O link do anfitrião roda, como
   descrito abaixo.
@@ -975,10 +1097,14 @@ Só é possível adicionar convidados a um evento `scheduled`. O limite é
 `POST /api/v1/public/invitations/{token}/claim`
 
 - O primeiro claim válido é atómico e emite a capacidade do navegador.
-- Token inválido, convite revogado ou já reclamado por outro navegador
-  devolvem sempre o mesmo `404` genérico (`invitation_not_found`).
+- Token inválido ou convite revogado devolvem sempre o mesmo `404`
+  genérico (`invitation_not_found`).
 - O mesmo navegador pode reabrir o convite e reclamar convites
   adicionais com a mesma capacidade.
+- Se o pedido trouxer uma sessão de conta (`apupu_auth`) cujo email
+  verificado coincide com o email do convite, o convite é devolvido
+  mesmo que já tenha sido reclamado noutro navegador. Nesse caso o
+  `claim_hash` existente **não** é alterado: os dois acessos coexistem.
 
 Resposta `200`:
 
@@ -986,7 +1112,13 @@ Resposta `200`:
 {
   "data": {
     "event": { "id": "...", "title": "...", "starts_at": "...", "timezone": "Africa/Luanda" },
-    "guest": { "name": "João", "rsvp_status": "pending", "rsvp_responded_at": null },
+    "guest": {
+      "name": "João",
+      "email": "joao@exemplo.ao",
+      "email_has_account": true,
+      "rsvp_status": "pending",
+      "rsvp_responded_at": null
+    },
     "rsvp_deadline_passed": false,
     "csrf_token": "<valor para X-CSRF-Token>"
   }
@@ -995,9 +1127,11 @@ Resposta `200`:
 
 ### Consultar o convite
 
-`GET /api/v1/public/invitations/{token}` — exige a capacidade do
-navegador. Devolve a mesma apresentação pública, sem email, telefone ou
-dados de outros convidados.
+`GET /api/v1/public/invitations/{token}` — aceita a capacidade do
+navegador **ou** uma sessão de conta cujo email verificado coincide com
+o email do convite. Devolve a mesma apresentação pública, sem telefone
+nem dados de outros convidados. A resposta inclui o email do próprio
+convidado e `email_has_account` para o frontend sugerir conta.
 
 ### Responder
 
@@ -1008,7 +1142,8 @@ dados de outros convidados.
 ```
 
 - `status`: `accepted` | `declined`.
-- Exige a capacidade do navegador e `X-CSRF-Token`.
+- Exige a capacidade do navegador ou a sessão de conta correspondente,
+  mais `X-CSRF-Token` derivado desse segredo.
 - Repetir o mesmo estado é idempotente.
 - `declined` cancela os lembretes futuros do convite e notifica o
   anfitrião por email.
@@ -1087,6 +1222,7 @@ contrário.
   "rules": "Traje formal.",
   "dress_code": "Traje formal",
   "template_id": null,
+  "cover_url": "https://res.cloudinary.com/demo/image/upload/capa.jpg",
   "theme": { "mode": "dark", "palette": "default" },
   "contribution": { "enabled": false },
   "rsvp_deadline": "2027-08-01T22:59:59.000Z",
@@ -1111,6 +1247,7 @@ contrário.
 | `contribution` | object | Com `enabled=false` só este campo é devolvido |
 | `status` | string | `draft`, `scheduled`, `cancelled`, `completed` |
 | `access_role` | string | `host` ou `manager`; presente nas vistas de gestão e na sessão |
+| `cover_url` | string \| null | Imagem de capa (upload ou URL); `null` usa a arte do template |
 | `stats` | object | Só nas listas de gestão, `dashboard` e detalhe por sessão de evento |
 
 A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
@@ -1240,10 +1377,36 @@ estável do tipo de actividade (por exemplo `rsvp_accepted`,
 {
   "id": "0f0e5f6a-9b1c-4d3e-8a2b-7c6d5e4f3a21",
   "event_id": null,
+  "event_title": null,
+  "manager_id": null,
+  "manager_email": null,
   "label": "Confirmar menu",
   "done": false,
+  "completed_at": null,
   "created_at": "2026-11-16T01:00:00.000Z",
   "updated_at": "2026-11-16T01:00:00.000Z"
+}
+```
+
+`event_title`, `manager_id` e `manager_email` são `null` quando não se
+aplicam. `completed_at` é preenchido quando `done=true` e limpo ao
+reabrir a tarefa.
+
+### `Notification`
+
+```json
+{
+  "id": "3c2b1a09-8f7e-4d6c-9b5a-4e3d2c1b0a98",
+  "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+  "event_title": "Casamento da Ana e do Paulo",
+  "activity_id": "9b1f1d0e-6a0c-4a52-9d4d-2f7e3f3a1b10",
+  "kind": "rsvp_accepted",
+  "title": "João aceitou o convite",
+  "body": null,
+  "metadata": {},
+  "read": false,
+  "read_at": null,
+  "created_at": "2026-11-16T01:00:00.000Z"
 }
 ```
 
@@ -1297,6 +1460,8 @@ O token do link nunca é devolvido.
   },
   "guest": {
     "name": "João",
+    "email": "joao@exemplo.ao",
+    "email_has_account": true,
     "rsvp_status": "pending",
     "rsvp_responded_at": null
   },
@@ -1305,8 +1470,10 @@ O token do link nunca é devolvido.
 }
 ```
 
-Nunca inclui `guest_email`, `guest_phone`, `table_name` nem dados de
-outros convidados.
+Inclui apenas os dados do próprio convidado. Nunca inclui
+`guest_phone`, `table_name` nem dados de outros convidados.
+`email_has_account` permite ao frontend sugerir entrar ou criar conta
+para abrir o convite em qualquer navegador.
 
 ### `ReportSummary` e `DailyReport`
 
@@ -1452,9 +1619,19 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `GET` | `/api/v1/host/invitations` | `200` | `{ "data": GuestInvitation[], "pagination": Pagination }` |
 | `GET` | `/api/v1/host/activity` | `200` | `{ "data": ActivityWithEvent[], "pagination": Pagination }` |
 | `GET` | `/api/v1/host/events/{eventId}/activity` | `200` | `{ "data": Activity[], "pagination": Pagination }` |
+| `DELETE` | `/api/v1/host/events/{eventId}/activity/{activityId}` | `204` | — |
+| `PUT` | `/api/v1/host/events/{eventId}/cover` | `200` | `{ "data": Event }` |
+| `POST` | `/api/v1/host/events/{eventId}/cover/upload` | `200` | `{ "data": Event }` |
+| `DELETE` | `/api/v1/host/events/{eventId}/cover` | `200` | `{ "data": Event }` |
+| `GET` | `/api/v1/host/notifications` | `200` | `{ "data": Notification[], "pagination": Pagination, "unread_count": integer }` |
+| `GET` | `/api/v1/host/notifications/unread-count` | `200` | `{ "data": { "unread_count": integer } }` |
+| `PATCH` | `/api/v1/host/notifications/{notificationId}` | `200` | `{ "data": Notification }` |
+| `DELETE` | `/api/v1/host/notifications/{notificationId}` | `204` | — |
+| `POST` | `/api/v1/host/notifications/read-all` | `200` | `{ "data": { "updated": integer } }` |
+| `DELETE` | `/api/v1/host/notifications` | `200` | `{ "data": { "removed": integer } }` |
 | `GET` | `/api/v1/host/reports/summary` | `200` | `{ "data": ReportSummary }` |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `200` | `{ "data": { "event_id": uuid, "days": integer, "series": DailyReport[] } }` |
-| `GET` | `/api/v1/host/tasks` | `200` | `{ "data": Task[] }` |
+| `GET` | `/api/v1/host/tasks` | `200` | `{ "data": Task[], "pagination": Pagination }` |
 | `POST` | `/api/v1/host/tasks` | `201` | `{ "data": Task }` |
 | `PATCH` | `/api/v1/host/tasks/{taskId}` | `200` | `{ "data": Task }` |
 | `DELETE` | `/api/v1/host/tasks/{taskId}` | `204` | — |
@@ -1470,7 +1647,7 @@ created_at, updated_at }`.
 | Método | Rota | Sucesso | Corpo |
 |---|---|---|---|
 | `POST` | `/api/v1/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "queued" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
-| `POST` | `/api/v1/host/session` | `200` | `{ "data": { "event": Event, "role": "host" \| "manager", "access_role": "host" \| "manager", "csrf_token": string, "expires_at": string, "manage_email_status": "queued" \| "failed" \| null, "manage_token_expires_at": string \| null } }` |
+| `POST` | `/api/v1/host/session` | `200` | `{ "data": { "event": Event, "role": "host" \| "manager", "access_role": "host" \| "manager", "email": string, "email_has_account": boolean, "csrf_token": string, "expires_at": string, "manage_email_status": "queued" \| "failed" \| null, "manage_token_expires_at": string \| null } }` |
 | `DELETE` | `/api/v1/host/session/{eventId}` | `204` | — |
 | `GET` | `/api/v1/host/events/{eventId}` | `200` | `{ "data": { "event": Event, "invitations": Invitation[] } }` |
 | `PATCH` | `/api/v1/host/events/{eventId}` | `200` | `{ "data": Event }` |
@@ -1743,6 +1920,16 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `GET` | `/api/v1/host/invitations` | `401 host_session_invalid`; `403 email_not_verified`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/activity` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}/activity` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/events/{eventId}/activity/{activityId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 activity_not_found`; `429 rate_limited` |
+| `PUT` | `/api/v1/host/events/{eventId}/cover` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/cover/upload` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited`; `503 event_cover_upload_unavailable` |
+| `DELETE` | `/api/v1/host/events/{eventId}/cover` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/notifications` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/notifications/unread-count` | `401 host_session_invalid` |
+| `PATCH` | `/api/v1/host/notifications/{notificationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 notification_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/notifications/{notificationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 notification_not_found`; `429 rate_limited` |
+| `POST` | `/api/v1/host/notifications/read-all` | `401 host_session_invalid`; `403 csrf_invalid`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/notifications` | `401 host_session_invalid`; `403 csrf_invalid`; `429 rate_limited` |
 | `GET` | `/api/v1/host/reports/summary` | `401 host_session_invalid` |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
@@ -1779,7 +1966,9 @@ Acções registadas nesta fase:
   `guest_invitation_resent`, `guest_access_revoked`;
 - `manage_link_rotated`, `manage_link_resent`;
 - `manager_added`, `manager_removed`, `manager_invite_resent`,
-  `manager_link_used`.
+  `manager_link_used`;
+- `event_cover_updated`, `event_cover_removed`;
+- `activity_deleted`.
 
 Regras:
 

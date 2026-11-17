@@ -54,4 +54,28 @@ export const activityService = {
       pagination: buildPaginationMeta(total, page.page, page.pageSize),
     };
   },
+
+  /**
+   * Elimina uma actividade do histórico do evento.
+   *
+   * A rota exige o papel de anfitrião: gestores não apagam o histórico.
+   * A notificação associada é removida em cascata.
+   */
+  async remove(
+    scope: EventAccessScope,
+    eventId: string,
+    activityId: string
+  ): Promise<void> {
+    const access = await eventRepository.findByIdForAccess(eventId, scope);
+
+    if (!access) {
+      throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+    }
+
+    const deleted = await activityRepository.deleteForEvent(eventId, activityId);
+
+    if (!deleted) {
+      throw new NotFoundError('Actividade não encontrada.', 'activity_not_found');
+    }
+  },
 };

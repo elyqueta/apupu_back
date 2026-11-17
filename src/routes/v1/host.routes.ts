@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { activityController } from '../../controllers/activity.controller';
 import { eventController } from '../../controllers/event.controller';
+import { eventCoverController } from '../../controllers/eventCover.controller';
 import { hostSessionController } from '../../controllers/hostSession.controller';
 import { invitationController } from '../../controllers/invitation.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
@@ -7,6 +9,7 @@ import { hostAuth } from '../../middlewares/hostAuth';
 import { hostSessionLimiter, writeLimiter } from '../../middlewares/rateLimiter';
 import { requireEventHost } from '../../middlewares/requireEventHost';
 import { requireHostCsrf } from '../../middlewares/requireHostCsrf';
+import { uploadEventCover } from '../../middlewares/uploadEventCover';
 import { validate } from '../../middlewares/validate';
 import {
   createInvitationSchema,
@@ -16,6 +19,10 @@ import {
   updateEventSchema,
   updateInvitationSchema,
 } from '../../schemas/event.schemas';
+import {
+  activityIdParamsSchema,
+  coverUrlSchema,
+} from '../../schemas/host.schemas';
 
 const router = Router();
 
@@ -29,7 +36,9 @@ const router = Router();
  *       O segredo nunca é devolvido em JSON nem registado. A sessão é
  *       limitada ao evento e expira ao fim de `HOST_SESSION_TTL_MINUTES`.
  *       A resposta inclui o `csrf_token` que o cliente deve enviar em
- *       `X-CSRF-Token` nos pedidos mutáveis.
+ *       `X-CSRF-Token` nos pedidos mutáveis, o `email` associado ao link
+ *       (anfitrião ou gestor) e `email_has_account`, que indica se esse
+ *       email já tem conta registada.
  *     requestBody:
  *       required: true
  *       content:
@@ -155,6 +164,179 @@ router.patch(
   requireHostCsrf,
   validate({ body: updateEventSchema }),
   asyncHandler(eventController.update)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/cover:
+ *   put:
+ *     tags: [Gestão]
+ *     summary: Define a imagem de capa por URL
+ *     description: >
+ *       Repetir o mesmo URL é idempotente. O anfitrião e os gestores do
+ *       evento podem alterar a capa.
+ *     security:
+ *       - hostSession: []
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [cover_url]
+ *             properties:
+ *               cover_url: { type: string, format: uri }
+ *     responses:
+ *       200:
+ *         description: Evento com a nova capa.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventEnvelope' }
+ *       404:
+ *         description: Evento não encontrado.
+ *   delete:
+ *     tags: [Gestão]
+ *     summary: Remove a imagem de capa
+ *     description: Operação idempotente; devolve o evento sem capa.
+ *     security:
+ *       - hostSession: []
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Evento actualizado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventEnvelope' }
+ *
+ * /api/v1/host/events/{eventId}/cover/upload:
+ *   post:
+ *     tags: [Gestão]
+ *     summary: Carrega a imagem de capa (multipart)
+ *     description: >
+ *       Campo `cover` com JPEG, PNG ou WebP. O upload é idempotente por
+ *       conteúdo (SHA-256): repetir o mesmo ficheiro devolve a capa
+ *       actual sem voltar a enviar para o Cloudinary.
+ *     security:
+ *       - hostSession: []
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [cover]
+ *             properties:
+ *               cover:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Evento com a nova capa.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventEnvelope' }
+ *       503:
+ *         description: Upload indisponível (`event_cover_upload_unavailable`).
+ */
+router.put(
+  '/events/:eventId/cover',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(hostAuth),
+  writeLimiter,
+  requireHostCsrf,
+  validate({ body: coverUrlSchema }),
+  asyncHandler(eventCoverController.setUrl)
+);
+
+router.post(
+  '/events/:eventId/cover/upload',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(hostAuth),
+  writeLimiter,
+  requireHostCsrf,
+  uploadEventCover,
+  asyncHandler(eventCoverController.upload)
+);
+
+router.delete(
+  '/events/:eventId/cover',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(hostAuth),
+  writeLimiter,
+  requireHostCsrf,
+  asyncHandler(eventCoverController.remove)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/activity/{activityId}:
+ *   delete:
+ *     tags: [Workspace]
+ *     summary: Elimina uma actividade do histórico do evento
+ *     description: >
+ *       Apenas o anfitrião pode eliminar actividades, e apenas na área
+ *       de gestão do evento. A notificação associada é removida.
+ *     security:
+ *       - hostSession: []
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: activityId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       204:
+ *         description: Actividade removida.
+ *       403:
+ *         description: Apenas o anfitrião pode remover actividades.
+ *       404:
+ *         description: Evento ou actividade não encontrados.
+ */
+router.delete(
+  '/events/:eventId/activity/:activityId',
+  validate({ params: activityIdParamsSchema }),
+  asyncHandler(hostAuth),
+  writeLimiter,
+  requireHostCsrf,
+  requireEventHost,
+  asyncHandler(activityController.remove)
 );
 
 /**

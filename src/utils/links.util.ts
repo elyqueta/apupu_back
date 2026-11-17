@@ -70,6 +70,18 @@ export const links = {
     return `${publicAppBaseUrl()}/entrar`;
   },
 
+  /**
+   * Registo com email e código OTP pré-preenchidos.
+   *
+   * O código só viaja por email (nunca na resposta da API). O frontend
+   * lê `email`/`codigo` da query string e abre directamente o passo de
+   * validação.
+   */
+  registerOtp(email: string, code: string): string {
+    const params = new URLSearchParams({ email, codigo: code });
+    return `${publicAppBaseUrl()}/criar-conta?${params.toString()}`;
+  },
+
   /** Endpoint direto de RSVP da API (útil em clientes sem frontend). */
   rsvp(token: string): string {
     return `${trimBase(env.API_BASE_URL)}/api/v1/public/invitations/${token}/rsvp`;

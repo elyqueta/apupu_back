@@ -65,6 +65,12 @@ export interface Event {
   templateId: string | null;
   theme: EventTheme;
   contribution: EventContribution;
+  /** Imagem de capa (upload ou URL); `null` usa a arte do template. */
+  coverUrl: string | null;
+  /** SHA-256 do último ficheiro carregado, para uploads idempotentes. */
+  coverHash: string | null;
+  /** `public_id` no Cloudinary, para remover o asset ao substituir. */
+  coverPublicId: string | null;
   rsvpDeadline: Date | null;
   status: EventStatus;
   manageTokenExpiresAt: Date | null;
@@ -95,6 +101,10 @@ export interface CreateEventInput {
   theme: EventTheme;
   contribution: EventContribution;
   rsvpDeadline: Date | null;
+  /** Definidos pelos endpoints dedicados de capa, não no create. */
+  coverUrl?: string | null;
+  coverHash?: string | null;
+  coverPublicId?: string | null;
 }
 
 export type UpdateEventInput = Partial<CreateEventInput> & {

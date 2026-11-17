@@ -7,10 +7,12 @@ import { eventRepository } from '../repositories/event.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { CreateInvitationBody, UpdateInvitationBody } from '../schemas/event.schemas';
 import { Event } from '../types/event.types';
+import { GuestAccess } from '../types/guestAccess.types';
 import { Invitation, UpdateInvitationInput } from '../types/invitation.types';
 import { decryptToken, encryptToken } from '../utils/crypto.util';
 import { isUniqueViolation } from '../utils/db.util';
-import { csrfTokenFor, generateToken, hashesMatch, hashToken } from '../utils/token.util';
+import { generateToken, hashesMatch, hashToken } from '../utils/token.util';
+import { accountOwnsInvitation, AccountIdentity } from './guestAccess.service';
 import {
   cancelMessagesForInvitation,
   enqueueDeclineNotification,
@@ -47,12 +49,11 @@ async function findOwnedInvitation(
 export interface PublicInvitationResult {
   event: Event;
   invitation: Invitation;
-  /** Capacidade do navegador (nunca serializada na resposta). */
-  capability: string;
-  csrfToken: string;
+  /** Como o convite foi autorizado (capacidade ou conta). */
+  access: GuestAccess;
   rsvpDeadlinePassed: boolean;
-  /** Verdadeiro quando o cookie de capacidade acabou de ser criado. */
-  newCapability: boolean;
+  /** Capacidade nova a gravar no cookie; `null` quando não há. */
+  newCapability: string | null;
 }
 
 export const invitationService = {
@@ -218,8 +219,16 @@ export const invitationService = {
    * A capacidade é reutilizada se o navegador já tiver uma: assim o
    * mesmo navegador pode reclamar vários convites sem perder acesso ao
    * anterior. O cookie nunca é revelado na resposta.
+   *
+   * Uma conta com o email verificado do convidado também pode abrir o
+   * convite, mesmo que ele já tenha sido reclamado noutro navegador.
+   * Nesse caso o `claim_hash` existente não é alterado.
    */
-  async claim(token: string, capability: string | null): Promise<PublicInvitationResult> {
+  async claim(
+    token: string,
+    capability: string | null,
+    account: AccountIdentity | null
+  ): Promise<PublicInvitationResult> {
     const invitation = await invitationRepository.findByTokenHash(hashToken(token));
 
     if (!invitation || invitation.claimRevokedAt) {
@@ -233,18 +242,31 @@ export const invitationService = {
     }
 
     if (invitation.claimHash) {
-      if (!capability || !hashesMatch(hashToken(capability), invitation.claimHash)) {
-        throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
+      if (capability && hashesMatch(hashToken(capability), invitation.claimHash)) {
+        return {
+          event,
+          invitation,
+          access: { kind: 'capability', secret: capability },
+          rsvpDeadlinePassed: isRsvpDeadlinePassed(event),
+          newCapability: null,
+        };
       }
 
-      return {
-        event,
-        invitation,
-        capability,
-        csrfToken: capabilityCsrf(capability),
-        rsvpDeadlinePassed: isRsvpDeadlinePassed(event),
-        newCapability: false,
-      };
+      if (accountOwnsInvitation(invitation, account)) {
+        return {
+          event,
+          invitation,
+          access: {
+            kind: 'account',
+            secret: account.sessionToken,
+            email: account.email,
+          },
+          rsvpDeadlinePassed: isRsvpDeadlinePassed(event),
+          newCapability: null,
+        };
+      }
+
+      throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
     }
 
     const candidate = capability ?? generateToken();
@@ -254,10 +276,9 @@ export const invitationService = {
       return {
         event,
         invitation: claimed,
-        capability: candidate,
-        csrfToken: capabilityCsrf(candidate),
+        access: { kind: 'capability', secret: candidate },
         rsvpDeadlinePassed: isRsvpDeadlinePassed(event),
-        newCapability: capability === null,
+        newCapability: capability === null ? candidate : null,
       };
     }
 
@@ -272,10 +293,23 @@ export const invitationService = {
       return {
         event,
         invitation: refreshed,
-        capability,
-        csrfToken: capabilityCsrf(capability),
+        access: { kind: 'capability', secret: capability },
         rsvpDeadlinePassed: isRsvpDeadlinePassed(event),
-        newCapability: false,
+        newCapability: null,
+      };
+    }
+
+    if (refreshed && accountOwnsInvitation(refreshed, account)) {
+      return {
+        event,
+        invitation: refreshed,
+        access: {
+          kind: 'account',
+          secret: account.sessionToken,
+          email: account.email,
+        },
+        rsvpDeadlinePassed: isRsvpDeadlinePassed(event),
+        newCapability: null,
       };
     }
 
@@ -292,7 +326,7 @@ export const invitationService = {
   async respond(
     eventId: string,
     invitationId: string,
-    capability: string,
+    access: GuestAccess,
     status: 'accepted' | 'declined'
   ): Promise<PublicInvitationResult> {
     return withTransaction(async (client) => {
@@ -302,8 +336,7 @@ export const invitationService = {
         !current ||
         current.eventId !== eventId ||
         current.claimRevokedAt ||
-        !current.claimHash ||
-        !hashesMatch(hashToken(capability), current.claimHash)
+        !invitationMatchesAccess(current, access)
       ) {
         throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
       }
@@ -333,10 +366,9 @@ export const invitationService = {
         return {
           event,
           invitation: current,
-          capability,
-          csrfToken: capabilityCsrf(capability),
+          access,
           rsvpDeadlinePassed: false,
-          newCapability: false,
+          newCapability: null,
         };
       }
 
@@ -366,15 +398,27 @@ export const invitationService = {
       return {
         event,
         invitation: updated,
-        capability,
-        csrfToken: capabilityCsrf(capability),
+        access,
         rsvpDeadlinePassed: false,
-        newCapability: false,
+        newCapability: null,
       };
     });
   },
 };
 
-function capabilityCsrf(capability: string): string {
-  return csrfTokenFor(capability);
+/** Valida a forma de acesso contra o convite actual. */
+function invitationMatchesAccess(
+  invitation: Invitation,
+  access: GuestAccess
+): boolean {
+  if (access.kind === 'account') {
+    return (
+      invitation.guestEmail.trim().toLowerCase() === access.email.trim().toLowerCase()
+    );
+  }
+
+  return Boolean(
+    invitation.claimHash &&
+      hashesMatch(hashToken(access.secret), invitation.claimHash)
+  );
 }

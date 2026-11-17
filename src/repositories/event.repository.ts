@@ -43,6 +43,9 @@ interface EventRow {
   contribution_bank_name: string | null;
   contribution_account_holder: string | null;
   contribution_account_reference: string | null;
+  cover_url: string | null;
+  cover_hash: string | null;
+  cover_public_id: string | null;
   rsvp_deadline: Date | null;
   status: EventStatus;
   created_at: Date;
@@ -92,6 +95,9 @@ function toEvent(row: EventRow): EventRecord {
     templateId: row.template_id,
     theme: row.theme,
     contribution,
+    coverUrl: row.cover_url,
+    coverHash: row.cover_hash,
+    coverPublicId: row.cover_public_id,
     rsvpDeadline: row.rsvp_deadline,
     status: row.status,
     createdAt: row.created_at,
@@ -122,7 +128,8 @@ const SELECT_COLUMNS = `
   location_type, location_name, location_address, online_url,
   message, rules, dress_code, template_id, theme,
   contribution_enabled, contribution_bank_name, contribution_account_holder,
-  contribution_account_reference, rsvp_deadline, status, created_at, updated_at
+  contribution_account_reference, cover_url, cover_hash, cover_public_id,
+  rsvp_deadline, status, created_at, updated_at
 `;
 
 /** Prefixa as colunas do evento com o alias usado na query. */
@@ -336,6 +343,9 @@ export const eventRepository = {
       ['rules', 'rules', (v: unknown): unknown => v],
       ['dressCode', 'dress_code', (v: unknown): unknown => v],
       ['templateId', 'template_id', (v: unknown): unknown => v],
+      ['coverUrl', 'cover_url', (v: unknown): unknown => v],
+      ['coverHash', 'cover_hash', (v: unknown): unknown => v],
+      ['coverPublicId', 'cover_public_id', (v: unknown): unknown => v],
       ['rsvpDeadline', 'rsvp_deadline', (v: unknown): unknown => v],
       ['status', 'status', (v: unknown): unknown => v],
     ];

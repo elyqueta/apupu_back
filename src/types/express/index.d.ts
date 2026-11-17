@@ -1,4 +1,5 @@
 import { Event, EventAccessRole } from '../event.types';
+import { GuestAccess } from '../guestAccess.types';
 import { Invitation } from '../invitation.types';
 import { HostWithProfile } from '../host.types';
 
@@ -22,6 +23,8 @@ declare global {
       id: string;
       event?: Event;
       invitation?: Invitation;
+      /** Como o convite foi autorizado: capacidade do navegador ou conta. */
+      guestAccess?: GuestAccess;
       hostSession?: {
         id: string;
         eventId: string;

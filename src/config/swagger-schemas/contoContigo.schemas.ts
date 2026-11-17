@@ -107,6 +107,13 @@ export const contoContigoSchemas = {
       rules: { type: 'string', nullable: true },
       dress_code: { type: 'string', nullable: true },
       template_id: { type: 'string', format: 'uuid', nullable: true },
+      cover_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description:
+          'Imagem de capa carregada ou indicada por URL. `null` usa a arte do template.',
+      },
       theme: {
         type: 'object',
         properties: {
@@ -209,6 +216,12 @@ export const contoContigoSchemas = {
       message: { type: 'string', nullable: true },
       rules: { type: 'string', nullable: true },
       dress_code: { type: 'string', nullable: true },
+      cover_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description: 'Imagem de capa do evento, quando definida.',
+      },
       theme: {
         type: 'object',
         properties: {
@@ -233,6 +246,13 @@ export const contoContigoSchemas = {
         type: 'object',
         properties: {
           name: { type: 'string' },
+          email: { type: 'string', format: 'email' },
+          email_has_account: {
+            type: 'boolean',
+            description:
+              'Indica se o email do convite já tem conta. Permite ao frontend ' +
+              'sugerir entrar ou criar conta para abrir o convite em qualquer navegador.',
+          },
           rsvp_status: {
             type: 'string',
             enum: ['pending', 'accepted', 'declined'],
@@ -488,10 +508,44 @@ export const contoContigoSchemas = {
     properties: {
       id: { type: 'string', format: 'uuid' },
       event_id: { type: 'string', format: 'uuid', nullable: true },
+      event_title: { type: 'string', nullable: true },
+      manager_id: { type: 'string', format: 'uuid', nullable: true },
+      manager_email: { type: 'string', format: 'email', nullable: true },
       label: { type: 'string' },
       done: { type: 'boolean' },
+      completed_at: { type: 'string', format: 'date-time', nullable: true },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  Notification: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      event_id: { type: 'string', format: 'uuid', nullable: true },
+      event_title: { type: 'string', nullable: true },
+      activity_id: { type: 'string', format: 'uuid', nullable: true },
+      kind: {
+        type: 'string',
+        enum: [
+          'rsvp_accepted',
+          'rsvp_declined',
+          'guest_added',
+          'reminder_sent',
+          'event_created',
+          'event_upcoming',
+          'rsvp_deadline',
+          'task_assigned',
+          'task_completed',
+        ],
+      },
+      title: { type: 'string' },
+      body: { type: 'string', nullable: true },
+      metadata: { type: 'object', additionalProperties: true },
+      read: { type: 'boolean' },
+      read_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time' },
     },
   },
 
@@ -612,6 +666,19 @@ export const contoContigoSchemas = {
         type: 'array',
         items: { $ref: '#/components/schemas/Task' },
       },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  NotificationList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/Notification' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+      unread_count: { type: 'integer' },
     },
   },
 
@@ -721,14 +788,6 @@ export const contoContigoSchemas = {
           email: { type: 'string', format: 'email' },
           expires_at: { type: 'string', format: 'date-time' },
           resend_available_at: { type: 'string', format: 'date-time' },
-          dev_code: {
-            type: 'string',
-            pattern: '^[0-9]{6}$',
-            description:
-              'Código OTP em claro. Só é devolvido fora de produção ' +
-              '(desenvolvimento/teste) para conveniência do protótipo; ' +
-              'em produção o código só existe no email.',
-          },
         },
       },
     },
@@ -878,6 +937,11 @@ export const contoContigoSchemas = {
           event: { $ref: '#/components/schemas/Event' },
           role: { type: 'string', enum: ['host', 'manager'] },
           access_role: { type: 'string', enum: ['host', 'manager'] },
+          email: { type: 'string', format: 'email' },
+          email_has_account: {
+            type: 'boolean',
+            description: 'Indica se o email do link já tem conta registada.',
+          },
           csrf_token: { type: 'string' },
           expires_at: { type: 'string', format: 'date-time' },
           manage_email_status: {

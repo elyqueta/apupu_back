@@ -184,6 +184,9 @@ export interface PublicInvitationDto {
   event: PublicEventDto;
   guest: {
     name: string;
+    email: string;
+    /** `true` quando o email do convite já tem conta registada. */
+    email_has_account: boolean;
     rsvp_status: string;
     rsvp_responded_at: string | null;
   };
@@ -194,12 +197,15 @@ export interface PublicInvitationDto {
 export function toPublicInvitationDto(
   event: Event,
   invitation: Invitation,
-  rsvpDeadlinePassed: boolean
+  rsvpDeadlinePassed: boolean,
+  emailHasAccount: boolean
 ): PublicInvitationDto {
   return {
     event: toPublicEventDto(event),
     guest: {
       name: invitation.guestName,
+      email: invitation.guestEmail,
+      email_has_account: emailHasAccount,
       rsvp_status: invitation.rsvpStatus,
       rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     },

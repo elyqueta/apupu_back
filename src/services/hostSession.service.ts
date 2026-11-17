@@ -4,6 +4,7 @@ import { withTransaction } from '../database/pool';
 import { NotFoundError } from '../errors';
 import { eventManagerRepository } from '../repositories/eventManager.repository';
 import { eventRepository } from '../repositories/event.repository';
+import { hostRepository } from '../repositories/host.repository';
 import { hostSessionRepository } from '../repositories/hostSession.repository';
 import { EventAccessRole, EventRecord } from '../types/event.types';
 import { HostSession } from '../types/hostSession.types';
@@ -37,6 +38,10 @@ export interface CreatedHostSession {
   csrfToken: string;
   event: EventRecord;
   role: EventAccessRole;
+  /** Email associado ao link (anfitrião ou gestor). */
+  email: string;
+  /** `true` quando esse email já tem conta registada. */
+  emailHasAccount: boolean;
   /**
    * Resultado do envio do novo link emitido pela rotação. `null` para
    * sessões de gestor: o link do gestor não roda ao ser usado.
@@ -96,6 +101,8 @@ export const hostSessionService = {
       csrfToken: csrfTokenFor(sessionToken),
       event,
       role: 'manager',
+      email: manager.email,
+      emailHasAccount: manager.hasAccount,
       manageEmailStatus: null,
     };
   },
@@ -164,6 +171,8 @@ export const hostSessionService = {
       csrfToken: csrfTokenFor(sessionToken),
       event: rotated.event,
       role: 'host',
+      email: rotated.event.hostEmail,
+      emailHasAccount: await hostRepository.emailExists(rotated.event.hostEmail),
       manageEmailStatus,
     };
   },
