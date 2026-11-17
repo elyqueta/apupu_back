@@ -1,19 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { env } from '../config/env';
+import { logger } from '../config/logger';
 import { NotFoundError } from '../errors';
 import { eventRepository } from '../repositories/event.repository';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { Event, EventRecord } from '../types/event.types';
-import { links } from '../utils/links.util';
+import { encryptToken } from '../utils/crypto.util';
 import { generateToken, hashToken } from '../utils/token.util';
-import { sendManageLink } from './email.service';
 
 /**
  * Gestão do link secreto de um evento.
  *
- * O token em claro só existe durante a entrega: a base de dados guarda
- * apenas o HMAC. Por isso, rotacionar ou reenviar implica sempre gerar
- * um token novo — o anterior deixa de corresponder ao hash guardado.
+ * O token em claro só existe no pedido que o gera: `events` guarda
+ * apenas o HMAC e a outbox guarda uma cópia cifrada até o worker
+ * renderizar o email. Por isso, rotacionar ou reenviar implica sempre
+ * gerar um token novo — o anterior deixa de corresponder ao hash
+ * guardado.
  */
 
 export interface ManageTokenMaterial {
@@ -22,7 +24,8 @@ export interface ManageTokenMaterial {
   expiresAt: Date;
 }
 
-export type ManageEmailStatus = 'sent' | 'failed';
+/** `queued` = aceite pela outbox; o envio acontece em segundo plano. */
+export type ManageEmailStatus = 'queued' | 'failed';
 
 /** Validade do link de gestão, em dias, a contar de agora. */
 export function manageTokenExpiry(): Date {
@@ -43,10 +46,12 @@ export const manageLinkService = {
   generate: generateManageToken,
 
   /**
-   * Entrega o link por email e registra o resultado na outbox.
+   * Enfileira o link para envio em segundo plano.
    *
-   * A chave de idempotência é sempre única para rotações/reenvios;
-   * repetir a operação gera um token novo e uma chave nova.
+   * O token é guardado cifrado na linha da outbox e apagado/ignorado
+   * quando a entrega termina. A chave de idempotência é sempre única
+   * para rotações/reenvios; repetir a operação gera um token novo e
+   * uma chave nova.
    */
   async deliver(
     event: Event,
@@ -54,42 +59,21 @@ export const manageLinkService = {
     idempotencyKey: string
   ): Promise<ManageEmailStatus> {
     try {
-      const { providerMessageId } = await sendManageLink({
+      await emailDeliveryRepository.enqueue({
         eventId: event.id,
-        title: event.title,
-        hostName: event.hostName,
-        hostEmail: event.hostEmail,
-        manageUrl: links.manageEvent(token),
+        invitationId: null,
+        hostId: event.hostId,
+        messageType: 'manage_link',
+        reminderKind: null,
+        recipientEmail: event.hostEmail,
+        scheduledFor: new Date(),
+        idempotencyKey,
+        tokenEncrypted: encryptToken(token),
       });
 
-      await emailDeliveryRepository
-        .recordDirect({
-          eventId: event.id,
-          recipientEmail: event.hostEmail,
-          messageType: 'manage_link',
-          idempotencyKey,
-          status: 'sent',
-          providerMessageId,
-          lastError: null,
-        })
-        .catch(() => undefined);
-
-      return 'sent';
+      return 'queued';
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro desconhecido.';
-
-      await emailDeliveryRepository
-        .recordDirect({
-          eventId: event.id,
-          recipientEmail: event.hostEmail,
-          messageType: 'manage_link',
-          idempotencyKey,
-          status: 'failed',
-          providerMessageId: null,
-          lastError: message.slice(0, 500),
-        })
-        .catch(() => undefined);
-
+      logger.error({ err: error, eventId: event.id }, 'Falha ao enfileirar o link de gestão.');
       return 'failed';
     }
   },

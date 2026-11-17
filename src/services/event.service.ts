@@ -151,7 +151,7 @@ function mergeContribution(
 
 export interface CreatedEventResult {
   event: Event;
-  manageEmailStatus: 'sent' | 'failed';
+  manageEmailStatus: 'queued' | 'failed';
   deliveries: Array<{ email: string; status: 'queued' }>;
 }
 
@@ -163,9 +163,9 @@ export interface CreateEventOptions {
 export const eventService = {
   /**
    * Cria o evento, os convites e as entregas iniciais numa única
-   * transacção. O link de gestão é enviado imediatamente a seguir ao
-   * commit: é o único momento em que o token existe em claro e não
-   * pode ser persistido.
+   * transacção. O link de gestão é enfileirado na outbox: o token
+   * cifrado fica na linha da entrega até o worker renderizar o email,
+   * pelo que o pedido HTTP não espera pelo fornecedor de email.
    *
    * `options.hostId` liga o evento à conta autenticada. O fluxo legado
    * (sem conta) continua a funcionar com `hostId` nulo.

@@ -173,9 +173,25 @@ A especificação autoritária do produto está em [`backend/`](backend/).
 ## Lembretes e outbox
 
 A cadência é configurada em `REMINDER_OFFSETS_DAYS` (por omissão
-`14,7,3,1`) e a hora local em `REMINDER_LOCAL_HOUR` (por omissão `9`). O
-worker da outbox corre a cada `OUTBOX_SCAN_INTERVAL_MS` quando
-`OUTBOX_ENABLED=true`; também é possível executar um ciclo manual:
+`14,7,3,1`) e a hora local em `REMINDER_LOCAL_HOUR` (por omissão `9`).
+Todos os emails passam pela outbox transaccional; nenhum pedido HTTP
+espera pelo fornecedor de email.
+
+Em produção, corre o worker num processo separado (podes ter várias
+instâncias — `FOR UPDATE SKIP LOCKED` evita entregas duplicadas):
+
+```bash
+npm run worker        # tsx, desenvolvimento
+npm run worker:start  # node dist/worker.js, depois de npm run build
+```
+
+Define `OUTBOX_IN_API=false` na API para que o agendador não corra lá.
+Em desenvolvimento/protótipo, `OUTBOX_IN_API=true` mantém tudo num só
+processo. O worker acorda com `LISTEN outbox_new` logo após o commit de
+uma entrega; o polling por `OUTBOX_SCAN_INTERVAL_MS` continua como
+fallback para lembretes agendados.
+
+Também é possível executar um ciclo manual:
 
 ```bash
 npm run outbox:run
@@ -276,7 +292,9 @@ src/
 ├── scripts/        seeds, smoke test, ciclo manual da outbox
 ├── services/       contas, eventos, convites, sessão, email, lembretes, outbox
 ├── types/          tipos do domínio
-└── utils/          tokens, senhas, cifra, datas, links, cookies, paginação
+├── utils/          tokens, senhas, cifra, datas, links, cookies, paginação
+├── server.ts       processo HTTP
+└── worker.ts       processo dedicado da outbox (npm run worker)
 migrations/         node-pg-migrate
 tests/              Vitest
 backend/            especificação autoritária do produto

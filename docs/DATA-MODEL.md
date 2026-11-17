@@ -358,12 +358,22 @@ Chaves idempotentes usadas:
 | Boas-vindas | `host_welcome:<hostId>` |
 | Reposição de senha | `password_reset:<hostId>:<uuid>` |
 
-O link de gestão é enviado de forma síncrona após a transacção de
-criação; o resultado é registado em `email_deliveries` com
-`message_type=manage_link`, mas essa entrega nunca é reenviada pelo
-worker. As mensagens de conta (`email_verification`, `registration_otp`,
+Todas as mensagens passam pela outbox, incluindo o link de gestão. Nesse
+caso o token em claro é guardado cifrado em `token_encrypted` até o
+worker renderizar o email; `events.manage_token_hash` continua a ser o
+único registo verificável. A entrega é reenviada pelo worker como
+qualquer outra (com backoff) e a linha é cancelada quando o evento ou o
+convite deixam de a justificar.
+
+As mensagens de conta (`email_verification`, `registration_otp`,
 `host_welcome`, `password_reset`, `profile_reminder`) usam `host_id`
 (nulo no OTP, que antecede a conta) e não dependem de um evento.
+
+O worker corre em processo próprio (`npm run worker`) ou, em
+protótipos, dentro da API com `OUTBOX_IN_API=true`. Cada `INSERT`
+dispara `pg_notify('outbox_new')`, que acorda os processos à escuta
+(`LISTEN outbox_new`); o polling por `OUTBOX_SCAN_INTERVAL_MS` continua
+como fallback para lembretes agendados e notificações perdidas.
 
 ## Relações
 
@@ -402,7 +412,10 @@ worker. As mensagens de conta (`email_verification`, `registration_otp`,
   mesmo estado é idempotente.
 - Recusa e cancelamento de lembretes ocorrem na mesma transacção lógica.
 - A outbox reserva linhas com `FOR UPDATE SKIP LOCKED`; cada entrega é
-  revalidada imediatamente antes do envio.
+  revalidada imediatamente antes do envio. Várias instâncias do worker
+  podem correr em paralelo sem enviarem a mesma entrega.
+- Entregas presas em `processing` (processo morto a meio do envio) são
+  recuperadas após o intervalo de recuperação e voltam a `pending`.
 - Todas as leituras e mutações do workspace são limitadas por
   `events.host_id = sessão.host_id`; a ausência de posse devolve `404`,
   não `403`.

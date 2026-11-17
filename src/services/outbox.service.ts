@@ -1,3 +1,4 @@
+import { Client } from 'pg';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { withTransaction } from '../database/pool';
@@ -42,7 +43,9 @@ type Verdict = { ok: true } | { ok: false; reason: string };
  */
 export function evaluateApplicability(context: DeliveryContext): Verdict {
   if (context.messageType === 'manage_link') {
-    return { ok: false, reason: 'manage_link_not_queued' };
+    // O link de gestão é independente do estado do evento: continua a
+    // ser útil para o anfitrião reabrir, cancelar ou consultar.
+    return { ok: true };
   }
 
   // Mensagens de conta não dependem do estado de um evento.
@@ -214,22 +217,93 @@ export async function processOutbox(limit = 50): Promise<OutboxResult> {
 }
 
 let timer: NodeJS.Timeout | null = null;
+let listener: Client | null = null;
+let reconnectTimer: NodeJS.Timeout | null = null;
 let cycleRunning = false;
+let kickAgain = false;
 
 async function runCycle(): Promise<void> {
-  if (cycleRunning) return;
+  if (cycleRunning) {
+    // Chegou trabalho novo enquanto o lote atual corria. No fim do
+    // ciclo voltamos a olhar para a outbox, sem empilhar promessas.
+    kickAgain = true;
+    return;
+  }
+
   cycleRunning = true;
 
   try {
-    const result = await processOutbox();
+    do {
+      kickAgain = false;
+      const result = await processOutbox();
 
-    if (result.sent > 0 || result.failed > 0 || result.cancelled > 0 || result.retried > 0) {
-      logger.info(result, 'Ciclo da outbox concluído.');
-    }
+      if (result.sent > 0 || result.failed > 0 || result.cancelled > 0 || result.retried > 0) {
+        logger.info(result, 'Ciclo da outbox concluído.');
+      }
+    } while (kickAgain);
   } catch (error) {
     logger.error({ err: error }, 'Falha no ciclo da outbox.');
   } finally {
     cycleRunning = false;
+  }
+}
+
+function scheduleReconnect(): void {
+  if (reconnectTimer || !timer) return;
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    void connectListener();
+  }, 5000);
+
+  reconnectTimer.unref();
+}
+
+/**
+ * `LISTEN outbox_new` para acordar o worker no instante em que uma
+ * entrega é criada.
+ *
+ * O polling periódico continua a ser a rede de segurança (processos
+ * reiniciados, notificações perdidas, lembretes agendados para o
+ * futuro). A notificação só encurta a latência dos emails imediatos,
+ * como o OTP de registo.
+ */
+async function connectListener(): Promise<void> {
+  if (listener || !timer) return;
+
+  const client = new Client({ connectionString: env.DATABASE_URL });
+  listener = client;
+
+  client.on('notification', (message) => {
+    if (message.channel === 'outbox_new') {
+      void runCycle();
+    }
+  });
+
+  const drop = (error?: unknown): void => {
+    if (error) {
+      logger.error({ err: error }, 'Ligação LISTEN da outbox caiu.');
+    }
+    if (listener === client) {
+      listener = null;
+      scheduleReconnect();
+    }
+  };
+
+  client.on('error', drop);
+  client.on('end', () => drop());
+
+  try {
+    await client.connect();
+    await client.query('LISTEN outbox_new');
+    logger.info('À escuta de novas entregas da outbox (LISTEN outbox_new).');
+  } catch (error) {
+    logger.error({ err: error }, 'Falha ao ligar o LISTEN da outbox.');
+    if (listener === client) {
+      listener = null;
+    }
+    await client.end().catch(() => undefined);
+    scheduleReconnect();
   }
 }
 
@@ -252,12 +326,30 @@ export function startOutboxScheduler(): void {
     'Agendador da outbox iniciado.'
   );
 
+  void connectListener();
   void runCycle();
 }
 
 export function stopOutboxScheduler(): void {
-  if (!timer) return;
-  clearInterval(timer);
-  timer = null;
+  if (!timer && !listener && !reconnectTimer) return;
+
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  const client = listener;
+  listener = null;
+
+  if (client) {
+    void client.end().catch(() => undefined);
+  }
+
   logger.info('Agendador da outbox parado.');
 }
+

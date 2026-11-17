@@ -3,7 +3,6 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import nodemailer, { Transporter } from 'nodemailer';
 import { env } from '../config/env';
-import { logger } from '../config/logger';
 import { DeliveryContext } from '../repositories/emailDelivery.repository';
 import { formatDateTime } from '../utils/date.util';
 import { decryptToken } from '../utils/crypto.util';
@@ -293,7 +292,32 @@ function reminderText(kind: string | null): { lead: string; subject: string } {
 export function renderDelivery(context: DeliveryContext): MailMessage {
   switch (context.messageType) {
     case 'manage_link': {
-      throw new Error('O link de gestão não é enviado pela outbox.');
+      const manageUrl = links.manageEvent(hostToken(context));
+      const title = context.eventTitle ?? 'o teu evento';
+      const hostName = context.hostName ?? 'anfitrião';
+
+      return {
+        to: context.recipientEmail,
+        subject: `O teu link de gestão — ${title}`,
+        messageKey: context.idempotencyKey,
+        text: [
+          `Olá ${hostName},`,
+          '',
+          `O teu evento ${title} foi criado no Conto Contigo.`,
+          'Guarda este link: é a única forma de gerir o evento.',
+          manageUrl,
+          '',
+          'Quem tiver o link pode gerir o evento e ver a lista de convidados.',
+          'Não o partilhes com os convidados.',
+        ].join('\n'),
+        html: `
+          <p>Olá ${escapeHtml(hostName)},</p>
+          <p>O teu evento <strong>${escapeHtml(title)}</strong> foi criado no Conto Contigo.</p>
+          <p>Guarda este link — é a única forma de gerir o evento:</p>
+          <p><a href="${escapeHtml(manageUrl)}">${escapeHtml(manageUrl)}</a></p>
+          <p>Quem tiver o link pode gerir o evento e ver a lista de convidados. Não o partilhes com os convidados.</p>
+        `,
+      };
     }
 
     case 'email_verification': {
@@ -528,44 +552,5 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
         `,
       };
     }
-  }
-}
-
-/** Envia o link de gestão imediatamente após a criação do evento. */
-export async function sendManageLink(input: {
-  eventId: string;
-  title: string;
-  hostName: string;
-  hostEmail: string;
-  manageUrl: string;
-}): Promise<SendResult> {
-  const message: MailMessage = {
-    to: input.hostEmail,
-    subject: `O teu link de gestão — ${input.title}`,
-    messageKey: `manage_link_${input.eventId}`,
-    text: [
-      `Olá ${input.hostName},`,
-      '',
-      `O teu evento ${input.title} foi criado no Conto Contigo.`,
-      'Guarda este link: é a única forma de gerir o evento.',
-      input.manageUrl,
-      '',
-      'Quem tiver o link pode gerir o evento e ver a lista de convidados.',
-      'Não o partilhes com os convidados.',
-    ].join('\n'),
-    html: `
-      <p>Olá ${escapeHtml(input.hostName)},</p>
-      <p>O teu evento <strong>${escapeHtml(input.title)}</strong> foi criado no Conto Contigo.</p>
-      <p>Guarda este link — é a única forma de gerir o evento:</p>
-      <p><a href="${escapeHtml(input.manageUrl)}">${escapeHtml(input.manageUrl)}</a></p>
-      <p>Quem tiver o link pode gerir o evento e ver a lista de convidados. Não o partilhes com os convidados.</p>
-    `,
-  };
-
-  try {
-    return await sendMail(message);
-  } catch (error) {
-    logger.error({ err: error, eventId: input.eventId }, 'Falha ao enviar o link de gestão.');
-    throw error;
   }
 }

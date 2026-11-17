@@ -213,6 +213,16 @@ const envSchema = z.object({
 
   /** Liga o worker que envia convites, lembretes e avisos da outbox. */
   OUTBOX_ENABLED: z.stringbool().default(true),
+  /**
+   * Corre o agendador da outbox dentro do processo da API.
+   *
+   * Conveniente em desenvolvimento e em protótipos com um único
+   * serviço. Em produção, define `false` e corre `npm run worker`
+   * (ou `npm run worker:start`) num processo separado: a API fica
+   * dedicada a responder a pedidos e o envio de emails não compete
+   * com ela.
+   */
+  OUTBOX_IN_API: z.stringbool().default(true),
   OUTBOX_SCAN_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
 
   MAX_INVITATIONS_PER_EVENT: z.coerce.number().int().positive().default(1000),

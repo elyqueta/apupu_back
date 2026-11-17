@@ -52,10 +52,9 @@ describe('evaluateApplicability', () => {
     expect(evaluateApplicability(context())).toEqual({ ok: true });
   });
 
-  it('nunca enfileira o link de gestão na outbox', () => {
+  it('aceita o link de gestão na outbox', () => {
     expect(evaluateApplicability(context({ messageType: 'manage_link' }))).toEqual({
-      ok: false,
-      reason: 'manage_link_not_queued',
+      ok: true,
     });
   });
 

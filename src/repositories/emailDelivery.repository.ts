@@ -193,49 +193,17 @@ export const emailDeliveryRepository = {
     );
 
     const row = result.rows[0];
-    return row ? toDelivery(row) : null;
-  },
 
-  /**
-   * Regista uma entrega já tentada de forma síncrona (link de gestão).
-   *
-   * O link de gestão contém o único segredo que não pode ser
-   * reconstruído mais tarde — por isso é enviado no próprio pedido de
-   * criação e apenas o resultado fica registado. A linha nunca contém
-   * o token.
-   */
-  async recordDirect(
-    data: {
-      eventId: string;
-      recipientEmail: string;
-      messageType: MessageType;
-      idempotencyKey: string;
-      status: 'sent' | 'failed';
-      providerMessageId: string | null;
-      lastError: string | null;
-    },
-    client?: PoolClient
-  ): Promise<void> {
-    const runner = client ?? pool;
-    await runner.query(
-      `INSERT INTO email_deliveries (
-         event_id, invitation_id, message_type, recipient_email,
-         scheduled_for, status, attempts, provider_message_id, last_error,
-         idempotency_key, sent_at
-       )
-       VALUES ($1, NULL, $2, $3, now(), $4, 1, $5, $6, $7,
-               CASE WHEN $4 = 'sent' THEN now() ELSE NULL END)
-       ON CONFLICT (idempotency_key) DO NOTHING`,
-      [
-        data.eventId,
-        data.messageType,
-        data.recipientEmail,
-        data.status,
-        data.providerMessageId,
-        data.lastError,
-        data.idempotencyKey,
-      ]
-    );
+    if (!row) {
+      return null;
+    }
+
+    // Acorda o worker assim que a transacção fizer commit. O polling
+    // continua como fallback, mas emails imediatos (OTP, convites) não
+    // esperam pelo próximo ciclo.
+    await runner.query('SELECT pg_notify($1, $2)', ['outbox_new', data.messageType]);
+
+    return toDelivery(row);
   },
 
   /**

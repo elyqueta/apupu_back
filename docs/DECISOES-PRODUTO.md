@@ -72,9 +72,9 @@ email verificado e `host_id` nulo passam a pertencer à conta. A operação
 
 ## 6. Link de gestão ao criar evento com conta
 
-`POST /host/events` continua a enviar o link de gestão para
+`POST /host/events` continua a enfileirar o link de gestão para
 `host_email`, tal como `POST /events`. O envelope mantém
-`manage_email_status` e `deliveries`.
+`manage_email_status` (`queued` | `failed`) e `deliveries`.
 
 ## 7. Retenção de conta — 24 meses
 
@@ -219,3 +219,29 @@ Dependência externa: os templates visuais, os campos suportados e os
 limites de acessibilidade são fornecidos pelo responsável do produto.
 A infraestrutura actual (`event_templates` e template neutro `base`)
 mantém-se como ponto de extensão.
+
+## 18. Email assíncrono — outbox e worker dedicado
+
+- Nenhum pedido HTTP envia email. Tudo o que sai (convites, lembretes,
+  avisos, OTP, verificação, reposição de senha, boas-vindas e link de
+  gestão) é escrito na outbox `email_deliveries` dentro da transacção de
+  negócio.
+- O worker corre em processo próprio (`npm run worker`, ou
+  `npm run worker:start` sobre `dist/worker.js`) e pode ser escalado
+  horizontalmente. `FOR UPDATE SKIP LOCKED` impede entregas duplicadas
+  entre instâncias.
+- Em protótipos com um só serviço, `OUTBOX_IN_API=true` mantém o
+  agendador dentro da API. Em produção recomenda-se
+  `OUTBOX_IN_API=false` para que o envio não dispute o event loop nem as
+  ligações à base de dados com os pedidos HTTP.
+- `pg_notify('outbox_new')` acorda os workers logo após o commit; o
+  polling (`OUTBOX_SCAN_INTERVAL_MS`) continua como fallback para
+  lembretes agendados e notificações perdidas.
+- Retries com backoff exponencial (`EMAIL_MAX_ATTEMPTS`,
+  `EMAIL_RETRY_BASE_MS`) e recuperação de linhas presas em `processing`.
+- O link de gestão passou a ser enfileirado: o token é guardado cifrado
+  em `token_encrypted` até à renderização. A resposta usa
+  `manage_email_status: queued | failed`, não o resultado do fornecedor.
+- Não é introduzida uma fila externa (Redis/SQS): a outbox transaccional
+  em PostgreSQL garante durabilidade e idempotência sem mais um serviço
+  para operar.

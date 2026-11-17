@@ -434,7 +434,7 @@ export const contoContigoSchemas = {
     type: 'object',
     properties: {
       event: { $ref: '#/components/schemas/Event' },
-      manage_email_status: { type: 'string', enum: ['sent', 'failed'] },
+      manage_email_status: { type: 'string', enum: ['queued', 'failed'] },
       deliveries: {
         type: 'array',
         items: { $ref: '#/components/schemas/DeliveryStatus' },
@@ -758,7 +758,7 @@ export const contoContigoSchemas = {
         type: 'object',
         properties: {
           event_id: { type: 'string', format: 'uuid' },
-          manage_email_status: { type: 'string', enum: ['sent', 'failed'] },
+          manage_email_status: { type: 'string', enum: ['queued', 'failed'] },
           manage_token_expires_at: {
             type: 'string',
             format: 'date-time',
@@ -778,7 +778,7 @@ export const contoContigoSchemas = {
           event: { $ref: '#/components/schemas/Event' },
           csrf_token: { type: 'string' },
           expires_at: { type: 'string', format: 'date-time' },
-          manage_email_status: { type: 'string', enum: ['sent', 'failed'] },
+          manage_email_status: { type: 'string', enum: ['queued', 'failed'] },
           manage_token_expires_at: {
             type: 'string',
             format: 'date-time',

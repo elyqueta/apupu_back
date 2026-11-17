@@ -407,7 +407,7 @@ email, a criação/remoção devolve `403 email_not_verified`.
 {
   "data": {
     "event": { "id": "...", "title": "...", "status": "scheduled", "...": "..." },
-    "manage_email_status": "sent",
+    "manage_email_status": "queued",
     "deliveries": [
       { "email": "joao@exemplo.ao", "status": "queued" }
     ]
@@ -423,7 +423,7 @@ email, a criação/remoção devolve `403 email_not_verified`.
 {
   "data": {
     "event_id": "87b7165f-90fb-4859-ad63-7aa9cc3b657e",
-    "manage_email_status": "sent",
+    "manage_email_status": "queued",
     "manage_token_expires_at": "2026-12-16T01:40:08.075Z"
   }
 }
@@ -666,7 +666,7 @@ Resposta `201`:
 {
   "data": {
     "event": { "id": "...", "title": "...", "status": "scheduled", "...": "..." },
-    "manage_email_status": "sent",
+    "manage_email_status": "queued",
     "deliveries": [
       { "email": "joao@exemplo.ao", "status": "queued" }
     ]
@@ -675,10 +675,11 @@ Resposta `201`:
 ```
 
 O segredo de gestão **não** é devolvido: é enviado uma única vez para
-`host_email` no link de gestão. O envio é síncrono e o resultado é
-comunicado em `manage_email_status` (`sent` | `failed`). Os convites são
-enfileirados na outbox e reportados como `queued` (a entrega real é
-assíncrona; consultar `send_status` no convite para o estado final).
+`host_email` no link de gestão. O link é enfileirado na outbox e o
+pedido responde imediatamente com `manage_email_status: queued`; uma
+falha ao enfileirar devolve `failed`. A entrega real acontece em segundo
+plano. Os convites seguem o mesmo modelo e são reportados como `queued`
+(consultar `send_status` no convite para o estado final).
 
 ### 2. Trocar o link secreto por sessão
 
@@ -696,7 +697,7 @@ Resposta `200` (define os cookies do evento):
     "event": { "...": "..." },
     "csrf_token": "<valor para X-CSRF-Token>",
     "expires_at": "2026-11-16T03:38:46.344Z",
-    "manage_email_status": "sent",
+    "manage_email_status": "queued",
     "manage_token_expires_at": "2026-12-16T01:38:46.345Z"
   }
 }
@@ -706,7 +707,8 @@ Resposta `200` (define os cookies do evento):
   válido e um novo link é enviado para `host_email`. Repetir o mesmo
   token devolve `404 manage_link_invalid`.
 - O token em claro nunca é devolvido em JSON. `manage_email_status`
-  (`sent` | `failed`) descreve apenas a tentativa de entrega.
+  (`queued` | `failed`) indica se o novo link ficou na outbox; o envio
+  acontece em segundo plano.
 - `manage_token_expires_at` é o fim da validade do novo link (30 dias
   por omissão, `MANAGE_TOKEN_TTL_DAYS`).
 - A rotação é atómica: a sessão é criada e o token é substituído na
@@ -1166,9 +1168,9 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `POST` | `/api/v1/host/profile/avatar` | `200` | `{ "data": { "host": Host } }` |
 | `POST` | `/api/v1/host/profile/avatar/upload` | `200` | `{ "data": { "host": Host } }` |
 | `GET` | `/api/v1/host/events` | `200` | `{ "data": Event[], "pagination": Pagination }` |
-| `POST` | `/api/v1/host/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "sent" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
+| `POST` | `/api/v1/host/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "queued" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
 | `DELETE` | `/api/v1/host/events/{eventId}` | `204` | — |
-| `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `202` | `{ "data": { "event_id": uuid, "manage_email_status": "sent" \| "failed", "manage_token_expires_at": string \| null } }` |
+| `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `202` | `{ "data": { "event_id": uuid, "manage_email_status": "queued" \| "failed", "manage_token_expires_at": string \| null } }` |
 | `GET` | `/api/v1/host/dashboard` | `200` | `{ "data": { "next_event": Event \| null, "upcoming": Event[], "totals": Totals } }` |
 | `GET` | `/api/v1/host/guests` | `200` | `{ "data": HostGuest[], "pagination": Pagination }` |
 | `GET` | `/api/v1/host/activity` | `200` | `{ "data": ActivityWithEvent[], "pagination": Pagination }` |
@@ -1187,8 +1189,8 @@ total_invitations, accepted, declined, pending }`, todos inteiros.
 
 | Método | Rota | Sucesso | Corpo |
 |---|---|---|---|
-| `POST` | `/api/v1/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "sent" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
-| `POST` | `/api/v1/host/session` | `200` | `{ "data": { "event": Event, "csrf_token": string, "expires_at": string, "manage_email_status": "sent" \| "failed", "manage_token_expires_at": string \| null } }` |
+| `POST` | `/api/v1/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "queued" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
+| `POST` | `/api/v1/host/session` | `200` | `{ "data": { "event": Event, "csrf_token": string, "expires_at": string, "manage_email_status": "queued" \| "failed", "manage_token_expires_at": string \| null } }` |
 | `DELETE` | `/api/v1/host/session/{eventId}` | `204` | — |
 | `GET` | `/api/v1/host/events/{eventId}` | `200` | `{ "data": { "event": Event, "invitations": Invitation[] } }` |
 | `PATCH` | `/api/v1/host/events/{eventId}` | `200` | `{ "data": Event }` |

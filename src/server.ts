@@ -8,7 +8,7 @@ const server = app.listen(env.PORT, () => {
   logger.info(`Conto Contigo Backend a correr em http://localhost:${env.PORT} [${env.NODE_ENV}]`);
 });
 
-if (env.OUTBOX_ENABLED) {
+if (env.OUTBOX_ENABLED && env.OUTBOX_IN_API) {
   startOutboxScheduler();
 }
 
