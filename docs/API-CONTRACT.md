@@ -748,6 +748,11 @@ enviados (sem defaults implícitos) e aceita `status`
 
 ### 4. Gerir convidados
 
+As rotas do evento aceitam a sessão de gestão legada ou a sessão de conta
+do anfitrião autenticado que é proprietário desse evento. Com sessão de
+conta, não é necessário enviar/trocar o token secreto de gestão; as
+mutações continuam a exigir `X-CSRF-Token`.
+
 | Método | Rota | Efeito |
 |---|---|---|
 | `GET` | `/api/v1/host/events/{eventId}/invitations` | Lista privada |

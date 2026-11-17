@@ -94,6 +94,7 @@ router.delete(
  *     summary: Consulta o evento, estatísticas e lista privada de convidados
  *     security:
  *       - hostSession: []
+ *       - accountSession: []
  *     parameters:
  *       - in: path
  *         name: eventId
@@ -112,6 +113,7 @@ router.delete(
  *     summary: Actualiza o evento e reconcilia lembretes
  *     security:
  *       - hostSession: []
+ *       - accountSession: []
  *     parameters:
  *       - in: path
  *         name: eventId
@@ -162,6 +164,7 @@ router.patch(
  *     summary: Lista os convidados do evento
  *     security:
  *       - hostSession: []
+ *       - accountSession: []
  *     parameters:
  *       - in: path
  *         name: eventId
@@ -178,6 +181,11 @@ router.patch(
  *     summary: Adiciona um convidado e enfileira o convite
  *     security:
  *       - hostSession: []
+ *       - accountSession: []
+ *     description: >
+ *       Pode usar a sessão de gestão legada do evento ou a sessão de conta
+ *       do anfitrião autenticado que é proprietário do evento. Com sessão
+ *       de conta não é necessário enviar/trocar o token secreto de gestão.
  *     parameters:
  *       - in: path
  *         name: eventId
@@ -226,6 +234,7 @@ router.post(
  *     summary: Actualiza os dados de um convidado
  *     security:
  *       - hostSession: []
+ *       - accountSession: []
  *     parameters:
  *       - in: path
  *         name: eventId
@@ -259,6 +268,7 @@ router.post(
  *     summary: Remove um convidado e as entregas associadas
  *     security:
  *       - hostSession: []
+ *       - accountSession: []
  *     parameters:
  *       - in: path
  *         name: eventId
@@ -303,6 +313,7 @@ router.delete(
  *     summary: Reenvia o convite individual
  *     security:
  *       - hostSession: []
+ *       - accountSession: []
  *     parameters:
  *       - in: path
  *         name: eventId
@@ -331,6 +342,7 @@ router.delete(
  *     summary: Revoga o acesso do navegador ao convite
  *     security:
  *       - hostSession: []
+ *       - accountSession: []
  *     parameters:
  *       - in: path
  *         name: eventId

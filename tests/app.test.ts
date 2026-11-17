@@ -59,12 +59,18 @@ describe('app', () => {
   it('documenta os esquemas de conta e paginação', async () => {
     const response = await request(app).get('/openapi.json');
     const schemas = response.body.components?.schemas ?? {};
+    const invitationCreate =
+      response.body.paths?.['/api/v1/host/events/{eventId}/invitations']?.post;
 
     expect(schemas).toHaveProperty('Host');
     expect(schemas).toHaveProperty('HostProfile');
     expect(schemas).toHaveProperty('PaginationMeta');
     expect(schemas).toHaveProperty('EventCategory');
     expect(response.body.components?.securitySchemes).toHaveProperty('accountSession');
+    expect(invitationCreate.security).toEqual([
+      { hostSession: [] },
+      { accountSession: [] },
+    ]);
   });
 
   it('devolve 404 no envelope de erro estável', async () => {

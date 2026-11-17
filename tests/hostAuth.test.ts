@@ -22,10 +22,12 @@ vi.mock('../src/repositories/event.repository', () => ({
 
 import { env } from '../src/config/env';
 import { hostAuth } from '../src/middlewares/hostAuth';
+import { requireHostCsrf } from '../src/middlewares/requireHostCsrf';
 import { eventRepository } from '../src/repositories/event.repository';
 import { hostAuthSessionRepository } from '../src/repositories/hostAuthSession.repository';
 import { hostRepository } from '../src/repositories/host.repository';
 import { hostSessionService } from '../src/services/hostSession.service';
+import { csrfTokenFor } from '../src/utils/token.util';
 import { EventRecord } from '../src/types/event.types';
 import { HostAuthSession, HostWithProfile } from '../src/types/host.types';
 import { HostSession } from '../src/types/hostSession.types';
@@ -175,6 +177,21 @@ describe('hostAuth — autorização combinada', () => {
     });
     expect(req.event).toBe(event);
     expect(eventRepository.findByIdForHost).toHaveBeenCalledWith(EVENT_ID, host.id);
+  });
+
+  it('aceita CSRF da sessão de conta sem cookie/token de gestão do evento', () => {
+    const accountToken = 'account-token';
+    const req = {
+      params: { eventId: EVENT_ID },
+      cookies: { [env.AUTH_COOKIE_NAME]: accountToken },
+      header: (name: string) =>
+        name === env.CSRF_HEADER_NAME ? csrfTokenFor(accountToken) : undefined,
+    } as unknown as Request;
+    const next = makeNext();
+
+    requireHostCsrf(req, {} as Response, next);
+
+    expect(next).toHaveBeenCalledWith();
   });
 
   it('devolve 404 quando a conta não é proprietária do evento', async () => {
