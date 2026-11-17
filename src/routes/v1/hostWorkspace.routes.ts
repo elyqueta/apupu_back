@@ -385,6 +385,8 @@ router.post(
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/EventManagerEnvelope' }
+ *       404:
+ *         description: Evento não encontrado ou de outra conta.
  *       409:
  *         description: O email já é gestor do evento.
  *       422:
