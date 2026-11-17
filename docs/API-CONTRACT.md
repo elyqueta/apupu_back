@@ -129,7 +129,9 @@ ser verificado por código OTP.
 - Invalida qualquer código anterior do mesmo email.
 - Envia um código numérico de 6 dígitos, válido por
   `REGISTRATION_OTP_TTL_MINUTES` minutos (por omissão 10).
-- O código é enviado por email e nunca é devolvido na resposta da API.
+- O código é enviado por email. Fora de produção (`NODE_ENV` diferente de
+  `production`) a resposta inclui também `dev_code` para o protótipo
+  pré-preencher o ecrã de verificação; em produção o código só existe no email.
 - Um novo pedido antes de `REGISTRATION_OTP_RESEND_SECONDS` segundos
   (por omissão 60) devolve `429 otp_resend_too_soon`.
 
@@ -141,10 +143,13 @@ Resposta `202`:
     "status": "accepted",
     "email": "ana@exemplo.ao",
     "expires_at": "2026-11-16T02:30:30.588Z",
-    "resend_available_at": "2026-11-16T02:20:30.586Z"
+    "resend_available_at": "2026-11-16T02:20:30.586Z",
+    "dev_code": "004271"
   }
 }
 ```
+
+> `dev_code` só aparece quando `NODE_ENV` não é `production`.
 
 Erros: `409 email_already_registered`, `422 validation_failed`,
 `429 otp_resend_too_soon` ou `429 rate_limited`.

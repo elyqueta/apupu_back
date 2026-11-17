@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { env } from '../config/env';
 import { toHostDto } from '../dto/host.dto';
 import {
   ChangePasswordBody,
@@ -36,6 +37,10 @@ export const authController = {
         email: body.email,
         expires_at: result.expiresAt.toISOString(),
         resend_available_at: result.resendAvailableAt.toISOString(),
+        // Conveniência do protótipo: fora de produção devolvemos o código
+        // para o frontend poder pré-preencher o ecrã de verificação.
+        // Em produção o código só existe no email.
+        ...(env.NODE_ENV === 'production' ? {} : { dev_code: result.code }),
       },
     });
   },

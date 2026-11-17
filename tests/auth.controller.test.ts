@@ -36,18 +36,37 @@ describe('authController.requestRegistrationCode', () => {
     vi.mocked(authService.requestRegistrationCode).mockResolvedValue({
       expiresAt: new Date('2026-11-16T04:00:00.000Z'),
       resendAvailableAt: new Date('2026-11-16T03:51:00.000Z'),
+      code: '004271',
     });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    env.NODE_ENV = 'test';
   });
 
-  it('nunca inclui o código OTP na resposta', async () => {
-    const body = await requestRegistrationCodeResponse();
+  it('fora de produção inclui dev_code para o protótipo', async () => {
+    const body = (await requestRegistrationCodeResponse()) as {
+      data: Record<string, unknown>;
+    };
 
-    expect(body).not.toHaveProperty('data.development_code');
-    expect(body).not.toHaveProperty('data.code');
+    expect(body.data).toMatchObject({
+      status: 'accepted',
+      email: 'ana@example.test',
+      dev_code: '004271',
+    });
+  });
+
+  it('em produção nunca inclui o código OTP na resposta', async () => {
+    env.NODE_ENV = 'production';
+
+    const body = (await requestRegistrationCodeResponse()) as {
+      data: Record<string, unknown>;
+    };
+
+    expect(body.data).not.toHaveProperty('dev_code');
+    expect(body.data).not.toHaveProperty('code');
+    expect(JSON.stringify(body)).not.toContain('004271');
   });
 });
 

@@ -123,7 +123,7 @@ export const authService = {
   async requestRegistrationCode(
     input: RegisterRequestCodeBody,
     context?: AuditContext
-  ): Promise<{ expiresAt: Date; resendAvailableAt: Date }> {
+  ): Promise<{ expiresAt: Date; resendAvailableAt: Date; code: string }> {
     if (await hostRepository.emailExists(input.email)) {
       throw new ConflictError('Este email já está registado.', 'email_already_registered', {
         email: ['Este email já está registado.'],
@@ -166,7 +166,7 @@ export const authService = {
       requestId: context?.requestId ?? null,
     });
 
-    return { expiresAt, resendAvailableAt };
+    return { expiresAt, resendAvailableAt, code };
   },
 
   /**

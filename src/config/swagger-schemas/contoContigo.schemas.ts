@@ -621,6 +621,14 @@ export const contoContigoSchemas = {
           email: { type: 'string', format: 'email' },
           expires_at: { type: 'string', format: 'date-time' },
           resend_available_at: { type: 'string', format: 'date-time' },
+          dev_code: {
+            type: 'string',
+            pattern: '^[0-9]{6}$',
+            description:
+              'Código OTP em claro. Só é devolvido fora de produção ' +
+              '(desenvolvimento/teste) para conveniência do protótipo; ' +
+              'em produção o código só existe no email.',
+          },
         },
       },
     },
