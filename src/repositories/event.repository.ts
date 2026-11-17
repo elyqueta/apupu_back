@@ -1,6 +1,9 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../database/pool';
 import {
+  EventAccessRecord,
+  EventAccessRole,
+  EventAccessScope,
   EventCategory,
   EventContribution,
   EventLocation,
@@ -51,6 +54,7 @@ interface EventWithStatsRow extends EventRow {
   stat_accepted: number;
   stat_declined: number;
   stat_pending: number;
+  access_role?: EventAccessRole;
 }
 
 function toEvent(row: EventRow): EventRecord {
@@ -105,7 +109,11 @@ function toStats(row: EventWithStatsRow): EventStats {
 }
 
 function toEventWithStats(row: EventWithStatsRow): EventWithStats {
-  return { ...toEvent(row), stats: toStats(row) };
+  return {
+    ...toEvent(row),
+    stats: toStats(row),
+    accessRole: row.access_role ?? 'host',
+  };
 }
 
 const SELECT_COLUMNS = `
@@ -116,6 +124,49 @@ const SELECT_COLUMNS = `
   contribution_enabled, contribution_bank_name, contribution_account_holder,
   contribution_account_reference, rsvp_deadline, status, created_at, updated_at
 `;
+
+/** Prefixa as colunas do evento com o alias usado na query. */
+function columnsFor(alias: string): string {
+  return SELECT_COLUMNS.split(',')
+    .map((column) => `${alias}.${column.trim()}`)
+    .join(', ');
+}
+
+/**
+ * Condição de acesso partilhada: proprietário ou gestor activo.
+ *
+ * Empurra os parâmetros para `values` e devolve a expressão SQL. O
+ * `hostId` é sempre o primeiro parâmetro adicionado, pelo que a
+ * expressão de `access_role` pode assumir `$1` nas listas.
+ */
+function accessCondition(
+  values: unknown[],
+  scope: EventAccessScope,
+  alias = 'e'
+): string {
+  values.push(scope.hostId);
+  const hostParam = values.length;
+  let condition = `${alias}.host_id = $${hostParam}`;
+
+  if (scope.managerEmail) {
+    values.push(scope.managerEmail);
+    const emailParam = values.length;
+    condition = `(${condition} OR EXISTS (
+      SELECT 1
+        FROM event_managers m
+       WHERE m.event_id = ${alias}.id
+         AND m.email = $${emailParam}::citext
+         AND m.revoked_at IS NULL
+    ))`;
+  }
+
+  return condition;
+}
+
+/** Papel de quem consulta: `host` quando é proprietário. */
+function accessRoleExpression(alias = 'e', hostParam = 1): string {
+  return `CASE WHEN ${alias}.host_id = $${hostParam} THEN 'host' ELSE 'manager' END`;
+}
 
 const STATS_LATERAL = `
   LEFT JOIN LATERAL (
@@ -212,6 +263,48 @@ export const eventRepository = {
     );
     const row = result.rows[0];
     return row ? toEvent(row) : null;
+  },
+
+  /**
+   * Lê o evento com o papel de acesso da conta.
+   *
+   * O acesso é concedido ao proprietário ou a um gestor activo cujo
+   * email coincide com o da conta (comparação `citext`). Devolve `null`
+   * para qualquer outra conta, para não revelar a existência do
+   * recurso.
+   */
+  async findByIdForAccess(
+    id: string,
+    scope: EventAccessScope,
+    client?: PoolClient
+  ): Promise<EventAccessRecord | null> {
+    const runner = client ?? pool;
+    const values: unknown[] = [id, scope.hostId];
+    let condition = 'e.host_id = $2';
+
+    if (scope.managerEmail) {
+      values.push(scope.managerEmail);
+      condition = `(e.host_id = $2 OR EXISTS (
+        SELECT 1
+          FROM event_managers m
+         WHERE m.event_id = e.id
+           AND m.email = $3::citext
+           AND m.revoked_at IS NULL
+      ))`;
+    }
+
+    const result = await runner.query<EventRow & { access_role: EventAccessRole }>(
+      `SELECT ${columnsFor('e')},
+              ${accessRoleExpression('e', 2)} AS access_role
+         FROM events e
+        WHERE e.id = $1 AND ${condition}`,
+      values
+    );
+
+    const row = result.rows[0];
+    if (!row) return null;
+
+    return { event: toEvent(row), accessRole: row.access_role };
   },
 
   async findByManageTokenHash(hash: string): Promise<EventRecord | null> {
@@ -385,16 +478,22 @@ export const eventRepository = {
   },
 
   /**
-   * Lista paginada dos eventos de uma conta.
+   * Lista paginada dos eventos acessíveis à conta.
    *
-   * As estatísticas vêm de um LATERAL agregado na mesma query: evita
-   * N+1 e garante que `total` reflecte o mesmo filtro da lista.
+   * Inclui os eventos próprios e aqueles em que a conta é gestor
+   * activo. As estatísticas vêm de um LATERAL agregado na mesma query:
+   * evita N+1 e garante que `total` reflecte o mesmo filtro da lista.
    */
   async listForHost(
     filters: HostEventListFilters
   ): Promise<{ items: EventWithStats[]; total: number }> {
-    const conditions = ['e.host_id = $1'];
-    const values: unknown[] = [filters.hostId];
+    const values: unknown[] = [];
+    const conditions = [
+      accessCondition(values, {
+        hostId: filters.hostId,
+        managerEmail: filters.managerEmail,
+      }),
+    ];
 
     if (filters.status) {
       values.push(filters.status);
@@ -416,8 +515,9 @@ export const eventRepository = {
 
     const listValues = [...values, filters.limit, filters.offset];
     const listResult = await query<EventWithStatsRow>(
-      `SELECT ${SELECT_COLUMNS.split(',').map((column) => `e.${column.trim()}`).join(', ')},
-              stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending
+      `SELECT ${columnsFor('e')},
+              stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending,
+              ${accessRoleExpression()} AS access_role
          FROM events e
          ${STATS_LATERAL}
         WHERE ${where}
@@ -432,36 +532,48 @@ export const eventRepository = {
     };
   },
 
-  async nextScheduledForHost(hostId: string): Promise<EventWithStats | null> {
+  async nextScheduledForHost(scope: EventAccessScope): Promise<EventWithStats | null> {
+    const values: unknown[] = [];
+    const access = accessCondition(values, scope);
+
     const result = await query<EventWithStatsRow>(
-      `SELECT ${SELECT_COLUMNS.split(',').map((column) => `e.${column.trim()}`).join(', ')},
-              stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending
+      `SELECT ${columnsFor('e')},
+              stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending,
+              ${accessRoleExpression()} AS access_role
          FROM events e
          ${STATS_LATERAL}
-        WHERE e.host_id = $1 AND e.status = 'scheduled' AND e.starts_at > now()
+        WHERE ${access} AND e.status = 'scheduled' AND e.starts_at > now()
         ORDER BY e.starts_at ASC, e.id ASC
         LIMIT 1`,
-      [hostId]
+      values
     );
     const row = result.rows[0];
     return row ? toEventWithStats(row) : null;
   },
 
-  async upcomingForHost(hostId: string, limit: number): Promise<EventWithStats[]> {
+  async upcomingForHost(scope: EventAccessScope, limit: number): Promise<EventWithStats[]> {
+    const values: unknown[] = [];
+    const access = accessCondition(values, scope);
+    values.push(limit);
+
     const result = await query<EventWithStatsRow>(
-      `SELECT ${SELECT_COLUMNS.split(',').map((column) => `e.${column.trim()}`).join(', ')},
-              stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending
+      `SELECT ${columnsFor('e')},
+              stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending,
+              ${accessRoleExpression()} AS access_role
          FROM events e
          ${STATS_LATERAL}
-        WHERE e.host_id = $1 AND e.status = 'scheduled' AND e.starts_at > now()
+        WHERE ${access} AND e.status = 'scheduled' AND e.starts_at > now()
         ORDER BY e.starts_at ASC, e.id ASC
-        LIMIT $2`,
-      [hostId, limit]
+        LIMIT $${values.length}`,
+      values
     );
     return result.rows.map(toEventWithStats);
   },
 
-  async totalsForHost(hostId: string): Promise<HostTotals> {
+  async totalsForHost(scope: EventAccessScope): Promise<HostTotals> {
+    const values: unknown[] = [];
+    const access = accessCondition(values, scope);
+
     const result = await query<{
       events: string;
       drafts: string;
@@ -485,8 +597,8 @@ export const eventRepository = {
          count(i.id) FILTER (WHERE i.rsvp_status = 'pending')::text AS pending
        FROM events e
        LEFT JOIN invitations i ON i.event_id = e.id
-       WHERE e.host_id = $1`,
-      [hostId]
+       WHERE ${access}`,
+      values
     );
 
     const row = result.rows[0];

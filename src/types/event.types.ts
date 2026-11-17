@@ -3,6 +3,11 @@
 export const EVENT_STATUSES = ['draft', 'scheduled', 'cancelled', 'completed'] as const;
 export type EventStatus = (typeof EVENT_STATUSES)[number];
 
+/** Papel de quem está a gerir o evento. */
+export const EVENT_ACCESS_ROLES = ['host', 'manager'] as const;
+export type EventAccessRole = (typeof EVENT_ACCESS_ROLES)[number];
+
+
 export const LOCATION_TYPES = ['venue', 'online'] as const;
 export type LocationType = (typeof LOCATION_TYPES)[number];
 
@@ -105,10 +110,24 @@ export interface EventStats {
 
 export interface EventWithStats extends EventRecord {
   stats: EventStats;
+  accessRole: EventAccessRole;
+}
+
+/** Conta/gestor que pode aceder ao evento: proprietário ou gestor por email. */
+export interface EventAccessScope {
+  hostId: string;
+  /** Email verificado da conta; `null` quando não pode gerir por email. */
+  managerEmail: string | null;
+}
+
+export interface EventAccessRecord {
+  event: EventRecord;
+  accessRole: EventAccessRole;
 }
 
 export interface HostEventListFilters {
   hostId: string;
+  managerEmail: string | null;
   status?: EventStatus;
   q?: string;
   sort: 'starts_at' | 'created_at';

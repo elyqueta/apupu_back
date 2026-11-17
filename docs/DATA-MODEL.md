@@ -11,9 +11,13 @@ Migrações:
 [`../migrations/1739900000001_host-accounts.js`](../migrations/1739900000001_host-accounts.js)
 (contas, perfil, sessões de conta e suporte ao frontend),
 [`../migrations/1739900000002_host-audit-log.js`](../migrations/1739900000002_host-audit-log.js)
-(auditoria e validade dos links de gestão) e
+(auditoria e validade dos links de gestão),
 [`../migrations/1739900000004_account-retention-index.js`](../migrations/1739900000004_account-retention-index.js)
-(índice de retenção de contas).
+(índice de retenção de contas),
+[`../migrations/1739900000005_invitations-account-email-index.js`](../migrations/1739900000005_invitations-account-email-index.js)
+(índice de "Meus convites") e
+[`../migrations/1739900000006_event-managers.js`](../migrations/1739900000006_event-managers.js)
+(gestores de evento por email).
 
 ## `event_templates`
 
@@ -147,23 +151,68 @@ coluna explícita (`account_id`) e migrar os convites existentes.
 
 ## `event_host_sessions`
 
-Sessões de gestão por evento do fluxo legado (link secreto). Foram
-renomeadas de `host_sessions` na migração de contas para não colidir com
-as sessões de conta.
+Sessões de gestão por evento. Foram renomeadas de `host_sessions` na
+migração de contas para não colidir com as sessões de conta.
 
 | Coluna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid | PK |
 | `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`) |
 | `token_hash` | text | único; HMAC do token de sessão |
+| `role` | text | `host` \| `manager`; por omissão `host` |
+| `manager_id` | uuid | FK → `event_managers` (`ON DELETE CASCADE`); só em sessões de gestor |
 | `expires_at` | timestamptz | `> created_at` |
 | `revoked_at` | timestamptz | |
 | `created_at` | timestamptz | |
 | `last_used_at` | timestamptz | |
 
+Constraints: `event_host_sessions_role_check`; `role='manager'` exige
+`manager_id` e `role='host'` exige `manager_id` nulo
+(`event_host_sessions_manager_role_check`). As sessões existentes
+ficaram com `role='host'`.
+
 Índices: `event_host_sessions_event_id_idx`,
-`event_host_sessions_expiry_idx`. A sessão é sempre limitada a um
+`event_host_sessions_expiry_idx` e
+`event_host_sessions_manager_id_idx`. A sessão é sempre limitada a um
 evento; o UUID do evento nunca é autorização.
+
+## `event_managers`
+
+Gestores de um evento, identificados pelo email. Um gestor pode não ter
+conta: nesse caso usa o link próprio enviado por email. Quando cria
+conta com o mesmo email verificado, passa também a ver o evento no
+workspace.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`) |
+| `email` | citext | normalizado para minúsculas na fronteira |
+| `token_hash` | text | único; HMAC-SHA256 do link do gestor |
+| `token_expires_at` | timestamptz | validade do link |
+| `revoked_at` | timestamptz | remoção lógica |
+| `last_used_at` | timestamptz | último uso do link |
+| `created_at` / `updated_at` | timestamptz | |
+
+Constraints: `event_managers_event_email_unique` — `(event_id, email)`
+único, para que o mesmo email não seja adicionado duas vezes ao mesmo
+evento; `token_hash` é único. Índices: `event_managers_event_id_idx` e
+`event_managers_email_idx`.
+
+Invariantes:
+
+1. O token em claro só existe no pedido que o gera; a base guarda o
+   HMAC e a outbox guarda uma cópia cifrada até ao envio do email.
+2. Usar o link de um gestor **não** roda o token: a sessão emitida é
+   independente e expira ao fim de `HOST_SESSION_TTL_MINUTES`.
+3. Remover um gestor preenche `revoked_at`, apaga o token e revoga as
+   sessões desse gestor. Re-adicionar o mesmo email reativa a linha e
+   emite um token novo.
+4. Uma conta só obtém acesso de gestor se `hosts.email_verified_at`
+   estiver preenchido e o email coincidir (`citext`) com o da linha
+   activa.
+5. O anfitrião (`events.host_id`) nunca é uma linha de
+   `event_managers`; o próprio email é rejeitado ao adicionar.
 
 ## `hosts`
 
@@ -334,7 +383,8 @@ Constraints: `host_audit_log_outcome_check` e
 `password_changed`, `password_reset`, `profile_updated`,
 `event_created`, `event_deleted`, `guest_added`, `guest_updated`,
 `guest_deleted`, `guest_invitation_resent`, `guest_access_revoked`,
-`manage_link_rotated`, `manage_link_resent`.
+`manage_link_rotated`, `manage_link_resent`, `manager_added`,
+`manager_removed`, `manager_invite_resent`, `manager_link_used`.
 
 Índices: `host_audit_log_host_at_idx` (`host_id`, `at DESC`),
 `host_audit_log_event_at_idx` (`event_id`, `at DESC`) e
@@ -366,10 +416,10 @@ nesta fase.
 | `sent_at` | timestamptz | |
 | `created_at` / `updated_at` | timestamptz | |
 
-Tipos de mensagem: `manage_link`, `invitation`, `reminder`,
-`decline_notification`, `event_cancelled`, `email_verification`,
-`registration_otp`, `host_welcome`, `password_reset`,
-`profile_reminder`.
+Tipos de mensagem: `manage_link`, `manager_invite`, `invitation`,
+`reminder`, `decline_notification`, `event_cancelled`,
+`email_verification`, `registration_otp`, `host_welcome`,
+`password_reset`, `profile_reminder`.
 
 Índices: índice parcial `(status, scheduled_for)` para entregas
 pendentes, `event_id`, `invitation_id` e `host_id`.
@@ -386,17 +436,24 @@ Chaves idempotentes usadas:
 | Link de gestão (criação) | `manage_link:<eventId>` |
 | Link de gestão (rotação) | `manage_link:<eventId>:rotate:<uuid>` |
 | Link de gestão (reenvio) | `manage_link:<eventId>:resend:<uuid>` |
+| Convite de gestor | `manager_invite:<eventId>:<managerId>:<uuid>` |
+| Reenvio do convite de gestor | `manager_invite:<eventId>:<managerId>:resend:<uuid>` |
 | Verificação de email | `email_verification:<hostId>:<uuid>` |
 | Código OTP de registo | `registration_otp:<email>:<uuid>` |
 | Boas-vindas | `host_welcome:<hostId>` |
 | Reposição de senha | `password_reset:<hostId>:<uuid>` |
 
-Todas as mensagens passam pela outbox, incluindo o link de gestão. Nesse
-caso o token em claro é guardado cifrado em `token_encrypted` até o
-worker renderizar o email; `events.manage_token_hash` continua a ser o
-único registo verificável. A entrega é reenviada pelo worker como
-qualquer outra (com backoff) e a linha é cancelada quando o evento ou o
-convite deixam de a justificar.
+Todas as mensagens passam pela outbox, incluindo o link de gestão e os
+convites de gestor. Nesses casos o token em claro é guardado cifrado em
+`token_encrypted` até o worker renderizar o email;
+`events.manage_token_hash` (anfitrião) e `event_managers.token_hash`
+(gestor) continuam a ser os únicos registos verificáveis. A entrega é
+reenviada pelo worker como qualquer outra (com backoff) e a linha é
+cancelada quando o evento ou o convite deixam de a justificar.
+
+Os convites de gestor (`manager_invite`) usam `event_id` e `host_id` e
+são independentes do estado do evento: continuam aplicáveis para
+reabrir a área de gestão.
 
 As mensagens de conta (`email_verification`, `registration_otp`,
 `host_welcome`, `password_reset`, `profile_reminder`) usam `host_id`
@@ -416,7 +473,10 @@ como fallback para lembretes agendados e notificações perdidas.
   independentes de `hosts`: existem antes de a conta ser criada e são
   identificadas pelo email.
 - Um evento pertence a zero ou uma conta (`host_id`; nulo em eventos
-  legados) e tem zero ou mais convites, sessões de gestão, actividades e
+  legados) e tem zero ou mais convites, gestores, sessões de gestão,
+  actividades e entregas de email.
+- Um gestor (`event_managers`) pertence a exactamente um evento e pode
+  originar sessões de gestão (`event_host_sessions.manager_id`) e
   entregas de email.
 - Um convite pertence a exactamente um evento e pode originar
   actividades e entregas.
@@ -449,6 +509,13 @@ como fallback para lembretes agendados e notificações perdidas.
   podem correr em paralelo sem enviarem a mesma entrega.
 - Entregas presas em `processing` (processo morto a meio do envio) são
   recuperadas após o intervalo de recuperação e voltam a `pending`.
-- Todas as leituras e mutações do workspace são limitadas por
-  `events.host_id = sessão.host_id`; a ausência de posse devolve `404`,
-  não `403`.
+- Todas as leituras e mutações do workspace são limitadas pelo `host_id`
+  da sessão ou, para eventos geridos, pelo email verificado da conta
+  associado a um gestor activo. A ausência de acesso devolve `404`, não
+  `403`.
+- As mutações estruturais (estado, email do anfitrião, gestores e
+  convites existentes) são restritas ao anfitrião e devolvem `403
+  host_action_forbidden` a um gestor.
+- Adicionar um gestor é atómico por `(event_id, email)`: a violação de
+  unicidade é convertida em `409 manager_already_exists`. Remover revoga
+  a linha e as sessões do gestor na mesma transacção.

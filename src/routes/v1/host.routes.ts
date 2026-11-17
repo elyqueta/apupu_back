@@ -5,6 +5,7 @@ import { invitationController } from '../../controllers/invitation.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAuth } from '../../middlewares/hostAuth';
 import { hostSessionLimiter, writeLimiter } from '../../middlewares/rateLimiter';
+import { requireEventHost } from '../../middlewares/requireEventHost';
 import { requireHostCsrf } from '../../middlewares/requireHostCsrf';
 import { validate } from '../../middlewares/validate';
 import {
@@ -301,6 +302,7 @@ router.patch(
   asyncHandler(hostAuth),
   writeLimiter,
   requireHostCsrf,
+  requireEventHost,
   validate({ body: updateInvitationSchema }),
   asyncHandler(invitationController.update)
 );
@@ -311,6 +313,7 @@ router.delete(
   asyncHandler(hostAuth),
   writeLimiter,
   requireHostCsrf,
+  requireEventHost,
   asyncHandler(invitationController.remove)
 );
 
@@ -378,6 +381,7 @@ router.post(
   asyncHandler(hostAuth),
   writeLimiter,
   requireHostCsrf,
+  requireEventHost,
   asyncHandler(invitationController.resend)
 );
 
@@ -387,6 +391,7 @@ router.post(
   asyncHandler(hostAuth),
   writeLimiter,
   requireHostCsrf,
+  requireEventHost,
   asyncHandler(invitationController.revoke)
 );
 

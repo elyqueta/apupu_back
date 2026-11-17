@@ -58,12 +58,14 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `403` | `csrf_invalid` | Falta ou não coincide o `X-CSRF-Token` |
 | `403` | `forbidden` | Origem não permitida pelo CORS |
 | `403` | `email_not_verified` | A conta ainda não confirmou o email; escrita de eventos bloqueada |
+| `403` | `host_action_forbidden` | A ação está reservada ao anfitrião (proprietário); um gestor tentou executá-la |
 | `404` | `invitation_not_found` | Token inválido, convite revogado ou reclamado por outro navegador (resposta sempre igual) |
 | `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
-| `404` | `event_not_found` / `invitation_not_found` / `task_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
+| `404` | `event_not_found` / `invitation_not_found` / `task_not_found` / `manager_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
 | `404` | `route_not_found` | Rota inexistente |
 | `409` | `event_not_scheduled`, `event_cancelled`, `event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`, `invitation_limit_reached`, `email_already_registered` | Conflito de estado |
 | `409` | `invitation_revoked`, `invitation_not_resendable` | Convite revogado ou sem link reutilizável para reenvio |
+| `409` | `manager_already_exists` | O email já é gestor activo do evento |
 | `422` | `validation_failed` | Validação Zod; inclui `fields` |
 | `422` | `verification_invalid`, `reset_invalid` | Token de uso único inválido ou expirado |
 | `422` | `verification_required` | É necessário verificar o email antes de criar a conta |
@@ -86,11 +88,14 @@ Há três tipos de capacidade:
    - `csrf_token` e `expires_at` são devolvidos no login e no registo;
      `csrf_token` também é devolvido em `GET /auth/session`.
    - O token bruto da sessão nunca é devolvido em JSON.
-2. **Sessão de gestão por evento** (legado) — o segredo do link de
-   gestão é trocado por uma sessão curta:
+2. **Sessão de gestão por evento** — o segredo de um link de gestão
+   (do anfitrião ou de um gestor) é trocado por uma sessão curta:
    - Cookie `apupu_host_<eventId>`: `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/host`.
    - Cookie `apupu_csrf_host_<eventId>`: legível por JS, `Path=/api/v1`.
    - O segredo nunca é devolvido em JSON nem escrito em logs.
+   - A sessão tem um papel (`host` ou `manager`). O link do anfitrião
+     roda ao ser usado; o link de um gestor não roda e pode ser
+     reutilizado enquanto não for removido ou expirar.
 3. **Capacidade do convidado** — emitida no primeiro claim:
    - Cookie `apupu_guest`: `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/public/invitations`.
    - Cookie `apupu_csrf_guest`: legível por JS, `Path=/api/v1`.
@@ -326,14 +331,25 @@ responde `204`; exige `X-CSRF-Token`.
 Todas as rotas abaixo exigem sessão de conta; as mutações exigem também
 `X-CSRF-Token`. O `host_id` vem sempre da sessão.
 
+As leituras (`GET`) incluem os eventos próprios da conta e aqueles em
+que a conta é **gestora activa** — ou seja, o email verificado da conta
+foi adicionado como gestor pelo anfitrião. As mutações estruturais
+(criar, apagar, reenviar o link do anfitrião e gerir gestores) continuam
+reservadas ao proprietário. As tarefas são sempre pessoais: cada conta
+só vê as suas.
+
 | Método | Rota | Efeito |
 |---|---|---|
-| `GET` | `/api/v1/host/events` | Lista paginada dos eventos da conta |
+| `GET` | `/api/v1/host/events` | Lista paginada dos eventos acessíveis à conta (próprios e geridos) |
 | `POST` | `/api/v1/host/events` | Cria evento na conta; exige email verificado |
-| `DELETE` | `/api/v1/host/events/{eventId}` | Apaga evento e dados em cascata; exige email verificado |
-| `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | Emite e envia um novo link de gestão; invalida o anterior |
+| `DELETE` | `/api/v1/host/events/{eventId}` | Apaga evento e dados em cascata; exige email verificado e posse |
+| `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | Emite e envia um novo link de gestão; invalida o anterior; só o anfitrião |
+| `GET` | `/api/v1/host/events/{eventId}/managers` | Lista os gestores activos; só o anfitrião |
+| `POST` | `/api/v1/host/events/{eventId}/managers` | Adiciona um gestor por email e enfileira o convite; só o anfitrião |
+| `DELETE` | `/api/v1/host/events/{eventId}/managers/{managerId}` | Remove o acesso de um gestor; só o anfitrião |
+| `POST` | `/api/v1/host/events/{eventId}/managers/{managerId}/resend` | Emite um novo link para o gestor; só o anfitrião |
 | `GET` | `/api/v1/host/dashboard` | Próximo evento, próximos eventos e totais |
-| `GET` | `/api/v1/host/guests` | Lista paginada de convidados de todos os eventos |
+| `GET` | `/api/v1/host/guests` | Lista paginada de convidados de todos os eventos acessíveis |
 | `GET` | `/api/v1/host/invitations` | "Meus convites": eventos em que a conta foi convidada |
 | `GET` | `/api/v1/host/activity` | Feed de actividade da conta (paginado) |
 | `GET` | `/api/v1/host/events/{eventId}/activity` | Feed de actividade do evento (paginado) |
@@ -391,6 +407,7 @@ email, a criação/remoção devolve `403 email_not_verified`.
       "contribution": { "enabled": false },
       "rsvp_deadline": "2027-08-01T22:59:59.000Z",
       "status": "scheduled",
+      "access_role": "host",
       "created_at": "2026-11-16T01:40:07.999Z",
       "updated_at": "2026-11-16T01:40:07.999Z",
       "stats": {
@@ -404,6 +421,10 @@ email, a criação/remoção devolve `403 email_not_verified`.
   "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
 }
 ```
+
+Cada evento traz `access_role`: `host` quando a conta é proprietária,
+`manager` quando participa como gestora. O cliente usa este campo para
+esconder as ações reservadas ao anfitrião.
 
 `POST /api/v1/host/events` — `201`:
 
@@ -437,6 +458,82 @@ email, a criação/remoção devolve `403 email_not_verified`.
 - `404 event_not_found` se o evento não pertencer à conta.
 - `403 email_not_verified` antes da verificação.
 - O token nunca aparece na resposta.
+
+#### Gestores de evento
+
+O anfitrião pode delegar a gestão de um evento a outras pessoas,
+identificadas pelo email. Um gestor **não precisa de conta**: recebe um
+link próprio e usa a área de gestão por link. Se mais tarde criar uma
+conta com o mesmo email verificado, o evento passa também a aparecer no
+workspace dela e continua a poder ser gerido de ambas as formas.
+
+Permissões:
+
+| Capacidade | Anfitrião | Gestor |
+|---|---|---|
+| Consultar evento, convidados, actividade e relatórios | sim | sim |
+| Editar informações do evento | sim | sim |
+| Adicionar convidados | sim | sim |
+| Alterar `status` ou `host_email` | sim | não |
+| Cancelar/apagar o evento | sim | não |
+| Update/delete/resend/revoke de convites existentes | sim | não |
+| Reenviar o link de gestão do anfitrião | sim | não |
+| Gerir gestores | sim | não |
+
+Qualquer tentativa de um gestor executar uma ação reservada devolve
+`403 host_action_forbidden`.
+
+`GET /api/v1/host/events/{eventId}/managers` — `200`:
+
+```json
+{
+  "data": [
+    {
+      "id": "b2d5f4a1-3c47-4a3e-9c2d-1f2a3b4c5d6e",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "email": "paulo@exemplo.ao",
+      "has_account": false,
+      "last_used_at": null,
+      "created_at": "2026-11-16T01:40:07.999Z",
+      "updated_at": "2026-11-16T01:40:07.999Z"
+    }
+  ]
+}
+```
+
+`POST /api/v1/host/events/{eventId}/managers` — corpo
+`{ "email": "paulo@exemplo.ao" }`, resposta `201`:
+
+```json
+{
+  "data": {
+    "manager": { "id": "...", "email": "paulo@exemplo.ao", "has_account": false, "...": "..." },
+    "invite_email_status": "queued"
+  }
+}
+```
+
+- O email é normalizado para minúsculas e comparado sem distinção de
+  maiúsculas (`citext`).
+- `409 manager_already_exists` se o email já for gestor activo.
+- `422 validation_failed` se o email for inválido ou igual ao do
+  anfitrião.
+- O link é enfileirado na outbox e o token nunca é devolvido em JSON.
+- `has_account=true` indica que já existe uma conta verificada com o
+  mesmo email; o evento passa a aparecer no workspace dessa conta.
+
+`DELETE /api/v1/host/events/{eventId}/managers/{managerId}` — `204`,
+sem corpo. A remoção é lógica: o link deixa de funcionar e as sessões
+abertas por esse gestor são revogadas. O mesmo email pode voltar a ser
+adicionado mais tarde (reativa a linha e emite um link novo).
+
+`POST /api/v1/host/events/{eventId}/managers/{managerId}/resend` — `202`,
+mesmo envelope de `POST` com `invite_email_status`. Emite um link novo,
+invalida o anterior e enfileira o email.
+
+Todas as rotas de gestores devolvem `404 event_not_found` quando o
+evento não pertence à conta e `404 manager_not_found` quando o gestor
+não existe, foi removido ou pertence a outro evento.
 
 `GET /api/v1/host/dashboard` — `200`:
 
@@ -764,6 +861,8 @@ Resposta `200` (define os cookies do evento):
 {
   "data": {
     "event": { "...": "..." },
+    "role": "host",
+    "access_role": "host",
     "csrf_token": "<valor para X-CSRF-Token>",
     "expires_at": "2026-11-16T03:38:46.344Z",
     "manage_email_status": "queued",
@@ -771,6 +870,19 @@ Resposta `200` (define os cookies do evento):
   }
 }
 ```
+
+O mesmo endpoint aceita o segredo de um link de gestor:
+
+- `role`/`access_role` valem `host` para o link do anfitrião e
+  `manager` para o link de um gestor.
+- Sessões de gestor devolvem `manage_email_status: null`: o link do
+  gestor **não roda** ao ser usado. O link do anfitrião roda, como
+  descrito abaixo.
+- A área de gestão por link continua disponível para gestores sem conta
+  e permite editar as informações do evento, mas esconde as ações
+  reservadas ao anfitrião.
+
+Para o link do anfitrião:
 
 - A troca **rota** o link: o token usado deixa imediatamente de ser
   válido e um novo link é enviado para `host_email`. Repetir o mesmo
@@ -813,6 +925,10 @@ Resposta `200`:
 enviados (sem defaults implícitos) e aceita `status`
 (`draft`, `scheduled`, `cancelled`, `completed`). Exige `X-CSRF-Token`.
 
+- Um gestor pode editar as informações do evento (título, datas,
+  local, mensagem, tema, contribuição, etc.).
+- `status` e `host_email` continuam reservados ao anfitrião. Um gestor
+  que os envie recebe `403 host_action_forbidden`.
 - Alterar `starts_at` ou `timezone` cancela e reconstrói os lembretes
   futuros ainda não enviados.
 - `status=draft` suspende convites e lembretes pendentes; voltar a
@@ -824,19 +940,23 @@ enviados (sem defaults implícitos) e aceita `status`
 
 ### 4. Gerir convidados
 
-As rotas do evento aceitam a sessão de gestão legada ou a sessão de conta
-do anfitrião autenticado que é proprietário desse evento. Com sessão de
+As rotas do evento aceitam a sessão de gestão legada (do anfitrião ou
+de um gestor) ou a sessão de conta com acesso ao evento. Com sessão de
 conta, não é necessário enviar/trocar o token secreto de gestão; as
 mutações continuam a exigir `X-CSRF-Token`.
 
-| Método | Rota | Efeito |
-|---|---|---|
-| `GET` | `/api/v1/host/events/{eventId}/invitations` | Lista privada |
-| `POST` | `/api/v1/host/events/{eventId}/invitations` | Adiciona e enfileira convite |
-| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | Actualiza dados |
-| `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | Remove convite e entregas |
-| `POST` | `.../{invitationId}/resend` | Reenvia o link individual |
-| `POST` | `.../{invitationId}/revoke` | Revoga o acesso do navegador |
+| Método | Rota | Efeito | Gestor |
+|---|---|---|---|
+| `GET` | `/api/v1/host/events/{eventId}/invitations` | Lista privada | sim |
+| `POST` | `/api/v1/host/events/{eventId}/invitations` | Adiciona e enfileira convite | sim |
+| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | Actualiza dados | não |
+| `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | Remove convite e entregas | não |
+| `POST` | `.../{invitationId}/resend` | Reenvia o link individual | não |
+| `POST` | `.../{invitationId}/revoke` | Revoga o acesso do navegador | não |
+
+Um gestor pode consultar a lista e adicionar convidados, mas não pode
+alterar, remover, reenviar nem revogar convites existentes. Essas ações
+devolvem `403 host_action_forbidden` quando a sessão é de gestor.
 
 Payload de criação/actualização:
 
@@ -971,6 +1091,7 @@ contrário.
   "contribution": { "enabled": false },
   "rsvp_deadline": "2027-08-01T22:59:59.000Z",
   "status": "scheduled",
+  "access_role": "host",
   "created_at": "2026-11-16T01:40:07.999Z",
   "updated_at": "2026-11-16T01:40:07.999Z",
   "stats": {
@@ -989,10 +1110,11 @@ contrário.
 | `location.type` | string | `venue` ou `online` |
 | `contribution` | object | Com `enabled=false` só este campo é devolvido |
 | `status` | string | `draft`, `scheduled`, `cancelled`, `completed` |
+| `access_role` | string | `host` ou `manager`; presente nas vistas de gestão e na sessão |
 | `stats` | object | Só nas listas de gestão, `dashboard` e detalhe por sessão de evento |
 
 A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
-`created_at`, `updated_at` e `stats`.
+`created_at`, `updated_at`, `stats` e `access_role`.
 
 ### `Invitation`
 
@@ -1124,6 +1246,28 @@ estável do tipo de actividade (por exemplo `rsvp_accepted`,
   "updated_at": "2026-11-16T01:00:00.000Z"
 }
 ```
+
+### `EventManager`
+
+```json
+{
+  "id": "b2d5f4a1-3c47-4a3e-9c2d-1f2a3b4c5d6e",
+  "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+  "email": "paulo@exemplo.ao",
+  "has_account": false,
+  "last_used_at": null,
+  "created_at": "2026-11-16T01:40:07.999Z",
+  "updated_at": "2026-11-16T01:40:07.999Z"
+}
+```
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `email` | string | normalizado para minúsculas |
+| `has_account` | boolean | existe conta verificada com o mesmo email |
+| `last_used_at` | string \| null | último uso do link do gestor |
+
+O token do link nunca é devolvido.
 
 ### `PublicInvitation`
 
@@ -1299,6 +1443,10 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `POST` | `/api/v1/host/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "queued" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
 | `DELETE` | `/api/v1/host/events/{eventId}` | `204` | — |
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `202` | `{ "data": { "event_id": uuid, "manage_email_status": "queued" \| "failed", "manage_token_expires_at": string \| null } }` |
+| `GET` | `/api/v1/host/events/{eventId}/managers` | `200` | `{ "data": EventManager[] }` |
+| `POST` | `/api/v1/host/events/{eventId}/managers` | `201` | `{ "data": { "manager": EventManager, "invite_email_status": "queued" \| "failed" } }` |
+| `DELETE` | `/api/v1/host/events/{eventId}/managers/{managerId}` | `204` | — |
+| `POST` | `/api/v1/host/events/{eventId}/managers/{managerId}/resend` | `202` | `{ "data": { "manager": EventManager, "invite_email_status": "queued" \| "failed" } }` |
 | `GET` | `/api/v1/host/dashboard` | `200` | `{ "data": { "next_event": Event \| null, "upcoming": Event[], "totals": Totals } }` |
 | `GET` | `/api/v1/host/guests` | `200` | `{ "data": HostGuest[], "pagination": Pagination }` |
 | `GET` | `/api/v1/host/invitations` | `200` | `{ "data": GuestInvitation[], "pagination": Pagination }` |
@@ -1314,12 +1462,15 @@ corpo. Todas as rotas podem devolver os erros transversais de
 `Totals` = `{ events, drafts, scheduled, cancelled, completed,
 total_invitations, accepted, declined, pending }`, todos inteiros.
 
+`EventManager` = `{ id, event_id, email, has_account, last_used_at,
+created_at, updated_at }`.
+
 ### Fluxo legado por link secreto
 
 | Método | Rota | Sucesso | Corpo |
 |---|---|---|---|
 | `POST` | `/api/v1/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "queued" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
-| `POST` | `/api/v1/host/session` | `200` | `{ "data": { "event": Event, "csrf_token": string, "expires_at": string, "manage_email_status": "queued" \| "failed", "manage_token_expires_at": string \| null } }` |
+| `POST` | `/api/v1/host/session` | `200` | `{ "data": { "event": Event, "role": "host" \| "manager", "access_role": "host" \| "manager", "csrf_token": string, "expires_at": string, "manage_email_status": "queued" \| "failed" \| null, "manage_token_expires_at": string \| null } }` |
 | `DELETE` | `/api/v1/host/session/{eventId}` | `204` | — |
 | `GET` | `/api/v1/host/events/{eventId}` | `200` | `{ "data": { "event": Event, "invitations": Invitation[] } }` |
 | `PATCH` | `/api/v1/host/events/{eventId}` | `200` | `{ "data": Event }` |
@@ -1568,14 +1719,14 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `POST` | `/api/v1/host/session` | `404 manage_link_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `DELETE` | `/api/v1/host/session/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `404 event_not_found` |
-| `PATCH` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 event_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
 | `DELETE` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `404 event_not_found` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
-| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 invitation_not_found`; `409 invitation_email_duplicate`; `422 validation_failed`; `429 rate_limited` |
-| `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 invitation_not_found`; `429 rate_limited` |
-| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/resend` | `401 host_session_invalid`; `403 csrf_invalid`; `404 invitation_not_found`; `409 invitation_not_resendable`; `429 rate_limited` |
-| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/revoke` | `401 host_session_invalid`; `403 csrf_invalid`; `404 invitation_not_found`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_email_duplicate`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/resend` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_not_resendable`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/revoke` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/host/profile` | `401 host_session_invalid` |
 | `PATCH` | `/api/v1/host/profile` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/profile/avatar` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
@@ -1583,6 +1734,10 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `GET` | `/api/v1/host/events` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events` | `401 host_session_invalid`; `403 email_not_verified`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `401 host_session_invalid`; `403 email_not_verified`; `404 event_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/events/{eventId}/managers` | `401 host_session_invalid`; `404 event_not_found` |
+| `POST` | `/api/v1/host/events/{eventId}/managers` | `401 host_session_invalid`; `403 email_not_verified`; `404 event_not_found`; `409 manager_already_exists`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/events/{eventId}/managers/{managerId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 manager_not_found`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/managers/{managerId}/resend` | `401 host_session_invalid`; `403 csrf_invalid`; `404 manager_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/host/dashboard` | `401 host_session_invalid` |
 | `GET` | `/api/v1/host/guests` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/invitations` | `401 host_session_invalid`; `403 email_not_verified`; `422 validation_failed`; `429 rate_limited` |
@@ -1622,7 +1777,9 @@ Acções registadas nesta fase:
 - `event_created`, `event_deleted`;
 - `guest_added`, `guest_updated`, `guest_deleted`,
   `guest_invitation_resent`, `guest_access_revoked`;
-- `manage_link_rotated`, `manage_link_resent`.
+- `manage_link_rotated`, `manage_link_resent`;
+- `manager_added`, `manager_removed`, `manager_invite_resent`,
+  `manager_link_used`.
 
 Regras:
 

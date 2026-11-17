@@ -2,6 +2,7 @@
 
 export const MESSAGE_TYPES = [
   'manage_link',
+  'manager_invite',
   'invitation',
   'reminder',
   'decline_notification',

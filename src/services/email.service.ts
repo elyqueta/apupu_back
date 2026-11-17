@@ -320,6 +320,37 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
       };
     }
 
+    case 'manager_invite': {
+      const manageUrl = links.manageEvent(hostToken(context));
+      const title = context.eventTitle ?? 'um evento';
+      const hostName = context.hostName ?? 'o anfitrião';
+
+      return {
+        to: context.recipientEmail,
+        subject: `Foste adicionado como gestor — ${title}`,
+        messageKey: context.idempotencyKey,
+        text: [
+          'Olá,',
+          '',
+          `${hostName} adicionou-te como gestor do evento ${title} no Conto Contigo.`,
+          'Usa este link para ver os convidados e ajudar a gerir o evento:',
+          manageUrl,
+          '',
+          'Podes adicionar convidados e editar as informações do evento.',
+          'Cancelar o evento, alterar o estado ou gerir convites existentes continua reservado ao anfitrião.',
+          'Não partilhes este link com os convidados.',
+        ].join('\n'),
+        html: `
+          <p>Olá,</p>
+          <p>${escapeHtml(hostName)} adicionou-te como gestor do evento <strong>${escapeHtml(title)}</strong> no Conto Contigo.</p>
+          <p>Usa este link para ver os convidados e ajudar a gerir o evento:</p>
+          <p><a href="${escapeHtml(manageUrl)}">${escapeHtml(manageUrl)}</a></p>
+          <p>Podes adicionar convidados e editar as informações do evento. Cancelar o evento, alterar o estado ou gerir convites existentes continua reservado ao anfitrião.</p>
+          <p>Não partilhes este link com os convidados.</p>
+        `,
+      };
+    }
+
     case 'email_verification': {
       const url = links.verifyEmail(hostToken(context));
 

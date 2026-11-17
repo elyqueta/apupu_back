@@ -42,9 +42,10 @@ type Verdict = { ok: true } | { ok: false; reason: string };
  * marcos obsoletos depois de uma alteração de data.
  */
 export function evaluateApplicability(context: DeliveryContext): Verdict {
-  if (context.messageType === 'manage_link') {
-    // O link de gestão é independente do estado do evento: continua a
-    // ser útil para o anfitrião reabrir, cancelar ou consultar.
+  if (context.messageType === 'manage_link' || context.messageType === 'manager_invite') {
+    // Os links de gestão (do anfitrião e dos gestores) são
+    // independentes do estado do evento: continuam a ser úteis para
+    // reabrir, cancelar ou consultar. Não têm convite associado.
     return { ok: true };
   }
 

@@ -72,27 +72,42 @@ export const activityRepository = {
   },
 
   async listForHost(
-    hostId: string,
+    scope: { hostId: string; managerEmail: string | null },
     offset: number,
     limit: number
   ): Promise<{ items: EventActivityWithEvent[]; total: number }> {
+    const values: unknown[] = [scope.hostId];
+    let access = 'e.host_id = $1';
+
+    if (scope.managerEmail) {
+      values.push(scope.managerEmail);
+      access = `(e.host_id = $1 OR EXISTS (
+        SELECT 1
+          FROM event_managers m
+         WHERE m.event_id = e.id
+           AND m.email = $2::citext
+           AND m.revoked_at IS NULL
+      ))`;
+    }
+
     const countResult = await query<{ total: string }>(
       `SELECT count(*)::text AS total
          FROM event_activity a
          JOIN events e ON e.id = a.event_id
-        WHERE e.host_id = $1`,
-      [hostId]
+        WHERE ${access}`,
+      values
     );
 
+    const listValues = [...values, limit, offset];
     const result = await query<ActivityWithEventRow>(
       `SELECT ${SELECT_COLUMNS.split(',').map((column) => `a.${column.trim()}`).join(', ')},
               e.title AS event_title
          FROM event_activity a
          JOIN events e ON e.id = a.event_id
-        WHERE e.host_id = $1
+        WHERE ${access}
         ORDER BY a.at DESC, a.id DESC
-        LIMIT $2 OFFSET $3`,
-      [hostId, limit, offset]
+        LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,
+      listValues
     );
 
     return {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { activityController } from '../../controllers/activity.controller';
+import { eventManagerController } from '../../controllers/eventManager.controller';
 import { guestInvitationController } from '../../controllers/guestInvitation.controller';
 import { hostEventController } from '../../controllers/hostEvent.controller';
 import { hostGuestController } from '../../controllers/hostGuest.controller';
@@ -18,8 +19,10 @@ import { uploadAvatar } from '../../middlewares/uploadAvatar';
 import { validate } from '../../middlewares/validate';
 import { createEventSchema, eventIdParamsSchema } from '../../schemas/event.schemas';
 import {
+  addEventManagerSchema,
   avatarSchema,
   createTaskSchema,
+  eventManagerParamsSchema,
   eventReportQuerySchema,
   guestInvitationsQuerySchema,
   hostEventsQuerySchema,
@@ -326,6 +329,165 @@ router.post(
   requireAuthCsrf,
   requireVerifiedEmail,
   asyncHandler(hostEventController.resendManageLink)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/managers:
+ *   get:
+ *     tags: [Gestores]
+ *     summary: Lista os gestores activos do evento
+ *     description: >
+ *       Apenas o anfitrião (proprietário) pode gerir gestores. Cada
+ *       gestor é identificado pelo email e pode não ter conta; nesse
+ *       caso usa o link enviado por email.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Gestores activos.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventManagerList' }
+ *       404:
+ *         description: Evento não encontrado ou de outra conta.
+ *   post:
+ *     tags: [Gestores]
+ *     summary: Adiciona um gestor e envia-lhe o link de gestão
+ *     description: >
+ *       O gestor não precisa de conta. Recebe um link próprio por
+ *       email; se já tiver uma conta verificada com o mesmo email,
+ *       passa também a ver o evento no workspace.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { $ref: '#/components/schemas/AddEventManager' }
+ *     responses:
+ *       201:
+ *         description: Gestor adicionado e convite enfileirado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventManagerEnvelope' }
+ *       409:
+ *         description: O email já é gestor do evento.
+ *       422:
+ *         description: Email inválido ou igual ao do anfitrião.
+ */
+router.get(
+  '/events/:eventId/managers',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  asyncHandler(eventManagerController.list)
+);
+
+router.post(
+  '/events/:eventId/managers',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  requireVerifiedEmail,
+  validate({ body: addEventManagerSchema }),
+  asyncHandler(eventManagerController.add)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/managers/{managerId}:
+ *   delete:
+ *     tags: [Gestores]
+ *     summary: Remove o acesso de um gestor
+ *     description: >
+ *       A remoção é lógica: o link deixa de funcionar e as sessões
+ *       abertas pelo gestor são revogadas. O mesmo email pode voltar a
+ *       ser adicionado mais tarde.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: managerId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       204:
+ *         description: Gestor removido.
+ *       404:
+ *         description: Evento ou gestor não encontrado.
+ *
+ * /api/v1/host/events/{eventId}/managers/{managerId}/resend:
+ *   post:
+ *     tags: [Gestores]
+ *     summary: Reenvia o link de gestão a um gestor
+ *     description: >
+ *       Emite um link novo, substitui o anterior e enfileira o email.
+ *       O token nunca é devolvido em JSON.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: managerId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       202:
+ *         description: Link emitido e entrega enfileirada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/EventManagerEnvelope' }
+ *       404:
+ *         description: Evento ou gestor não encontrado.
+ */
+router.delete(
+  '/events/:eventId/managers/:managerId',
+  validate({ params: eventManagerParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  requireVerifiedEmail,
+  asyncHandler(eventManagerController.remove)
+);
+
+router.post(
+  '/events/:eventId/managers/:managerId/resend',
+  validate({ params: eventManagerParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  requireVerifiedEmail,
+  asyncHandler(eventManagerController.resend)
 );
 
 /**

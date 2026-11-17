@@ -1,13 +1,17 @@
 import { Request, Response } from 'express';
 import { toActivityDto, toActivityWithEventDto } from '../dto/activity.dto';
 import { activityService } from '../services/activity.service';
+import { EventAccessScope } from '../types/event.types';
 
-function requireHostId(req: Request): string {
+function accessScope(req: Request): EventAccessScope {
   if (!req.hostAccount) {
     throw new Error('Conta não resolvida: falta o middleware hostAccountAuth.');
   }
 
-  return req.hostAccount.id;
+  return {
+    hostId: req.hostAccount.id,
+    managerEmail: req.hostAccount.emailVerifiedAt ? req.hostAccount.email : null,
+  };
 }
 
 interface ActivityQuery {
@@ -19,7 +23,7 @@ export const activityController = {
   list: async (req: Request, res: Response): Promise<void> => {
     const query = req.query as unknown as ActivityQuery;
     const result = await activityService.listForHost(
-      requireHostId(req),
+      accessScope(req),
       query.page,
       query.page_size
     );
@@ -33,7 +37,7 @@ export const activityController = {
   listForEvent: async (req: Request, res: Response): Promise<void> => {
     const query = req.query as unknown as ActivityQuery;
     const result = await activityService.listForEvent(
-      requireHostId(req),
+      accessScope(req),
       req.params.eventId ?? '',
       query.page,
       query.page_size

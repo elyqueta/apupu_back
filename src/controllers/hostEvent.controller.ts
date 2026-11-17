@@ -4,7 +4,7 @@ import { CreateEventBody } from '../schemas/event.schemas';
 import { HostEventsQuery } from '../schemas/host.schemas';
 import { auditService } from '../services/audit.service';
 import { hostEventService } from '../services/hostEvent.service';
-import { HostTotals } from '../types/event.types';
+import { EventAccessScope, HostTotals } from '../types/event.types';
 
 function requireHostId(req: Request): string {
   if (!req.hostAccount) {
@@ -12,6 +12,18 @@ function requireHostId(req: Request): string {
   }
 
   return req.hostAccount.id;
+}
+
+/** Scope de leitura: eventos próprios e eventos geridos (email verificado). */
+function accessScope(req: Request): EventAccessScope {
+  if (!req.hostAccount) {
+    throw new Error('Conta não resolvida: falta o middleware hostAccountAuth.');
+  }
+
+  return {
+    hostId: req.hostAccount.id,
+    managerEmail: req.hostAccount.emailVerifiedAt ? req.hostAccount.email : null,
+  };
 }
 
 function toTotalsDto(totals: HostTotals): Record<string, number> {
@@ -31,12 +43,14 @@ function toTotalsDto(totals: HostTotals): Record<string, number> {
 export const hostEventController = {
   list: async (req: Request, res: Response): Promise<void> => {
     const result = await hostEventService.list(
-      requireHostId(req),
+      accessScope(req),
       req.query as unknown as HostEventsQuery
     );
 
     res.status(200).json({
-      data: result.items.map((event) => toEventDto(event, event.stats)),
+      data: result.items.map((event) =>
+        toEventDto(event, event.stats, event.accessRole)
+      ),
       pagination: result.pagination,
     });
   },
@@ -62,14 +76,20 @@ export const hostEventController = {
   },
 
   dashboard: async (req: Request, res: Response): Promise<void> => {
-    const dashboard = await hostEventService.dashboard(requireHostId(req));
+    const dashboard = await hostEventService.dashboard(accessScope(req));
 
     res.status(200).json({
       data: {
         next_event: dashboard.next_event
-          ? toEventDto(dashboard.next_event, dashboard.next_event.stats)
+          ? toEventDto(
+              dashboard.next_event,
+              dashboard.next_event.stats,
+              dashboard.next_event.accessRole
+            )
           : null,
-        upcoming: dashboard.upcoming.map((event) => toEventDto(event, event.stats)),
+        upcoming: dashboard.upcoming.map((event) =>
+          toEventDto(event, event.stats, event.accessRole)
+        ),
         totals: toTotalsDto(dashboard.totals),
       },
     });

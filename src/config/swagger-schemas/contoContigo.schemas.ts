@@ -120,6 +120,12 @@ export const contoContigoSchemas = {
         type: 'string',
         enum: ['draft', 'scheduled', 'cancelled', 'completed'],
       },
+      access_role: {
+        type: 'string',
+        enum: ['host', 'manager'],
+        description:
+          'Papel de quem consulta o evento. `manager` esconde ações reservadas ao anfitrião.',
+      },
       stats: {
         type: 'object',
         properties: {
@@ -870,9 +876,15 @@ export const contoContigoSchemas = {
         type: 'object',
         properties: {
           event: { $ref: '#/components/schemas/Event' },
+          role: { type: 'string', enum: ['host', 'manager'] },
+          access_role: { type: 'string', enum: ['host', 'manager'] },
           csrf_token: { type: 'string' },
           expires_at: { type: 'string', format: 'date-time' },
-          manage_email_status: { type: 'string', enum: ['queued', 'failed'] },
+          manage_email_status: {
+            type: 'string',
+            enum: ['queued', 'failed'],
+            nullable: true,
+          },
           manage_token_expires_at: {
             type: 'string',
             format: 'date-time',
@@ -894,6 +906,54 @@ export const contoContigoSchemas = {
             type: 'array',
             items: { $ref: '#/components/schemas/Invitation' },
           },
+        },
+      },
+    },
+  },
+
+  EventManager: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      event_id: { type: 'string', format: 'uuid' },
+      email: { type: 'string', format: 'email' },
+      has_account: {
+        type: 'boolean',
+        description:
+          'Indica se já existe uma conta verificada com o mesmo email; nesse caso o evento aparece no workspace.',
+      },
+      last_used_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  AddEventManager: {
+    type: 'object',
+    required: ['email'],
+    properties: {
+      email: { type: 'string', format: 'email' },
+    },
+  },
+
+  EventManagerList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/EventManager' },
+      },
+    },
+  },
+
+  EventManagerEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          manager: { $ref: '#/components/schemas/EventManager' },
+          invite_email_status: { type: 'string', enum: ['queued', 'failed'] },
         },
       },
     },

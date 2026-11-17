@@ -40,7 +40,24 @@ export interface HostReportSummary {
  * aqui.
  */
 export const reportRepository = {
-  async summaryForHost(hostId: string): Promise<HostReportSummary> {
+  async summaryForHost(scope: {
+    hostId: string;
+    managerEmail: string | null;
+  }): Promise<HostReportSummary> {
+    const values: unknown[] = [scope.hostId];
+    let access = 'e.host_id = $1';
+
+    if (scope.managerEmail) {
+      values.push(scope.managerEmail);
+      access = `(e.host_id = $1 OR EXISTS (
+        SELECT 1
+          FROM event_managers m
+         WHERE m.event_id = e.id
+           AND m.email = $2::citext
+           AND m.revoked_at IS NULL
+      ))`;
+    }
+
     const result = await query<SummaryRow>(
       `SELECT e.id AS event_id, e.title, e.status,
               count(i.id)::text AS total,
@@ -49,10 +66,10 @@ export const reportRepository = {
               count(i.id) FILTER (WHERE i.rsvp_status = 'pending')::text AS pending
          FROM events e
          LEFT JOIN invitations i ON i.event_id = e.id
-        WHERE e.host_id = $1
+        WHERE ${access}
         GROUP BY e.id
         ORDER BY e.starts_at DESC, e.id DESC`,
-      [hostId]
+      values
     );
 
     const events: EventReportRow[] = result.rows.map((row) => ({

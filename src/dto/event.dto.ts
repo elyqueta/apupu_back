@@ -47,6 +47,8 @@ export interface EventDto {
   contribution: ContributionDto;
   rsvp_deadline: string | null;
   status: string;
+  /** Papel de quem consulta: `host` ou `manager`. */
+  access_role?: 'host' | 'manager';
   created_at: string;
   updated_at: string;
   stats?: {
@@ -57,7 +59,10 @@ export interface EventDto {
   };
 }
 
-export type PublicEventDto = Omit<EventDto, 'host_email' | 'template_id' | 'created_at' | 'updated_at' | 'stats'>;
+export type PublicEventDto = Omit<
+  EventDto,
+  'host_email' | 'template_id' | 'created_at' | 'updated_at' | 'stats' | 'access_role'
+>;
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -77,7 +82,11 @@ function contributionDto(event: Event): ContributionDto {
 }
 
 /** Vista de gestão: inclui dados de contacto do anfitrião. */
-export function toEventDto(event: Event, stats?: EventStats): EventDto {
+export function toEventDto(
+  event: Event,
+  stats?: EventStats,
+  accessRole?: 'host' | 'manager'
+): EventDto {
   return {
     id: event.id,
     title: event.title,
@@ -104,6 +113,7 @@ export function toEventDto(event: Event, stats?: EventStats): EventDto {
     contribution: contributionDto(event),
     rsvp_deadline: iso(event.rsvpDeadline),
     status: event.status,
+    ...(accessRole ? { access_role: accessRole } : {}),
     created_at: event.createdAt.toISOString(),
     updated_at: event.updatedAt.toISOString(),
     ...(stats

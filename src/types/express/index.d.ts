@@ -1,4 +1,4 @@
-import { Event } from '../event.types';
+import { Event, EventAccessRole } from '../event.types';
 import { Invitation } from '../invitation.types';
 import { HostWithProfile } from '../host.types';
 
@@ -25,8 +25,12 @@ declare global {
       hostSession?: {
         id: string;
         eventId: string;
+        role: EventAccessRole;
+        managerId: string | null;
         expiresAt: Date;
       };
+      /** Papel resolvido para o evento do pedido. */
+      accessRole?: EventAccessRole;
       hostAccount?: HostWithProfile;
       accountSession?: {
         sessionId: string;

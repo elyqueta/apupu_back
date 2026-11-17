@@ -17,13 +17,16 @@ import { hashToken } from '../utils/token.util';
  *
  * Dois caminhos coexistem durante a migração:
  * 1. sessão legada por evento (`apupu_host_<eventId>`), obtida ao
- *    trocar o segredo do link de gestão;
- * 2. sessão de conta (`apupu_auth`) com `events.host_id` igual ao
- *    anfitrião autenticado.
+ *    trocar o segredo do link de gestão (do anfitrião ou de um gestor);
+ * 2. sessão de conta (`apupu_auth`) com acesso ao evento por posse ou
+ *    por gestão (email verificado adicionado como gestor).
  *
  * O UUID do evento nunca é autorização por si só. Uma conta válida
- * mas sem posse do evento recebe 404 `event_not_found` (não revela a
+ * mas sem acesso ao evento recebe 404 `event_not_found` (não revela a
  * existência do recurso); sem qualquer sessão válida, 401 genérico.
+ *
+ * O papel resolvido fica em `req.accessRole` para que as rotas possam
+ * restringir operações ao anfitrião.
  */
 export async function hostAuth(
   req: Request,
@@ -47,8 +50,11 @@ export async function hostAuth(
         req.hostSession = {
           id: authenticated.session.id,
           eventId: authenticated.session.eventId,
+          role: authenticated.session.role,
+          managerId: authenticated.session.managerId,
           expiresAt: authenticated.session.expiresAt,
         };
+        req.accessRole = authenticated.session.role;
         req.event = authenticated.event;
         next();
         return;
@@ -82,9 +88,14 @@ export async function hostAuth(
       return;
     }
 
-    const event = await eventRepository.findByIdForHost(eventId, host.id);
+    const access = await eventRepository.findByIdForAccess(eventId, {
+      hostId: host.id,
+      // Só uma conta com email verificado pode gerir eventos em que
+      // foi adicionada como gestora. A comparação é feita por email.
+      managerEmail: host.emailVerifiedAt ? host.email : null,
+    });
 
-    if (!event) {
+    if (!access) {
       next(new NotFoundError('Evento não encontrado.', 'event_not_found'));
       return;
     }
@@ -96,7 +107,8 @@ export async function hostAuth(
       sessionId: session.id,
       expiresAt: session.expiresAt,
     };
-    req.event = event;
+    req.accessRole = access.accessRole;
+    req.event = access.event;
 
     next();
   } catch (error) {

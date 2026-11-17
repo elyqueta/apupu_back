@@ -108,6 +108,21 @@ export const errorResponses = {
     'event_not_found',
     'Evento não encontrado.'
   ),
+  HostActionForbidden: errorResponse(
+    'A ação está reservada ao anfitrião (proprietário) do evento.',
+    'host_action_forbidden',
+    'Apenas o anfitrião pode executar esta ação.'
+  ),
+  ManagerNotFound: errorResponse(
+    'Gestor inexistente, removido ou de outro evento.',
+    'manager_not_found',
+    'Gestor não encontrado.'
+  ),
+  ManagerAlreadyExists: errorResponse(
+    'O email já é gestor activo deste evento.',
+    'manager_already_exists',
+    'Este email já é gestor do evento.'
+  ),
   ManageLinkInvalid: errorResponse(
     'Link de gestão inválido, expirado ou já rodado.',
     'manage_link_invalid',
@@ -363,6 +378,30 @@ export const operationErrorResponses: Record<
     401: 'HostSessionInvalid',
     403: 'EmailNotVerified',
     404: 'EventNotFound',
+    429: 'RateLimited',
+  },
+  'get /api/v1/host/events/{eventId}/managers': {
+    401: 'HostSessionInvalid',
+    404: 'EventNotFound',
+  },
+  'post /api/v1/host/events/{eventId}/managers': {
+    401: 'HostSessionInvalid',
+    403: 'EmailNotVerified',
+    404: 'EventNotFound',
+    409: 'ManagerAlreadyExists',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'delete /api/v1/host/events/{eventId}/managers/{managerId}': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'ManagerNotFound',
+    429: 'RateLimited',
+  },
+  'post /api/v1/host/events/{eventId}/managers/{managerId}/resend': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'ManagerNotFound',
     429: 'RateLimited',
   },
   'get /api/v1/host/dashboard': {

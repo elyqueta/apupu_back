@@ -125,6 +125,8 @@ export interface InsertInvitationData {
 
 export interface HostGuestListFilters {
   hostId: string;
+  /** Email verificado da conta, para incluir eventos geridos. */
+  managerEmail: string | null;
   eventId?: string;
   rsvpStatus?: RsvpStatus;
   sendStatus?: SendStatus;
@@ -246,12 +248,27 @@ export const invitationRepository = {
   /**
    * Lista global de convidados de uma conta, com filtros e o resumo do
    * evento a que pertencem.
+   *
+   * Inclui eventos próprios e eventos em que a conta é gestora activa.
    */
   async listForHost(
     filters: HostGuestListFilters
   ): Promise<{ items: InvitationWithEvent[]; total: number }> {
-    const conditions = ['e.host_id = $1'];
     const values: unknown[] = [filters.hostId];
+    let conditions = ['e.host_id = $1'];
+
+    if (filters.managerEmail) {
+      values.push(filters.managerEmail);
+      conditions = [
+        `(e.host_id = $1 OR EXISTS (
+           SELECT 1
+             FROM event_managers m
+            WHERE m.event_id = e.id
+              AND m.email = $2::citext
+              AND m.revoked_at IS NULL
+         ))`,
+      ];
+    }
 
     if (filters.eventId) {
       values.push(filters.eventId);

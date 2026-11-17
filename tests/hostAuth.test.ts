@@ -17,7 +17,7 @@ vi.mock('../src/repositories/host.repository', () => ({
 }));
 
 vi.mock('../src/repositories/event.repository', () => ({
-  eventRepository: { findByIdForHost: vi.fn() },
+  eventRepository: { findByIdForAccess: vi.fn() },
 }));
 
 import { env } from '../src/config/env';
@@ -83,6 +83,8 @@ const legacySession = {
   id: 'legacy-session-1',
   eventId: EVENT_ID,
   tokenHash: 'legacy-hash',
+  role: 'host',
+  managerId: null,
   expiresAt: new Date('2026-11-15T12:00:00.000Z'),
   revokedAt: null,
   createdAt: now,
@@ -135,8 +137,11 @@ describe('hostAuth — autorização combinada', () => {
     expect(req.hostSession).toEqual({
       id: legacySession.id,
       eventId: EVENT_ID,
+      role: 'host',
+      managerId: null,
       expiresAt: legacySession.expiresAt,
     });
+    expect(req.accessRole).toBe('host');
     expect(hostAuthSessionRepository.findActiveByTokenHash).not.toHaveBeenCalled();
   });
 
@@ -161,7 +166,10 @@ describe('hostAuth — autorização combinada', () => {
     vi.mocked(hostSessionService.authenticate).mockResolvedValue(null);
     vi.mocked(hostAuthSessionRepository.findActiveByTokenHash).mockResolvedValue(accountSession);
     vi.mocked(hostRepository.findById).mockResolvedValue(host);
-    vi.mocked(eventRepository.findByIdForHost).mockResolvedValue(event);
+    vi.mocked(eventRepository.findByIdForAccess).mockResolvedValue({
+      event,
+      accessRole: 'host',
+    });
 
     const req = makeRequest({ [env.AUTH_COOKIE_NAME]: 'account-token' });
     const res = makeResponse();
@@ -176,7 +184,11 @@ describe('hostAuth — autorização combinada', () => {
       expiresAt: accountSession.expiresAt,
     });
     expect(req.event).toBe(event);
-    expect(eventRepository.findByIdForHost).toHaveBeenCalledWith(EVENT_ID, host.id);
+    expect(req.accessRole).toBe('host');
+    expect(eventRepository.findByIdForAccess).toHaveBeenCalledWith(EVENT_ID, {
+      hostId: host.id,
+      managerEmail: host.email,
+    });
   });
 
   it('aceita CSRF da sessão de conta sem cookie/token de gestão do evento', () => {
@@ -198,7 +210,7 @@ describe('hostAuth — autorização combinada', () => {
     vi.mocked(hostSessionService.authenticate).mockResolvedValue(null);
     vi.mocked(hostAuthSessionRepository.findActiveByTokenHash).mockResolvedValue(accountSession);
     vi.mocked(hostRepository.findById).mockResolvedValue(host);
-    vi.mocked(eventRepository.findByIdForHost).mockResolvedValue(null);
+    vi.mocked(eventRepository.findByIdForAccess).mockResolvedValue(null);
 
     const req = makeRequest({ [env.AUTH_COOKIE_NAME]: 'account-token' });
     const res = makeResponse();

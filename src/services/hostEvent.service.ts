@@ -2,7 +2,7 @@ import { NotFoundError } from '../errors';
 import { eventRepository } from '../repositories/event.repository';
 import { CreateEventBody } from '../schemas/event.schemas';
 import { HostEventsQuery } from '../schemas/host.schemas';
-import { EventWithStats, HostTotals } from '../types/event.types';
+import { EventAccessScope, EventWithStats, HostTotals } from '../types/event.types';
 import { PaginationMeta } from '../types/pagination.types';
 import { buildPaginationMeta, toPageParams } from '../utils/pagination.util';
 import { CreatedEventResult, eventService } from './event.service';
@@ -24,15 +24,17 @@ export interface HostDashboard {
 /**
  * Operações do workspace autenticado.
  *
- * O `hostId` vem sempre da sessão, nunca do pedido. Qualquer leitura
- * ou mutação é limitada por `events.host_id = sessão.host_id`.
+ * O `hostId` vem sempre da sessão, nunca do pedido. As leituras
+ * incluem os eventos próprios e aqueles em que a conta é gestora
+ * activa; as mutações estruturais continuam limitadas ao proprietário.
  */
 export const hostEventService = {
-  async list(hostId: string, query: HostEventsQuery): Promise<HostEventListResult> {
+  async list(scope: EventAccessScope, query: HostEventsQuery): Promise<HostEventListResult> {
     const page = toPageParams(query.page, query.page_size);
 
     const { items, total } = await eventRepository.listForHost({
-      hostId,
+      hostId: scope.hostId,
+      managerEmail: scope.managerEmail,
       status: query.status,
       q: query.q,
       sort: query.sort,
@@ -47,11 +49,11 @@ export const hostEventService = {
     };
   },
 
-  async dashboard(hostId: string): Promise<HostDashboard> {
+  async dashboard(scope: EventAccessScope): Promise<HostDashboard> {
     const [nextEvent, upcoming, totals] = await Promise.all([
-      eventRepository.nextScheduledForHost(hostId),
-      eventRepository.upcomingForHost(hostId, UPCOMING_LIMIT),
-      eventRepository.totalsForHost(hostId),
+      eventRepository.nextScheduledForHost(scope),
+      eventRepository.upcomingForHost(scope, UPCOMING_LIMIT),
+      eventRepository.totalsForHost(scope),
     ]);
 
     return {

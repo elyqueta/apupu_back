@@ -15,6 +15,9 @@ export const hostSessionController = {
    * O segredo nunca é devolvido nem registado. O `csrf_token` é o valor
    * derivado que o frontend deve enviar em `X-CSRF-Token` nos pedidos
    * mutáveis seguintes.
+   *
+   * O link do anfitrião roda ao ser usado; o link de um gestor apenas
+   * abre a mesma área de gestão, sem emitir um link novo.
    */
   create: async (req: Request, res: Response): Promise<void> => {
     const body = req.body as HostSessionBody;
@@ -23,7 +26,7 @@ export const hostSessionController = {
     setHostSession(res, result.event.id, result.sessionToken);
 
     await auditService.recordRequest(req, {
-      action: 'manage_link_rotated',
+      action: result.role === 'manager' ? 'manager_link_used' : 'manage_link_rotated',
       hostId: result.event.hostId,
       eventId: result.event.id,
       metadata: { manage_email_status: result.manageEmailStatus },
@@ -31,7 +34,9 @@ export const hostSessionController = {
 
     res.status(200).json({
       data: {
-        event: toEventDto(result.event),
+        event: toEventDto(result.event, undefined, result.role),
+        role: result.role,
+        access_role: result.role,
         csrf_token: result.csrfToken,
         expires_at: result.session.expiresAt.toISOString(),
         manage_email_status: result.manageEmailStatus,

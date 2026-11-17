@@ -127,6 +127,17 @@ const taskIdParamsSchema = z.object({
   taskId: z.uuid('Identificador de tarefa inválido.'),
 });
 
+const addEventManagerSchema = z
+  .object({
+    email: z.email('Email inválido.').max(320),
+  })
+  .strict();
+
+const eventManagerParamsSchema = z.object({
+  eventId: z.uuid('Identificador de evento inválido.'),
+  managerId: z.uuid('Identificador de gestor inválido.'),
+});
+
 export {
   hostEventsQuerySchema,
   hostGuestsQuerySchema,
@@ -137,6 +148,8 @@ export {
   createTaskSchema,
   updateTaskSchema,
   taskIdParamsSchema,
+  addEventManagerSchema,
+  eventManagerParamsSchema,
 };
 
 export type UpdateProfileBody = z.infer<typeof updateProfileSchema>;
@@ -148,3 +161,4 @@ export type EventReportQuery = z.infer<typeof eventReportQuerySchema>;
 export type TasksQuery = z.infer<typeof tasksQuerySchema>;
 export type CreateTaskBody = z.infer<typeof createTaskSchema>;
 export type UpdateTaskBody = z.infer<typeof updateTaskSchema>;
+export type AddEventManagerBody = z.infer<typeof addEventManagerSchema>;

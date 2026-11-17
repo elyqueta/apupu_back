@@ -1,25 +1,25 @@
 import { NotFoundError } from '../errors';
 import { eventRepository } from '../repositories/event.repository';
 import { HostReportSummary, reportRepository } from '../repositories/report.repository';
-import { DailyReportRow } from '../types/event.types';
+import { DailyReportRow, EventAccessScope } from '../types/event.types';
 
 export const reportService = {
-  async summary(hostId: string): Promise<HostReportSummary> {
-    return reportRepository.summaryForHost(hostId);
+  async summary(scope: EventAccessScope): Promise<HostReportSummary> {
+    return reportRepository.summaryForHost(scope);
   },
 
   /**
    * Série diária de um evento (UTC, um ponto por dia, incluindo dias
-   * sem movimento). A posse do evento é verificada antes da consulta.
+   * sem movimento). O acesso ao evento é verificado antes da consulta.
    */
   async eventDaily(
-    hostId: string,
+    scope: EventAccessScope,
     eventId: string,
     days: number
   ): Promise<DailyReportRow[]> {
-    const event = await eventRepository.findByIdForHost(eventId, hostId);
+    const access = await eventRepository.findByIdForAccess(eventId, scope);
 
-    if (!event) {
+    if (!access) {
       throw new NotFoundError('Evento não encontrado.', 'event_not_found');
     }
 

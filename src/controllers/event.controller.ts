@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { toEventDto } from '../dto/event.dto';
 import { toInvitationDto } from '../dto/invitation.dto';
+import { ForbiddenError } from '../errors';
 import { CreateEventBody, UpdateEventBody } from '../schemas/event.schemas';
 import { auditService } from '../services/audit.service';
 import { eventService } from '../services/event.service';
@@ -53,7 +54,7 @@ export const eventController = {
 
     res.status(200).json({
       data: {
-        event: toEventDto(event, stats),
+        event: toEventDto(event, stats, req.accessRole),
         invitations: invitations.map(toInvitationDto),
       },
     });
@@ -62,8 +63,21 @@ export const eventController = {
   update: async (req: Request, res: Response): Promise<void> => {
     const event = requireEvent(req);
     const body = req.body as UpdateEventBody;
+
+    // Gestores editam informações, mas o estado e o email do anfitrião
+    // continuam reservados ao proprietário.
+    if (
+      req.accessRole !== 'host' &&
+      (body.status !== undefined || body.host_email !== undefined)
+    ) {
+      throw new ForbiddenError(
+        'Apenas o anfitrião pode alterar o estado ou o email do anfitrião.',
+        'host_action_forbidden'
+      );
+    }
+
     const updated = await eventService.update(event.id, body);
 
-    res.status(200).json({ data: toEventDto(updated) });
+    res.status(200).json({ data: toEventDto(updated, undefined, req.accessRole) });
   },
 };
