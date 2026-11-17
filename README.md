@@ -15,7 +15,8 @@ Incluído:
 
 - Criar conta de anfitrião (email + senha) com verificação prévia do
   email por código OTP, e repor senha.
-- Perfil com data de nascimento opcional, telefone, locale e avatar (URL).
+- Perfil com data de nascimento opcional, telefone, locale e avatar (URL
+  ou upload assinado para o Cloudinary).
 - Gerir vários eventos por conta: lista paginada, painel, convidados,
   actividade, relatórios e tarefas.
 - Criar e editar eventos por link secreto (fluxo legado, sem conta).
@@ -221,6 +222,10 @@ Recomendado em cron diário, por exemplo `0 3 * * *`.
 - `EMAIL_TRANSPORT=resend`: envia pela API HTTP do Resend
   (`https://api.resend.com/emails`) com `RESEND_API_KEY` e
   `EMAIL_FROM`.
+- `EMAIL_TRANSPORT=brevo`: envia por SMTP transaccional da Brevo com
+  `BREVO_SMTP_HOST`, `BREVO_SMTP_PORT`, `BREVO_SMTP_LOGIN`,
+  `BREVO_SMTP_KEY`, `BREVO_FROM_NAME` e `BREVO_FROM_EMAIL`. Use a
+  **SMTP key** da Brevo como senha, não a API key.
 
 `onboarding@resend.dev` é o remetente de teste do Resend e só entrega
 ao email dono da conta. Para enviar a outros destinatários é preciso
