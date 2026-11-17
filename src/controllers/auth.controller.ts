@@ -54,9 +54,21 @@ export const authController = {
   },
 
   register: async (req: Request, res: Response): Promise<void> => {
-    const host = await authService.register(req.body as RegisterBody, auditContext(req));
+    const result = await authService.register(
+      req.body as RegisterBody,
+      userAgent(req),
+      auditContext(req)
+    );
 
-    res.status(201).json({ data: { host: toHostDto(host) } });
+    setAuthSession(res, result.session.sessionToken);
+
+    res.status(201).json({
+      data: {
+        host: toHostDto(result.host),
+        csrf_token: result.session.csrfToken,
+        expires_at: result.session.expiresAt.toISOString(),
+      },
+    });
   },
 
   verifyEmail: async (req: Request, res: Response): Promise<void> => {

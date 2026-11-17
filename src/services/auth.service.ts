@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import { withTransaction } from '../database/pool';
+import { PoolClient } from 'pg';
 import {
   ConflictError,
   LockedError,
@@ -90,19 +91,23 @@ function tokenExpiry(minutes: number): Date {
 
 async function createAccountSession(
   hostId: string,
-  userAgent: string | null
+  userAgent: string | null,
+  client?: PoolClient
 ): Promise<CreatedAccountSession> {
   const sessionToken = generateToken();
   const csrfToken = csrfTokenFor(sessionToken);
   const expiresAt = tokenExpiry(env.AUTH_SESSION_TTL_MINUTES);
 
-  const session = await hostAuthSessionRepository.create({
-    hostId,
-    tokenHash: hashToken(sessionToken),
-    csrfHash: hashToken(csrfToken),
-    userAgentHash: userAgent ? hashToken(userAgent) : null,
-    expiresAt,
-  });
+  const session = await hostAuthSessionRepository.create(
+    {
+      hostId,
+      tokenHash: hashToken(sessionToken),
+      csrfHash: hashToken(csrfToken),
+      userAgentHash: userAgent ? hashToken(userAgent) : null,
+      expiresAt,
+    },
+    client
+  );
 
   return { session, sessionToken, csrfToken, expiresAt };
 }
@@ -268,19 +273,24 @@ export const authService = {
   },
 
   /**
-   * Cria a conta, o perfil e liga os eventos legados numa transacção.
+   * Cria a conta, o perfil e a sessão, e liga os eventos legados numa transacção.
    *
    * Exige o token devolvido por `verifyRegistrationCode`; sem ele não
    * há criação de conta. O email fica verificado de imediato e o email
-   * de boas-vindas é enfileirado uma única vez.
+   * de boas-vindas é enfileirado uma única vez. A sessão é persistida na
+   * mesma transacção da conta.
    */
-  async register(input: RegisterBody, context?: AuditContext): Promise<HostWithProfile> {
+  async register(
+    input: RegisterBody,
+    userAgent: string | null,
+    context?: AuditContext
+  ): Promise<{ host: HostWithProfile; session: CreatedAccountSession }> {
     const passwordHash = await hashPassword(input.password);
 
-    let host: HostWithProfile;
+    let result: { host: HostWithProfile; session: CreatedAccountSession };
 
     try {
-      host = await withTransaction(async (client) => {
+      result = await withTransaction(async (client) => {
         if (await hostRepository.emailExists(input.email)) {
           throw new ConflictError('Este email já está registado.', 'email_already_registered', {
             email: ['Este email já está registado.'],
@@ -319,7 +329,9 @@ export const authService = {
 
         await enqueueHostWelcome(verified.id, verified.email, client);
 
-        return verified;
+        const session = await createAccountSession(verified.id, userAgent, client);
+
+        return { host: verified, session };
       });
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -333,12 +345,12 @@ export const authService = {
 
     await auditService.record({
       action: 'registration_completed',
-      hostId: host.id,
+      hostId: result.host.id,
       ip: context?.ip ?? null,
       requestId: context?.requestId ?? null,
     });
 
-    return host;
+    return result;
   },
 
   /**

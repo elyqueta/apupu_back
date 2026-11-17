@@ -79,10 +79,13 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 
 Há três tipos de capacidade:
 
-1. **Sessão de conta** — emitida por `POST /auth/login`:
+1. **Sessão de conta** — emitida por `POST /auth/login` e,
+   automaticamente, por `POST /auth/register` após a verificação OTP:
    - Cookie `apupu_auth`: `HttpOnly`, `SameSite=Lax`, `Path=/api/v1`.
    - Cookie `apupu_csrf_auth`: legível por JS, `Path=/api/v1`.
-   - `csrf_token` é devolvido no login e em `GET /auth/session`.
+   - `csrf_token` e `expires_at` são devolvidos no login e no registo;
+     `csrf_token` também é devolvido em `GET /auth/session`.
+   - O token bruto da sessão nunca é devolvido em JSON.
 2. **Sessão de gestão por evento** (legado) — o segredo do link de
    gestão é trocado por uma sessão curta:
    - Cookie `apupu_host_<eventId>`: `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/host`.
@@ -194,7 +197,9 @@ Erros: `422 otp_invalid`, `422 otp_attempts_exceeded`,
   de verificação.
 - Os eventos legados cujo `host_email` coincide com o email verificado
   são ligados à conta (`events.host_id`) de forma idempotente.
-- O email de boas-vindas é enfileirado. **Não** inicia sessão.
+- O email de boas-vindas é enfileirado e é criada uma sessão de conta na
+  mesma transacção. O cookie é HttpOnly; o token bruto não é devolvido em
+  JSON.
 - A senha exige 8 a 128 caracteres e não pode estar na lista mínima de
   senhas comuns.
 
@@ -219,7 +224,9 @@ Resposta `201`:
       "profile_complete": false,
       "missing_fields": ["birth_date"],
       "created_at": "2026-11-16T02:20:57.546Z"
-    }
+    },
+    "csrf_token": "<valor para X-CSRF-Token>",
+    "expires_at": "2026-11-23T02:20:57.546Z"
   }
 }
 ```
@@ -1130,7 +1137,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 |---|---|---|---|
 | `POST` | `/api/v1/auth/register/request-code` | `202` | `{ "data": { "status": "accepted", "email": string, "expires_at": string, "resend_available_at": string } }` |
 | `POST` | `/api/v1/auth/register/verify-code` | `200` | `{ "data": { "email": string, "verification_token": string, "expires_at": string } }` |
-| `POST` | `/api/v1/auth/register` | `201` | `{ "data": { "host": Host } }` |
+| `POST` | `/api/v1/auth/register` | `201` | `{ "data": { "host": Host, "csrf_token": string, "expires_at": string } }` |
 | `POST` | `/api/v1/auth/email/verify` | `200` | `{ "data": { "host": Host } }` |
 | `POST` | `/api/v1/auth/email/verify/resend` | `202` | `{ "data": { "status": "accepted" } }` |
 | `POST` | `/api/v1/auth/login` | `200` | `{ "data": { "host": Host, "csrf_token": string, "expires_at": string } }` |

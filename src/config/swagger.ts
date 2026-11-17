@@ -39,7 +39,7 @@ const swaggerDefinition: swaggerJsdoc.OAS3Definition = {
         in: 'cookie',
         name: env.AUTH_COOKIE_NAME,
         description:
-          'Cookie HttpOnly emitido por POST /auth/login. Operações mutáveis exigem também o cabeçalho X-CSRF-Token (valor devolvido no login ou em GET /auth/session).',
+          'Cookie HttpOnly emitido por POST /auth/login ou POST /auth/register. Operações mutáveis exigem também o cabeçalho X-CSRF-Token (valor devolvido no login, no registo ou em GET /auth/session).',
       },
     },
     responses: {

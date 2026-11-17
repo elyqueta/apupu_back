@@ -130,8 +130,9 @@ Tokens de uso único, de vida curta, guardados apenas como HMAC.
   (parâmetros definidos por ambiente). Nunca devolver a senha nem o hash.
 - **O email é verificado por código OTP antes de a conta ser criada.** O
   registo tem três passos: `request-code` → `verify-code` → `register`.
-  Só o último cria a conta, já com `email_verified_at` preenchido. O login
-  continua a exigir uma conta existente.
+  Só o último cria a conta, já com `email_verified_at` preenchido, e inicia
+  automaticamente uma sessão por cookie HttpOnly. O token bruto não é
+  devolvido em JSON; o `csrf_token` e a expiração são devolvidos como no login.
 - Rate limit dedicado por IP **e** por email em `register`,
   `register/request-code`, `register/verify-code`, `login`,
   `password/forgot` e `password/reset`.
@@ -148,7 +149,7 @@ Respostas de sucesso no envelope `{ "data": ... }`.
 |---|---|---|---|
 | `POST` | `/api/v1/auth/register/request-code` | pública | Valida o email e envia um código OTP de 6 dígitos |
 | `POST` | `/api/v1/auth/register/verify-code` | pública | Troca o código por um `verification_token` de uso único |
-| `POST` | `/api/v1/auth/register` | pública | Cria conta já verificada (exige `verification_token`) |
+| `POST` | `/api/v1/auth/register` | pública | Cria conta já verificada e inicia sessão (exige `verification_token`) |
 | `POST` | `/api/v1/auth/email/verify` | pública | Consome token de verificação (contas antigas) |
 | `POST` | `/api/v1/auth/email/verify/resend` | pública | Reenvia verificação (rate limit) |
 | `POST` | `/api/v1/auth/login` | pública | Cria sessão; devolve `csrf_token` |
@@ -230,13 +231,15 @@ Resposta `201`:
         "avatar_url": null
       },
       "profile_complete": false
-    }
+    },
+    "csrf_token": "…",
+    "expires_at": "2026-11-16T04:00:00.000Z"
   }
 }
 ```
 
-Não devolve sessão: a conta fica criada e verificada, e o front pode
-iniciar sessão. Erros: `409 email_already_registered`,
+O cookie HttpOnly inicia a sessão automaticamente; o token bruto da
+sessão nunca é devolvido no corpo. Erros: `409 email_already_registered`,
 `422 verification_required`, `422 validation_failed`, `429 rate_limited`.
 
 #### `POST /auth/login`

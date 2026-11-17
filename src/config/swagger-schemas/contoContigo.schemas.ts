@@ -527,6 +527,20 @@ export const contoContigoSchemas = {
     },
   },
 
+  RegistrationEnvelope: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'object',
+        properties: {
+          host: { $ref: '#/components/schemas/Host' },
+          csrf_token: { type: 'string' },
+          expires_at: { type: 'string', format: 'date-time' },
+        },
+      },
+    },
+  },
+
   EventEnvelope: {
     type: 'object',
     properties: {

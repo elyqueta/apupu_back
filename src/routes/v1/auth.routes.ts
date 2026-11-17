@@ -141,8 +141,9 @@ router.post(
  *       `/auth/register/verify-code`; sem ele devolve `422`
  *       `verification_required`. A conta é criada com
  *       `email_verified=true`, os eventos legados com o mesmo email são
- *       ligados à conta e o email de boas-vindas é enfileirado. Não
- *       inicia sessão.
+ *       ligados à conta, o email de boas-vindas é enfileirado e uma
+ *       sessão é criada automaticamente. O cookie é HttpOnly; o token
+ *       bruto nunca é devolvido em JSON.
  *     requestBody:
  *       required: true
  *       content:
@@ -157,10 +158,10 @@ router.post(
  *               verification_token: { type: string }
  *     responses:
  *       201:
- *         description: Conta criada e email verificado.
+ *         description: Conta criada, sessão iniciada por cookie HttpOnly e csrf_token devolvido.
  *         content:
  *           application/json:
- *             schema: { $ref: '#/components/schemas/HostEnvelope' }
+ *             schema: { $ref: '#/components/schemas/RegistrationEnvelope' }
  *       409:
  *         description: Email já registado.
  *         content:

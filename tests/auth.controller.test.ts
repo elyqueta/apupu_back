@@ -2,11 +2,15 @@ import type { Request, Response } from 'express';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/services/auth.service', () => ({
-  authService: { requestRegistrationCode: vi.fn() },
+  authService: { requestRegistrationCode: vi.fn(), register: vi.fn() },
 }));
 
 import { authController } from '../src/controllers/auth.controller';
+import { env } from '../src/config/env';
+import { toHostDto } from '../src/dto/host.dto';
 import { authService } from '../src/services/auth.service';
+import { csrfTokenFor } from '../src/utils/token.util';
+import type { HostWithProfile } from '../src/types/host.types';
 
 async function requestRegistrationCodeResponse(): Promise<Record<string, unknown>> {
   const json = vi.fn();
@@ -44,5 +48,104 @@ describe('authController.requestRegistrationCode', () => {
 
     expect(body).not.toHaveProperty('data.development_code');
     expect(body).not.toHaveProperty('data.code');
+  });
+});
+
+describe('authController.register', () => {
+  it('inicia sessão por cookie e não devolve o token da sessão em JSON', async () => {
+    const sessionToken = 'opaque-session-token';
+    const csrfToken = csrfTokenFor(sessionToken);
+    const expiresAt = new Date('2026-11-16T04:00:00.000Z');
+    const json = vi.fn();
+    const cookie = vi.fn();
+    const response = {
+      status: vi.fn(() => ({ json })),
+      json,
+      cookie,
+    } as unknown as Response;
+    const host: HostWithProfile = {
+      id: 'host-id',
+      email: 'ana@example.test',
+      passwordHash: 'password-hash',
+      emailVerifiedAt: expiresAt,
+      status: 'active',
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: null,
+      createdAt: expiresAt,
+      updatedAt: expiresAt,
+      profile: {
+        hostId: 'host-id',
+        displayName: 'Ana',
+        phone: null,
+        birthDate: null,
+        locale: 'pt-AO',
+        timezone: 'Africa/Luanda',
+        avatarUrl: null,
+        createdAt: expiresAt,
+        updatedAt: expiresAt,
+      },
+    };
+
+    vi.mocked(authService.register).mockResolvedValue({
+      host,
+      session: {
+        session: {
+          id: 'session-id',
+          hostId: host.id,
+          tokenHash: 'token-hash',
+          csrfHash: 'csrf-hash',
+          userAgentHash: null,
+          expiresAt,
+          revokedAt: null,
+          lastUsedAt: null,
+          createdAt: expiresAt,
+        },
+        sessionToken,
+        csrfToken,
+        expiresAt,
+      },
+    });
+
+    await authController.register(
+      {
+        body: {
+          email: 'ana@example.test',
+          password: 'strong-password',
+          verification_token: 'verified-registration-token',
+        },
+        header: vi.fn(() => 'test-agent'),
+        ip: '127.0.0.1',
+        id: 'test-request',
+      } as unknown as Request,
+      response
+    );
+
+    expect(authService.register).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'ana@example.test' }),
+      'test-agent',
+      { ip: '127.0.0.1', requestId: 'test-request' }
+    );
+    expect(cookie).toHaveBeenNthCalledWith(
+      1,
+      env.AUTH_COOKIE_NAME,
+      sessionToken,
+      expect.objectContaining({ httpOnly: true, path: '/api/v1' })
+    );
+    expect(cookie).toHaveBeenNthCalledWith(
+      2,
+      env.AUTH_CSRF_COOKIE_NAME,
+      csrfToken,
+      expect.objectContaining({ httpOnly: false, path: '/api/v1' })
+    );
+    expect(response.status).toHaveBeenCalledWith(201);
+    expect(json).toHaveBeenCalledWith({
+      data: {
+        host: toHostDto(host),
+        csrf_token: csrfToken,
+        expires_at: expiresAt.toISOString(),
+      },
+    });
+    expect(JSON.stringify(json.mock.calls[0][0])).not.toContain(sessionToken);
   });
 });
