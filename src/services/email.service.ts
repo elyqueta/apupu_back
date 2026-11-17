@@ -31,7 +31,7 @@ function buildTransport(): Transporter | null {
       host: 'smtp.resend.com',
       port: 465,
       secure: true,
-      auth: { user: env.SMTP_USER ?? 'resend', pass: env.RESEND_API_KEY },
+      auth: { user: env.SMTP_USER || 'resend', pass: env.RESEND_API_KEY },
     });
   }
 
