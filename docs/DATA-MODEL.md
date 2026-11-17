@@ -259,6 +259,9 @@ Perfil da conta, numa relação 1:1 com `hosts`.
 | `locale` | text | `pt-AO` \| `en`; por omissão `pt-AO` |
 | `timezone` | text | IANA; por omissão `Africa/Luanda` |
 | `avatar_url` | text | opcional; URL (por URL ou upload assinado para o Cloudinary) |
+| `cover_url` | text | opcional; imagem de capa do perfil (URL ou upload Cloudinary) |
+| `cover_hash` | text | SHA-256 do último ficheiro, para upload idempotente |
+| `cover_public_id` | text | id Cloudinary do asset, para remover o antigo |
 | `created_at` / `updated_at` | timestamptz | |
 
 Constraints: `host_profiles_locale_check`,

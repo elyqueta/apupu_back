@@ -18,11 +18,13 @@ import {
   requireVerifiedGuestEmail,
 } from '../../middlewares/requireVerifiedEmail';
 import { uploadAvatar } from '../../middlewares/uploadAvatar';
+import { uploadProfileCover } from '../../middlewares/uploadProfileCover';
 import { validate } from '../../middlewares/validate';
 import { createEventSchema, eventIdParamsSchema } from '../../schemas/event.schemas';
 import {
   addEventManagerSchema,
   avatarSchema,
+  coverSchema,
   createTaskSchema,
   eventManagerParamsSchema,
   eventReportQuerySchema,
@@ -182,6 +184,117 @@ router.post(
   requireAuthCsrf,
   uploadAvatar,
   asyncHandler(profileController.uploadAvatar)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/profile/cover:
+ *   post:
+ *     tags: [Perfil]
+ *     summary: Define o URL da imagem de capa do perfil
+ *     description: Repetir o mesmo URL é idempotente.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [cover_url]
+ *             properties:
+ *               cover_url: { type: string, format: uri }
+ *     responses:
+ *       200:
+ *         description: Capa actualizada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
+ *   delete:
+ *     tags: [Perfil]
+ *     summary: Remove a imagem de capa do perfil
+ *     description: Operação idempotente; devolve o perfil sem capa.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Perfil actualizado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
+ *
+ * /api/v1/host/profile/cover/upload:
+ *   post:
+ *     tags: [Perfil]
+ *     summary: Envia uma imagem e define-a como capa (Cloudinary)
+ *     description: >
+ *       Recebe `multipart/form-data` no campo `cover` (JPEG, PNG ou
+ *       WebP, até `PROFILE_COVER_MAX_BYTES`). O upload é idempotente
+ *       por conteúdo (SHA-256). Sem credenciais Cloudinary responde
+ *       `503 profile_cover_upload_unavailable`; nesse caso continua a
+ *       ser possível definir a capa por URL em
+ *       `POST /api/v1/host/profile/cover`.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [cover]
+ *             properties:
+ *               cover:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Capa actualizada com o URL do Cloudinary.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
+ *       503:
+ *         description: Upload indisponível (`profile_cover_upload_unavailable`).
+ */
+router.post(
+  '/profile/cover',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: coverSchema }),
+  asyncHandler(profileController.setCover)
+);
+
+router.post(
+  '/profile/cover/upload',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  uploadProfileCover,
+  asyncHandler(profileController.uploadCover)
+);
+
+router.delete(
+  '/profile/cover',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(profileController.removeCover)
 );
 
 /**

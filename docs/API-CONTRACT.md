@@ -76,6 +76,7 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `429` | `otp_resend_too_soon` | Pedido de novo código antes do intervalo mínimo |
 | `500` | `internal_error` | Erro inesperado; sem stack trace |
 | `503` | `avatar_upload_unavailable` | Upload de avatar indisponível: credenciais Cloudinary ausentes ou provider inacessível |
+| `503` | `profile_cover_upload_unavailable` | Upload da capa do perfil indisponível: credenciais Cloudinary ausentes ou provider inacessível |
 | `503` | `event_cover_upload_unavailable` | Upload da imagem de capa indisponível: credenciais Cloudinary ausentes ou provider inacessível |
 
 ## Autenticação e cookies
@@ -311,7 +312,8 @@ responde `204`; exige `X-CSRF-Token`.
 
 `PATCH /api/v1/host/profile` aceita apenas os campos enviados
 (`display_name`, `phone`, `birth_date`, `locale`, `timezone`,
-`avatar_url`); a ausência mantém o valor atual e `null` limpa o campo.
+`avatar_url`, `cover_url`); a ausência mantém o valor atual e `null`
+limpa o campo.
 
 - `birth_date` é uma data de calendário `YYYY-MM-DD`, no passado e com a
   idade mínima `MIN_HOST_AGE_YEARS` (por omissão 18). É opcional e não
@@ -328,6 +330,13 @@ responde `204`; exige `X-CSRF-Token`.
   servidor. Sem `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` e
   `CLOUDINARY_API_SECRET` responde `503 avatar_upload_unavailable`, sem
   afectar o avatar por URL.
+- `POST /api/v1/host/profile/cover` recebe `{ "cover_url": "https://…" }`
+  e define a imagem de capa por URL (idempotente para o mesmo URL).
+- `POST /api/v1/host/profile/cover/upload` recebe `multipart/form-data`
+  no campo `cover` (JPEG, PNG ou WebP, até `PROFILE_COVER_MAX_BYTES`).
+  O upload é idempotente por conteúdo (SHA-256); sem credenciais
+  Cloudinary responde `503 profile_cover_upload_unavailable`.
+- `DELETE /api/v1/host/profile/cover` remove a capa (idempotente).
 
 ### Workspace
 
@@ -1191,7 +1200,8 @@ contrário.
     "birth_date": "1994-05-20",
     "locale": "pt-AO",
     "timezone": "Africa/Luanda",
-    "avatar_url": null
+    "avatar_url": null,
+    "cover_url": null
   },
   "profile_complete": true,
   "missing_fields": [],
@@ -1615,6 +1625,9 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `PATCH` | `/api/v1/host/profile` | `200` | `{ "data": { "host": Host } }` |
 | `POST` | `/api/v1/host/profile/avatar` | `200` | `{ "data": { "host": Host } }` |
 | `POST` | `/api/v1/host/profile/avatar/upload` | `200` | `{ "data": { "host": Host } }` |
+| `POST` | `/api/v1/host/profile/cover` | `200` | `{ "data": { "host": Host } }` |
+| `POST` | `/api/v1/host/profile/cover/upload` | `200` | `{ "data": { "host": Host } }` |
+| `DELETE` | `/api/v1/host/profile/cover` | `200` | `{ "data": { "host": Host } }` |
 | `GET` | `/api/v1/host/events` | `200` | `{ "data": Event[], "pagination": Pagination }` |
 | `POST` | `/api/v1/host/events` | `201` | `{ "data": { "event": Event, "manage_email_status": "queued" \| "failed", "deliveries": [{ "email": string, "status": "queued" }] } }` |
 | `DELETE` | `/api/v1/host/events/{eventId}` | `204` | — |
@@ -1917,6 +1930,9 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `PATCH` | `/api/v1/host/profile` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/profile/avatar` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/profile/avatar/upload` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited`; `503 avatar_upload_unavailable` |
+| `POST` | `/api/v1/host/profile/cover` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/profile/cover/upload` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited`; `503 profile_cover_upload_unavailable` |
+| `DELETE` | `/api/v1/host/profile/cover` | `401 host_session_invalid`; `403 csrf_invalid`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events` | `401 host_session_invalid`; `403 email_not_verified`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `401 host_session_invalid`; `403 email_not_verified`; `404 event_not_found`; `429 rate_limited` |

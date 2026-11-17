@@ -130,22 +130,30 @@ const envSchema = z.object({
   MIN_HOST_AGE_YEARS: z.coerce.number().int().min(0).default(5),
 
   /**
-   * Cloudinary — armazenamento dos avatares.
+   * Cloudinary — armazenamento dos avatares e das imagens de capa.
    *
    * O upload é assinado no servidor; o API secret nunca é enviado ao
-   * frontend. Sem as três variáveis, o endpoint de upload responde
-   * `503 avatar_upload_unavailable`, mas o resto da API continua a
-   * funcionar e o avatar por URL mantém-se disponível.
+   * frontend. Sem as três variáveis, os endpoints de upload respondem
+   * `503 avatar_upload_unavailable` / `profile_cover_upload_unavailable`
+   * / `event_cover_upload_unavailable`, mas o resto da API continua a
+   * funcionar e as imagens por URL mantêm-se disponíveis.
    */
   CLOUDINARY_CLOUD_NAME: z.string().trim().optional(),
   CLOUDINARY_API_KEY: z.string().trim().optional(),
   CLOUDINARY_API_SECRET: z.string().trim().optional(),
   CLOUDINARY_AVATAR_FOLDER: z.string().trim().min(1).default('conta-comigo/avatars'),
   CLOUDINARY_EVENT_FOLDER: z.string().trim().min(1).default('conta-comigo/events'),
+  CLOUDINARY_PROFILE_COVER_FOLDER: z
+    .string()
+    .trim()
+    .min(1)
+    .default('conta-comigo/profile-covers'),
   /** Tamanho máximo do ficheiro de avatar (5 MiB por omissão). */
   AVATAR_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
   /** Tamanho máximo da imagem de capa do evento (8 MiB por omissão). */
   EVENT_COVER_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
+  /** Tamanho máximo da imagem de capa do perfil (8 MiB por omissão). */
+  PROFILE_COVER_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
 
   /** Parâmetros do Argon2id. Ajustáveis por ambiente, nunca por pedido. */
   ARGON2_MEMORY_KIB: z.coerce.number().int().min(8 * 1024).default(19456),

@@ -189,7 +189,7 @@ Acções registadas:
 - login com sucesso, falha e bloqueio (`login_locked`);
 - verificação de email;
 - alteração e reposição de senha;
-- alteração de perfil (inclui avatar);
+- alteração de perfil (inclui avatar e capa);
 - criação e remoção de eventos;
 - adição, alteração, remoção, reenvio e revogação de convidados;
 - rotação e reenvio do link de gestão.

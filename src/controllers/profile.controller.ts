@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { toHostDto } from '../dto/host.dto';
-import { AvatarBody, UpdateProfileBody } from '../schemas/host.schemas';
+import { AvatarBody, CoverBody, UpdateProfileBody } from '../schemas/host.schemas';
 import { auditService } from '../services/audit.service';
 import { avatarService } from '../services/avatar.service';
 import { profileService } from '../services/profile.service';
@@ -68,6 +68,58 @@ export const profileController = {
         storage: 'cloudinary',
         public_id: uploaded.publicId,
       },
+    });
+
+    res.status(200).json({ data: { host: toHostDto(host) } });
+  },
+
+  setCover: async (req: Request, res: Response): Promise<void> => {
+    const hostId = requireHost(req).id;
+    const body = req.body as CoverBody;
+    const host = await profileService.setCoverFromUrl(hostId, body.cover_url);
+
+    await auditService.recordRequest(req, {
+      action: 'profile_updated',
+      hostId,
+      metadata: { fields: ['cover_url'] },
+    });
+
+    res.status(200).json({ data: { host: toHostDto(host) } });
+  },
+
+  uploadCover: async (req: Request, res: Response): Promise<void> => {
+    const hostId = requireHost(req).id;
+
+    // O middleware `uploadProfileCover` garante `req.file`; a
+    // verificação mantém o contrato explícito caso a rota mude de
+    // composição.
+    if (!req.file) {
+      throw new Error('Upload sem ficheiro: falta o middleware uploadProfileCover.');
+    }
+
+    const host = await profileService.uploadCover(
+      hostId,
+      req.file.buffer,
+      req.file.mimetype
+    );
+
+    await auditService.recordRequest(req, {
+      action: 'profile_updated',
+      hostId,
+      metadata: { fields: ['cover_url'], storage: 'cloudinary' },
+    });
+
+    res.status(200).json({ data: { host: toHostDto(host) } });
+  },
+
+  removeCover: async (req: Request, res: Response): Promise<void> => {
+    const hostId = requireHost(req).id;
+    const host = await profileService.removeCover(hostId);
+
+    await auditService.recordRequest(req, {
+      action: 'profile_updated',
+      hostId,
+      metadata: { fields: ['cover_url'], removed: true },
     });
 
     res.status(200).json({ data: { host: toHostDto(host) } });

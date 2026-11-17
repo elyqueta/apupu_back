@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   avatarSchema,
+  coverSchema,
   createTaskSchema,
   eventReportQuerySchema,
   guestInvitationsQuerySchema,
@@ -52,6 +53,15 @@ describe('schema do perfil', () => {
     );
     expect(avatarSchema.safeParse({ avatar_url: 'não-é-url' }).success).toBe(false);
     expect(avatarSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('exige um URL válido na capa do perfil', () => {
+    expect(coverSchema.safeParse({ cover_url: 'https://cdn.exemplo.ao/c.png' }).success).toBe(
+      true
+    );
+    expect(coverSchema.safeParse({ cover_url: 'não-é-url' }).success).toBe(false);
+    expect(coverSchema.safeParse({}).success).toBe(false);
+    expect(updateProfileSchema.safeParse({ cover_url: null }).success).toBe(true);
   });
 });
 

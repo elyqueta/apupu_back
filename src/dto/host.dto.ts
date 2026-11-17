@@ -14,6 +14,7 @@ export interface HostProfileDto {
   locale: string;
   timezone: string;
   avatar_url: string | null;
+  cover_url: string | null;
 }
 
 export interface HostDto {
@@ -53,6 +54,7 @@ export function toHostDto(host: HostWithProfile): HostDto {
       locale: host.profile.locale,
       timezone: host.profile.timezone,
       avatar_url: host.profile.avatarUrl,
+      cover_url: host.profile.coverUrl,
     },
     profile_complete: missing.length === 0,
     missing_fields: missing,

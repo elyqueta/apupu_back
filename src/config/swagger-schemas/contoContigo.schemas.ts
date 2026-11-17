@@ -367,6 +367,7 @@ export const contoContigoSchemas = {
       locale: { type: 'string', example: 'pt-AO' },
       timezone: { type: 'string', example: 'Africa/Luanda' },
       avatar_url: { type: 'string', format: 'uri', nullable: true },
+      cover_url: { type: 'string', format: 'uri', nullable: true },
     },
   },
 
@@ -402,6 +403,7 @@ export const contoContigoSchemas = {
       locale: { type: 'string' },
       timezone: { type: 'string' },
       avatar_url: { type: 'string', format: 'uri', nullable: true },
+      cover_url: { type: 'string', format: 'uri', nullable: true },
     },
   },
 

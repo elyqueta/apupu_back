@@ -75,6 +75,9 @@ Constraints: `hosts_email_unique`, `hosts_status_check`.
 | `locale` | text | `pt-AO` \| `en` (por omissão `pt-AO`) |
 | `timezone` | text | IANA, por omissão `Africa/Luanda` |
 | `avatar_url` | text | opcional |
+| `cover_url` | text | opcional; imagem de capa do perfil |
+| `cover_hash` | text | SHA-256 do último upload (idempotência) |
+| `cover_public_id` | text | id Cloudinary do asset da capa |
 | `created_at` / `updated_at` | timestamptz | |
 
 Constraints: `host_profiles_birth_date_check` (`birth_date < current_date`,
@@ -228,7 +231,8 @@ Resposta `201`:
         "birth_date": null,
         "locale": "pt-AO",
         "timezone": "Africa/Luanda",
-        "avatar_url": null
+        "avatar_url": null,
+        "cover_url": null
       },
       "profile_complete": false
     },
@@ -293,6 +297,9 @@ Revoga a sessão actual e limpa os cookies. Exige `X-CSRF-Token`. `204`.
 | `GET` | `/api/v1/host/profile` | sessão | Perfil completo do anfitrião |
 | `PATCH` | `/api/v1/host/profile` | sessão + CSRF | Actualiza campos do perfil |
 | `POST` | `/api/v1/host/profile/avatar` | sessão + CSRF | Upload/definição de avatar (opcional) |
+| `POST` | `/api/v1/host/profile/cover` | sessão + CSRF | Definição da capa por URL |
+| `POST` | `/api/v1/host/profile/cover/upload` | sessão + CSRF | Upload da capa para o Cloudinary |
+| `DELETE` | `/api/v1/host/profile/cover` | sessão + CSRF | Remoção da capa |
 
 #### `PATCH /host/profile`
 
@@ -593,10 +600,10 @@ UI do cliente (não persistida) e `palette` é novo. Alinhar o front.
 - **Gestão por link:** `POST /host/session` devolve `email` e
   `email_has_account`, sem devolver o segredo do link. Só depois de
   entrar/criar conta com esse email o evento aparece no workspace.
-- **Uploads:** avatar e capa do evento passam pelo servidor; as
-  credenciais Cloudinary nunca chegam ao frontend. Sem configuração,
-  respondem `503 avatar_upload_unavailable` /
-  `event_cover_upload_unavailable`.
+- **Uploads:** avatar, capa do perfil e capa do evento passam pelo
+  servidor; as credenciais Cloudinary nunca chegam ao frontend. Sem
+  configuração, respondem `503 avatar_upload_unavailable` /
+  `profile_cover_upload_unavailable` / `event_cover_upload_unavailable`.
 - **Dados pessoais:** `birth_date`, telefone e email são PII; nunca em logs,
   telemetria, URLs de analytics ou mensagens de erro. Expor `birth_date` apenas
   ao próprio. O email do convidado só aparece na apresentação pública do

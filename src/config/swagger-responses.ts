@@ -218,6 +218,11 @@ export const errorResponses = {
     'event_cover_upload_unavailable',
     'O upload da imagem de capa está temporariamente indisponível.'
   ),
+  ProfileCoverUploadUnavailable: errorResponse(
+    'Upload da capa do perfil indisponível: credenciais Cloudinary ausentes ou provider inacessível.',
+    'profile_cover_upload_unavailable',
+    'O upload da capa do perfil está temporariamente indisponível.'
+  ),
   NotificationNotFound: errorResponse(
     'Notificação inexistente ou já removida.',
     'notification_not_found',
@@ -377,6 +382,24 @@ export const operationErrorResponses: Record<
     422: 'ValidationFailed',
     429: 'RateLimited',
     503: 'AvatarUploadUnavailable',
+  },
+  'post /api/v1/host/profile/cover': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'post /api/v1/host/profile/cover/upload': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+    503: 'ProfileCoverUploadUnavailable',
+  },
+  'delete /api/v1/host/profile/cover': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    429: 'RateLimited',
   },
   'get /api/v1/host/events': {
     401: 'HostSessionInvalid',

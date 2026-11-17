@@ -48,6 +48,7 @@ export const updateProfileSchema = z
       .refine(isValidTimeZone, 'Fuso horário inválido.')
       .optional(),
     avatar_url: z.url('URL de avatar inválida.').max(2048).nullable().optional(),
+    cover_url: z.url('URL de capa inválida.').max(2048).nullable().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -57,6 +58,12 @@ export const updateProfileSchema = z
 export const avatarSchema = z
   .object({
     avatar_url: z.url('URL de avatar inválida.').max(2048),
+  })
+  .strict();
+
+export const coverSchema = z
+  .object({
+    cover_url: z.url('URL de capa inválida.').max(2048),
   })
   .strict();
 
@@ -210,6 +217,7 @@ export {
 
 export type UpdateProfileBody = z.infer<typeof updateProfileSchema>;
 export type AvatarBody = z.infer<typeof avatarSchema>;
+export type CoverBody = z.infer<typeof coverSchema>;
 export type HostEventsQuery = z.infer<typeof hostEventsQuerySchema>;
 export type HostGuestsQuery = z.infer<typeof hostGuestsQuerySchema>;
 export type GuestInvitationsQuery = z.infer<typeof guestInvitationsQuerySchema>;

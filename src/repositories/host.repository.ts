@@ -26,6 +26,9 @@ interface HostRow {
   locale: HostLocale;
   timezone: string;
   avatar_url: string | null;
+  cover_url: string | null;
+  cover_hash: string | null;
+  cover_public_id: string | null;
   profile_created_at: Date;
   profile_updated_at: Date;
 }
@@ -39,6 +42,9 @@ function toHost(row: HostRow): HostWithProfile {
     locale: row.locale,
     timezone: row.timezone,
     avatarUrl: row.avatar_url,
+    coverUrl: row.cover_url,
+    coverHash: row.cover_hash,
+    coverPublicId: row.cover_public_id,
     createdAt: row.profile_created_at,
     updatedAt: row.profile_updated_at,
   };
@@ -63,6 +69,7 @@ const SELECT_COLUMNS = `
   h.failed_login_attempts, h.locked_until, h.last_login_at, h.created_at, h.updated_at,
   p.display_name, p.phone, p.birth_date::text AS birth_date, p.locale, p.timezone,
   p.avatar_url,
+  p.cover_url, p.cover_hash, p.cover_public_id,
   p.created_at AS profile_created_at, p.updated_at AS profile_updated_at
 `;
 
@@ -199,6 +206,9 @@ export const hostRepository = {
       ['locale', 'locale'],
       ['timezone', 'timezone'],
       ['avatarUrl', 'avatar_url'],
+      ['coverUrl', 'cover_url'],
+      ['coverHash', 'cover_hash'],
+      ['coverPublicId', 'cover_public_id'],
     ];
 
     for (const [key, column] of mapping) {
