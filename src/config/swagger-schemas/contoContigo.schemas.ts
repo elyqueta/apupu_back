@@ -165,6 +165,26 @@ export const contoContigoSchemas = {
       },
       send_count: { type: 'integer' },
       last_sent_at: { type: 'string', format: 'date-time', nullable: true },
+      invitation_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description:
+          'URL absoluto do convite individual, pronto a partilhar (por exemplo, ' +
+          'no WhatsApp). Só é devolvido ao anfitrião autenticado ou à sessão de ' +
+          'gestão do evento; nunca em respostas públicas. É `null` quando o ' +
+          'convite foi revogado ou o token não pode ser reconstruído.',
+        example: 'https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0',
+      },
+      invitation_url_expires_at: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+        description:
+          'Expiração do link de partilha. Hoje é sempre `null`: o token do ' +
+          'convite não expira e só deixa de ser válido quando o convite é ' +
+          'revogado. O campo fica reservado para rotação futura.',
+      },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
     },

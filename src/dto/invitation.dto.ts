@@ -1,7 +1,10 @@
+import { logger } from '../config/logger';
 import { Event } from '../types/event.types';
 import { Invitation, InvitationWithEvent } from '../types/invitation.types';
 import { EmailDelivery } from '../types/emailDelivery.types';
 import { EventTemplate } from '../types/template.types';
+import { decryptToken } from '../utils/crypto.util';
+import { links } from '../utils/links.util';
 import { PublicEventDto, toPublicEventDto } from './event.dto';
 
 function iso(value: Date | null): string | null {
@@ -20,11 +23,46 @@ export interface InvitationDto {
   send_status: string;
   send_count: number;
   last_sent_at: string | null;
+  /**
+   * URL absoluto para o anfitrião partilhar (WhatsApp, etc.).
+   *
+   * `null` quando o convite foi revogado ou o token não pode ser
+   * reconstruído. Nunca aparece em respostas públicas.
+   */
+  invitation_url: string | null;
+  /**
+   * Fim da validade do link. Hoje é sempre `null`: o token do convite
+   * não expira e só deixa de ser válido quando o convite é revogado.
+   */
+  invitation_url_expires_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-/** Vista de gestão de um convite — sem hashes nem tokens. */
+/**
+ * Reconstrói o link partilhável a partir do token cifrado.
+ *
+ * Uma falha de decifra (por exemplo, `TOKEN_PEPPER` alterado) não deve
+ * derrubar a listagem: o convite continua visível e o anfitrião pode
+ * reenviá-lo por email, mas sem URL para partilhar.
+ */
+function invitationUrl(invitation: Invitation): string | null {
+  if (invitation.claimRevokedAt || !invitation.tokenEncrypted) {
+    return null;
+  }
+
+  try {
+    return links.invitation(decryptToken(invitation.tokenEncrypted));
+  } catch (error) {
+    logger.error(
+      { err: error, invitationId: invitation.id },
+      'Falha ao reconstruir o link do convite.'
+    );
+    return null;
+  }
+}
+
+/** Vista de gestão de um convite — sem hashes nem capacidades do convidado. */
 export function toInvitationDto(invitation: Invitation): InvitationDto {
   return {
     id: invitation.id,
@@ -38,6 +76,8 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     send_status: invitation.sendStatus,
     send_count: invitation.sendCount,
     last_sent_at: iso(invitation.lastSentAt),
+    invitation_url: invitationUrl(invitation),
+    invitation_url_expires_at: null,
     created_at: invitation.createdAt.toISOString(),
     updated_at: invitation.updatedAt.toISOString(),
   };

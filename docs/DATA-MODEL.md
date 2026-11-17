@@ -111,6 +111,16 @@ Invariantes:
 1. O claim é atómico: `claim_hash` só é preenchido se ainda for nulo.
 2. `claim_hash` nunca é devolvido pela API.
 3. Recusar um convite não afecta os restantes convidados.
+4. O token não expira e não é de uso único: o primeiro navegador que
+   abre o link fica com a capacidade; os seguintes precisam do mesmo
+   cookie. `token_encrypted` permite reconstruir o URL para o anfitrião
+   (`invitation_url`) e para os emails.
+5. `POST .../resend` reutiliza o mesmo token; o link partilhado
+   continua válido.
+6. `POST .../revoke` preenche `claim_revoked_at` de forma permanente.
+   Não existe, nesta fase, rotação/reativação do token: o convite
+   revogado devolve `invitation_url: null` e o link público passa a
+   `404 invitation_not_found`.
 
 ## `event_host_sessions`
 

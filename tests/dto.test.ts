@@ -1,8 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { logger } from '../src/config/logger';
 import { toEventDto, toPublicEventDto } from '../src/dto/event.dto';
 import { toInvitationDto, toPublicInvitationDto } from '../src/dto/invitation.dto';
 import { Event } from '../src/types/event.types';
 import { Invitation } from '../src/types/invitation.types';
+import { encryptToken } from '../src/utils/crypto.util';
+import { links } from '../src/utils/links.util';
+
+const INVITE_TOKEN = 'convite-token-de-teste-1234567890';
 
 const event: Event = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -44,7 +49,7 @@ const invitation: Invitation = {
   guestEmail: 'joao@exemplo.ao',
   guestPhone: null,
   tokenHash: 'hash-secreto',
-  tokenEncrypted: 'token-cifrado',
+  tokenEncrypted: encryptToken(INVITE_TOKEN),
   claimHash: 'claim-secreto',
   claimedAt: new Date('2026-01-02T00:00:00Z'),
   claimRevokedAt: null,
@@ -76,7 +81,7 @@ describe('DTOs', () => {
     expect(dto.title).toBe('Casamento da Ana');
   });
 
-  it('a vista de gestão do convite não expõe hashes nem tokens', () => {
+  it('a vista de gestão do convite não expõe hashes nem o token cifrado', () => {
     const dto = toInvitationDto(invitation);
     const serialized = JSON.stringify(dto);
 
@@ -87,6 +92,37 @@ describe('DTOs', () => {
     expect(dto).not.toHaveProperty('claim_hash');
   });
 
+  it('o link de partilha do convite é absoluto e reutiliza o token do email', () => {
+    const dto = toInvitationDto(invitation);
+
+    expect(dto.invitation_url).toBe(links.invitation(INVITE_TOKEN));
+    expect(dto.invitation_url).toContain('/convite/');
+    expect(dto.invitation_url_expires_at).toBeNull();
+  });
+
+  it('um convite revogado não expõe link de partilha', () => {
+    const dto = toInvitationDto({
+      ...invitation,
+      claimRevokedAt: new Date('2026-02-01T00:00:00Z'),
+    });
+
+    expect(dto.invitation_url).toBeNull();
+    expect(dto.invitation_url_expires_at).toBeNull();
+  });
+
+  it('um token que não pode ser decifrado não derruba a listagem', () => {
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    try {
+      const dto = toInvitationDto({ ...invitation, tokenEncrypted: 'invalido' });
+
+      expect(dto.invitation_url).toBeNull();
+      expect(logged).toHaveBeenCalledOnce();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
   it('a vista pública do convite só mostra os dados do próprio convidado', () => {
     const dto = toPublicInvitationDto(event, invitation, false);
     const serialized = JSON.stringify(dto);
@@ -94,7 +130,9 @@ describe('DTOs', () => {
     expect(dto.guest.name).toBe('João');
     expect(dto.guest.rsvp_status).toBe('pending');
     expect(dto).not.toHaveProperty('invitations');
+    expect(dto).not.toHaveProperty('invitation_url');
     expect(serialized).not.toContain(invitation.guestEmail);
     expect(serialized).not.toContain(invitation.tokenHash);
+    expect(serialized).not.toContain(INVITE_TOKEN);
   });
 });

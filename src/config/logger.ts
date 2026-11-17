@@ -21,6 +21,8 @@ const redactPaths = [
   'manage_token',
   'inviteToken',
   'invite_token',
+  'invitationUrl',
+  'invitation_url',
   'sessionToken',
   'session_token',
   'csrfToken',
@@ -42,6 +44,8 @@ const redactPaths = [
   '*.tokenHash',
   '*.inviteToken',
   '*.invite_token',
+  '*.invitationUrl',
+  '*.invitation_url',
   '*.sessionToken',
   '*.csrfToken',
 ];

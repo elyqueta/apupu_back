@@ -162,6 +162,11 @@ router.patch(
  *   get:
  *     tags: [Convidados]
  *     summary: Lista os convidados do evento
+ *     description: >
+ *       Cada convite inclui `invitation_url`, um URL absoluto para o
+ *       anfitrião partilhar (por exemplo, no WhatsApp). O campo é `null`
+ *       quando o convite foi revogado e nunca aparece em respostas
+ *       públicas. O link usa o mesmo token do email e não expira.
  *     security:
  *       - hostSession: []
  *       - accountSession: []
@@ -172,10 +177,14 @@ router.patch(
  *         schema: { type: string, format: uuid }
  *     responses:
  *       200:
- *         description: Lista de convidados.
+ *         description: Lista de convidados, com o link de partilha por convite.
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/InvitationListEnvelope' }
+ *       401:
+ *         description: Sessão ausente ou expirada (`host_session_invalid`).
+ *       404:
+ *         description: Evento inexistente ou de outra conta (`event_not_found`).
  *   post:
  *     tags: [Convidados]
  *     summary: Adiciona um convidado e enfileira o convite

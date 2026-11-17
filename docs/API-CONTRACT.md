@@ -478,6 +478,8 @@ resumo do evento:
       "send_status": "sent",
       "send_count": 1,
       "last_sent_at": "2026-11-15T03:24:52.807Z",
+      "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
+      "invitation_url_expires_at": null,
       "created_at": "2026-11-15T03:24:30.000Z",
       "updated_at": "2026-11-16T01:00:00.000Z",
       "event": {
@@ -940,6 +942,8 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
   "send_status": "queued",
   "send_count": 1,
   "last_sent_at": null,
+  "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
+  "invitation_url_expires_at": null,
   "created_at": "2026-11-15T03:24:30.000Z",
   "updated_at": "2026-11-15T03:24:30.000Z"
 }
@@ -951,6 +955,24 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
 | `send_status` | string | `pending`, `queued`, `sent`, `failed` |
 | `send_count` | inteiro | Número de envios |
 | `table_name` | string \| null | Visível apenas ao anfitrião |
+| `invitation_url` | string \| null | URL absoluto para o anfitrião partilhar (WhatsApp, etc.); `null` quando o convite foi revogado. Só existe nas respostas de gestão |
+| `invitation_url_expires_at` | string \| null | Hoje é sempre `null`: o link não expira e só é invalidado pela revogação |
+
+Semântica do link de partilha:
+
+- É o **mesmo token** enviado no email do convite e aponta para
+  `<APP_BASE_URL>/convite/<token>` (nunca para a API diretamente).
+- Não expira e não é de uso único. O primeiro navegador que o abre
+  reivindica o convite (cookie `apupu_guest`); a partir daí, outro
+  navegador sem esse cookie recebe `404 invitation_not_found`.
+- O anfitrião deve partilhar o URL, **não** o abrir: ao abri-lo, o
+  próprio navegador do anfitrião passa a ser o reclamante.
+- `POST .../invitations/{id}/resend` mantém o mesmo token/link.
+- `POST .../invitations/{id}/revoke` invalida o link para sempre; a
+  resposta seguinte devolve `invitation_url: null`.
+- `GET /host/guests` e `GET /host/events/{eventId}/invitations` (e o
+  detalhe do evento) incluem o campo; as respostas públicas
+  (`/public/invitations/*`) nunca o incluem.
 
 ### `HostGuest`
 

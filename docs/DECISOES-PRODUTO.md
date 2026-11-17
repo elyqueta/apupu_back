@@ -245,3 +245,22 @@ mantém-se como ponto de extensão.
 - Não é introduzida uma fila externa (Redis/SQS): a outbox transaccional
   em PostgreSQL garante durabilidade e idempotência sem mais um serviço
   para operar.
+
+## 19. Link de convite para partilha manual (WhatsApp)
+
+- A `Invitation` devolvida ao anfitrião (lista por evento, lista global
+  e detalhe) inclui `invitation_url` (URL absoluto para
+  `<APP_BASE_URL>/convite/<token>`) e `invitation_url_expires_at`.
+- É o mesmo token do email; não é de uso único e não expira. O primeiro
+  navegador que abre o link reivindica o convite com um cookie; os
+  restantes precisam desse cookie.
+- O anfitrião deve copiar/partilhar o URL, não o abrir — ao abri-lo,
+  reivindica o convite para o seu próprio navegador.
+- `resend` mantém o token; `revoke` invalida-o para sempre e a API passa
+  a devolver `invitation_url: null`.
+- As respostas públicas nunca incluem o campo. O logger redige
+  `invitation_url`/`invitationUrl`.
+- Nesta fase não há rotação de token de convite. Se for necessária
+  (por exemplo, para recuperar de um claim indevido), terá de ser
+  adicionada explicitamente com nova chave idempotente e reset de
+  `claim_hash`.
