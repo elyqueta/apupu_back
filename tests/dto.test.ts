@@ -98,6 +98,13 @@ describe('DTOs', () => {
     expect(dto.invitation_url).toBe(links.invitation(INVITE_TOKEN));
     expect(dto.invitation_url).toContain('/convite/');
     expect(dto.invitation_url_expires_at).toBeNull();
+    expect(dto.opened_at).toBe('2026-01-02T00:00:00.000Z');
+  });
+
+  it('um convite ainda não aberto expõe opened_at nulo', () => {
+    const dto = toInvitationDto({ ...invitation, claimedAt: null, claimHash: null });
+
+    expect(dto.opened_at).toBeNull();
   });
 
   it('um convite revogado não expõe link de partilha', () => {

@@ -24,6 +24,13 @@ export interface InvitationDto {
   send_count: number;
   last_sent_at: string | null;
   /**
+   * Primeira vez que o convidado abriu o link do convite.
+   *
+   * `null` enquanto o link nunca foi aberto. A partir daqui o anfitrião
+   * deixa de poder alterar o email e o telefone do convidado.
+   */
+  opened_at: string | null;
+  /**
    * URL absoluto para o anfitrião partilhar (WhatsApp, etc.).
    *
    * `null` quando o convite foi revogado ou o token não pode ser
@@ -76,6 +83,7 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     send_status: invitation.sendStatus,
     send_count: invitation.sendCount,
     last_sent_at: iso(invitation.lastSentAt),
+    opened_at: iso(invitation.claimedAt),
     invitation_url: invitationUrl(invitation),
     invitation_url_expires_at: null,
     created_at: invitation.createdAt.toISOString(),

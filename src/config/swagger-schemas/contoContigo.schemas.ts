@@ -178,6 +178,15 @@ export const contoContigoSchemas = {
       },
       send_count: { type: 'integer' },
       last_sent_at: { type: 'string', format: 'date-time', nullable: true },
+      opened_at: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+        description:
+          'Primeira vez que o convidado abriu o link do convite. É `null` ' +
+          'enquanto o link nunca foi aberto. Depois de preenchido, o anfitrião ' +
+          'deixa de poder alterar o email e o telefone do convidado.',
+      },
       invitation_url: {
         type: 'string',
         format: 'uri',

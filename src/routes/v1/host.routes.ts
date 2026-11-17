@@ -454,7 +454,10 @@ router.post(
  *       404:
  *         description: Convidado não encontrado.
  *       409:
- *         description: Email duplicado.
+ *         description: >-
+ *           Email duplicado ou o convidado já abriu o convite
+ *           (`invitation_already_opened`), caso em que email e telefone não
+ *           podem ser alterados.
  *   delete:
  *     tags: [Convidados]
  *     summary: Remove um convidado e as entregas associadas

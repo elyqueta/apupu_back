@@ -604,6 +604,7 @@ resumo do evento:
       "send_status": "sent",
       "send_count": 1,
       "last_sent_at": "2026-11-15T03:24:52.807Z",
+      "opened_at": "2026-11-16T01:00:00.000Z",
       "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
       "invitation_url_expires_at": null,
       "created_at": "2026-11-15T03:24:30.000Z",
@@ -1086,6 +1087,12 @@ Payload de criação/actualização:
 { "name": "João", "email": "joao@exemplo.ao", "phone": "+244900000000", "table_name": "Mesa 1" }
 ```
 
+O `PATCH` só é permitido ao anfitrião. Enquanto o convidado não abriu o
+link (`opened_at: null`), o anfitrião pode corrigir `email` e `phone`.
+Depois da primeira abertura, alterações a esses dois campos são rejeitadas
+com `409 invitation_already_opened`; `name` e `table_name` continuam
+editáveis.
+
 Só é possível adicionar convidados a um evento `scheduled`. O limite é
 `MAX_INVITATIONS_PER_EVENT`. Todas as rotas mutáveis exigem
 `X-CSRF-Token`.
@@ -1268,6 +1275,7 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
   "send_status": "queued",
   "send_count": 1,
   "last_sent_at": null,
+  "opened_at": null,
   "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
   "invitation_url_expires_at": null,
   "created_at": "2026-11-15T03:24:30.000Z",
@@ -1280,6 +1288,7 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
 | `rsvp_status` | string | `pending`, `accepted`, `declined` |
 | `send_status` | string | `pending`, `queued`, `sent`, `failed` |
 | `send_count` | inteiro | Número de envios |
+| `opened_at` | string \| null | Primeira vez que o convidado abriu o link; `null` enquanto nunca foi aberto |
 | `table_name` | string \| null | Visível apenas ao anfitrião |
 | `invitation_url` | string \| null | URL absoluto para o anfitrião partilhar (WhatsApp, etc.); `null` quando o convite foi revogado. Só existe nas respostas de gestão |
 | `invitation_url_expires_at` | string \| null | Hoje é sempre `null`: o link não expira e só é invalidado pela revogação |
@@ -1900,7 +1909,7 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `DELETE` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `404 event_not_found` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
-| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_email_duplicate`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_email_duplicate`; `409 invitation_already_opened`; `422 validation_failed`; `429 rate_limited` |
 | `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/resend` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_not_resendable`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/revoke` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `429 rate_limited` |

@@ -131,6 +131,19 @@ export const invitationService = {
       return await withTransaction(async (client) => {
         const current = await findOwnedInvitation(eventId, invitationId, client);
 
+        // Depois de o convidado abrir o link, email e telefone ficam
+        // bloqueados: o link está associado ao destinatário original.
+        const changesContact =
+          (input.email !== undefined && input.email !== current.guestEmail) ||
+          (input.phone !== undefined && input.phone !== current.guestPhone);
+
+        if (changesContact && (current.claimedAt || current.claimHash)) {
+          throw new ConflictError(
+            'O convidado já abriu o convite; o email e o telefone não podem ser alterados.',
+            'invitation_already_opened'
+          );
+        }
+
         const changes: UpdateInvitationInput = {};
         if (input.name !== undefined) changes.guestName = input.name;
         if (input.email !== undefined) changes.guestEmail = input.email;
