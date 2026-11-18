@@ -31,7 +31,9 @@ const BASE_VARS: EmailVars = {
 
 const OVERRIDES: Partial<Record<EmailTemplateCode, Partial<EmailVars>>> = {
   boas_vindas: { url: 'https://conto-contigo.example/criar-evento' },
-  verificacao_codigo: { url: undefined },
+  verificacao_codigo: {
+    url: 'https://conto-contigo.example/criar-conta?email=ana%40example.com&codigo=482916',
+  },
   recuperar_senha: { url: 'https://conto-contigo.example/redefinir-senha?token=exemplo' },
   presenca_confirmada: {
     nome: 'Pedro',
@@ -115,11 +117,16 @@ describe('catálogo de mensagens', () => {
     }
   });
 
-  it('mantém o código OTP em destaque e sem botão', () => {
-    const content = catalog.verificacao_codigo.email(varsFor('verificacao_codigo'));
+  it('mantém o código OTP em destaque e liga ao front já preenchido', () => {
+    const vars = varsFor('verificacao_codigo');
+    const content = catalog.verificacao_codigo.email(vars);
 
     expect(content.code).toBe('482916');
-    expect(content.cta).toBeUndefined();
+    expect(content.cta).toEqual({ label: 'Continuar no Conto Contigo', url: vars.url });
+
+    const html = renderEmailHtml(content, { baseUrl: 'https://exemplo.test', year: 2026 });
+    expect(html).toContain('letter-spacing:8px');
+    expect(html).toContain('Continuar no Conto Contigo');
   });
 
   it('gera HTML com a marca, dark mode e rodapé', () => {
@@ -173,7 +180,7 @@ describe('renderDelivery', () => {
     expect(message.text).toContain('— Equipa Conto Contigo');
   });
 
-  it('renderiza o OTP sem botão e com o código em destaque', () => {
+  it('renderiza o OTP em destaque com ligação para o front preenchida', () => {
     const message = renderDelivery(
       deliveryContext({
         messageType: 'registration_otp',
@@ -190,7 +197,10 @@ describe('renderDelivery', () => {
 
     expect(message.subject).toContain('482916');
     expect(message.html).toContain('letter-spacing:8px');
-    expect(message.html).not.toContain('Definir nova palavra-passe');
+    expect(message.html).toContain('Continuar no Conto Contigo');
+    expect(message.html).toContain('/criar-conta?email=');
+    expect(message.html).toContain('codigo=482916');
     expect(message.text).toContain('Código: 482916');
+    expect(message.text).toContain('Continuar no Conto Contigo:');
   });
 });

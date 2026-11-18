@@ -30,7 +30,9 @@ const BASE_VARS: EmailVars = {
 
 const OVERRIDES: Partial<Record<EmailTemplateCode, Partial<EmailVars>>> = {
   boas_vindas: { url: 'https://conto-contigo.example/criar-evento' },
-  verificacao_codigo: { url: undefined },
+  verificacao_codigo: {
+    url: 'https://conto-contigo.example/criar-conta?email=ana%40example.com&codigo=482916',
+  },
   recuperar_senha: { url: 'https://conto-contigo.example/redefinir-senha?token=exemplo' },
   presenca_confirmada: {
     nome: 'Pedro',

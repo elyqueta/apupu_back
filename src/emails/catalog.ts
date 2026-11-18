@@ -111,9 +111,11 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
       paragraphs: [
         'Usa este código para confirmares o teu e-mail:',
         `O código expira ao fim de ${vars.expiraEm ?? '10 minutos'} e só pode ser usado uma vez.`,
+        'Também podes abrir a ligação abaixo com o código já preenchido.',
         'Se não pediste este código, ignora este e-mail.',
       ],
       code: vars.codigo ?? '------',
+      cta: vars.url ? { label: 'Continuar no Conto Contigo', url: vars.url } : undefined,
       reason: 'pediste um código de confirmação no Conto Contigo',
     }),
     push: () =>
