@@ -1,5 +1,9 @@
 import { HostReportSummary } from '../../repositories/report.repository';
-import { reportDocumentCode } from '../../utils/exportFormat.util';
+import {
+  formatReportCount,
+  formatReportPercent,
+  reportDocumentCode,
+} from '../../utils/exportFormat.util';
 import {
   drawDonut,
   drawHighlightBlock,
@@ -33,7 +37,7 @@ export function renderReportPdf(
   const meta = {
     documentType: 'Relatório de eventos',
     documentCode: reportDocumentCode(
-      options.documentSeed ?? `relatorio:${generatedAt.toISOString()}`,
+      `${options.documentSeed ?? 'relatorio'}:${generatedAt.toISOString()}`,
       generatedAt
     ),
     generatedAt,
@@ -50,11 +54,14 @@ export function renderReportPdf(
       ctx,
       y,
       [
-        { label: 'Convites', value: String(summary.totals.total_invitations) },
-        { label: 'Confirmados', value: String(summary.totals.accepted) },
-        { label: 'Pendentes', value: String(summary.totals.pending) },
-        { label: 'Recusados', value: String(summary.totals.declined) },
-        { label: 'Taxa de resposta', value: `${Math.round(summary.totals.response_rate * 100)} %` },
+        { label: 'Convites', value: formatReportCount(summary.totals.total_invitations) },
+        { label: 'Confirmados', value: formatReportCount(summary.totals.accepted) },
+        { label: 'Pendentes', value: formatReportCount(summary.totals.pending) },
+        { label: 'Recusados', value: formatReportCount(summary.totals.declined) },
+        {
+          label: 'Taxa de resposta',
+          value: formatReportPercent(summary.totals.response_rate),
+        },
       ],
       { background: PDF_COLORS.accent, backgroundOpacity: 0.14 }
     );
