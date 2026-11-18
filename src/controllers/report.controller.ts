@@ -1,6 +1,11 @@
 import { Request, Response } from 'express';
 import { toDailyReportDto, toReportSummaryDto } from '../dto/report.dto';
-import { EventReportQuery, ReportExportQuery } from '../schemas/host.schemas';
+import {
+  EventExportParams,
+  EventExportQuery,
+  EventReportQuery,
+  ReportExportQuery,
+} from '../schemas/host.schemas';
 import { reportExportService } from '../services/reportExport.service';
 import { reportService } from '../services/report.service';
 import { EventAccessScope } from '../types/event.types';
@@ -16,6 +21,17 @@ function accessScope(req: Request): EventAccessScope {
   };
 }
 
+function sendFile(
+  res: Response,
+  file: { filename: string; contentType: string; stream: NodeJS.ReadableStream }
+): void {
+  res.setHeader('Content-Type', file.contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.status(200);
+  file.stream.pipe(res);
+}
+
 export const reportController = {
   summary: async (req: Request, res: Response): Promise<void> => {
     const summary = await reportService.summary(accessScope(req));
@@ -25,11 +41,20 @@ export const reportController = {
   exportSummary: async (req: Request, res: Response): Promise<void> => {
     const { format } = req.query as unknown as ReportExportQuery;
     const file = await reportExportService.summary(accessScope(req), format);
+    sendFile(res, file);
+  },
 
-    res.setHeader('Content-Type', file.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
-    res.setHeader('Content-Length', String(file.body.byteLength));
-    res.status(200).send(file.body);
+  eventExport: async (req: Request, res: Response): Promise<void> => {
+    const { eventId, document } = req.params as unknown as EventExportParams;
+    const { format, invitation_id } = req.query as unknown as EventExportQuery;
+    const file = await reportExportService.eventDocument(
+      accessScope(req),
+      eventId,
+      document,
+      format,
+      { invitationId: invitation_id }
+    );
+    sendFile(res, file);
   },
 
   eventDaily: async (req: Request, res: Response): Promise<void> => {

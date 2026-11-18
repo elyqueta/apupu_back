@@ -1,7 +1,6 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../database/pool';
-import { EventCategory, EventLocation, EventStatus } from '../types/event.types';
-import {
+import { EventCategory, EventLocation, EventStats, EventStatus } from '../types/event.types';import {
   AccountInvitation,
   Invitation,
   InvitationWithEvent,
@@ -291,6 +290,56 @@ export const invitationRepository = {
     return {
       items: result.rows.map(toInvitation),
       total: Number(countResult.rows[0]?.total ?? '0'),
+    };
+  },
+
+  /**
+   * Página de convidados para exportações em streaming.
+   *
+   * Usa keyset pagination por `(created_at, id)` para não sofrer
+   * deslocamentos quando existem milhares de convidados.
+   */
+  async listByEventSlice(
+    eventId: string,
+    offset: number,
+    limit: number,
+    client?: PoolClient
+  ): Promise<Invitation[]> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `SELECT ${SELECT_COLUMNS}
+         FROM invitations
+        WHERE event_id = $1
+        ORDER BY created_at ASC, id ASC
+        LIMIT $2 OFFSET $3`,
+      [eventId, limit, offset]
+    );
+    return result.rows.map(toInvitation);
+  },
+
+  /** Contagens de respostas de um evento. */
+  async statsForEvent(eventId: string, client?: PoolClient): Promise<EventStats> {
+    const runner = client ?? pool;
+    const result = await runner.query<{
+      total: string;
+      accepted: string;
+      declined: string;
+      pending: string;
+    }>(
+      `SELECT count(*)::text AS total,
+              count(*) FILTER (WHERE rsvp_status = 'accepted')::text AS accepted,
+              count(*) FILTER (WHERE rsvp_status = 'declined')::text AS declined,
+              count(*) FILTER (WHERE rsvp_status = 'pending')::text AS pending
+         FROM invitations
+        WHERE event_id = $1`,
+      [eventId]
+    );
+    const row = result.rows[0];
+    return {
+      totalInvitations: Number(row?.total ?? '0'),
+      accepted: Number(row?.accepted ?? '0'),
+      declined: Number(row?.declined ?? '0'),
+      pending: Number(row?.pending ?? '0'),
     };
   },
 

@@ -401,6 +401,7 @@ pesquisa.
 | `DELETE` | `/api/v1/host/events/{eventId}/cover` | Remove a capa (idempotente) |
 | `GET` | `/api/v1/host/reports/summary` | Agregados por evento e taxas |
 | `GET` | `/api/v1/host/reports/export` | Exporta o resumo em PDF ou CSV |
+| `GET` | `/api/v1/host/events/{eventId}/exports/{document}` | Exporta um documento do evento em PDF ou CSV (`guests`, `summary`, `attendance`, `ticket`) |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | Série diária do evento |
 | `GET` | `/api/v1/host/notifications` | Notificações da conta (paginadas, com filtros e pesquisa) |
 | `GET` | `/api/v1/host/notifications/unread-count` | Contagem de notificações não lidas |
@@ -425,6 +426,9 @@ Parâmetros de lista:
 - Relatório diário: `days` (1 a 365, por omissão 30); a série usa dias
   UTC, um ponto por dia, incluindo dias sem movimento.
 - Exportação do relatório: `format` (`pdf` \| `csv`, omissão `pdf`).
+- Exportação por evento: `document` no caminho (`guests` \| `summary` \|
+  `attendance` \| `ticket`), `format` (`pdf` \| `csv`, omissão `pdf`) e
+  `invitation_id` (obrigatório apenas em `ticket`).
 - Tarefas: `event_id`, `status` (`all` \| `pending` \| `done`, omissão
   `all`), `assignee` (`all` \| `host` \| `manager`, omissão `all`),
   `manager_id`, `q`, `page`, `page_size`. A resposta é
@@ -827,13 +831,38 @@ Regras de "Meus convites":
 
 - Devolve o ficheiro directamente (`Content-Disposition: attachment`),
   não o envelope JSON.
-- `pdf`: `application/pdf`, gerado no servidor com a logo do Conto
-  Contigo, as cores do site e marca de água em todas as páginas.
-- `csv`: `text/csv; charset=utf-8`, com BOM para o Excel e o mesmo
-  resumo em tabela. Células que começam por `=`, `+`, `-` ou `@` são
+- `pdf`: `application/pdf`, gerado no servidor com a identidade visual
+  do Conto Contigo, cabeçalho e rodapé em todas as páginas e o gráfico
+  circular das respostas.
+- `csv`: `text/csv; charset=utf-8`, com BOM para o Excel, separador
+  `;` e linhas CRLF. Células que começam por `=`, `+`, `-` ou `@` são
   prefixadas com `'` para não serem interpretadas como fórmulas.
-- Nome do ficheiro: `conto-contigo-relatorio-YYYY-MM-DD.{pdf,csv}`.
+- Nome do ficheiro: `conto-contigo_relatorio_YYYY-MM-DD.{pdf,csv}`.
 - `format` inválido devolve `422 validation_failed`.
+
+`GET /api/v1/host/events/{eventId}/exports/{document}?format=pdf|csv` —
+`200`:
+
+- `document` aceita:
+  - `guests` — lista completa de convidados e respostas;
+  - `summary` — resumo do evento com o gráfico circular;
+  - `attendance` — presenças confirmadas (não existe check-in);
+  - `ticket` — bilhete individual com QR, só em PDF, e exige
+    `invitation_id`.
+- O acesso é validado pela conta autenticada; eventos de outra conta
+  devolvem `404 event_not_found`.
+- `pdf`: A4 vertical, Figtree embebida, tabelas com cabeçalho repetido
+  e marca de água do símbolo. Os valores usam `12 500,00 Kz` e as datas
+  `22 nov 2026, 15:00` em `Africa/Luanda`.
+- `csv`: UTF-8 com BOM, separador `;`, CRLF, cabeçalhos em pt-PT e
+  datas `YYYY-MM-DD HH:mm` em `Africa/Luanda`. Telemóveis são texto no
+  formato `+244 9XX XXX XXX`; números não têm separador de milhares e
+  usam vírgula decimal.
+- Nome do ficheiro:
+  `conto-contigo_{tipo}_{slug-do-evento}_{YYYY-MM-DD}.{pdf,csv}`,
+  onde `tipo` é `convidados`, `resumo`, `presencas` ou `bilhete`.
+- `ticket` com `format=csv` devolve `400 bad_request`; `ticket` sem
+  `invitation_id` devolve `400 bad_request` com `fields`.
 
 `GET /api/v1/host/managers` — `200`:
 
@@ -1743,6 +1772,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `DELETE` | `/api/v1/host/notifications` | `200` | `{ "data": { "removed": integer } }` |
 | `GET` | `/api/v1/host/reports/summary` | `200` | `{ "data": ReportSummary }` |
 | `GET` | `/api/v1/host/reports/export` | `200` | PDF (`application/pdf`) ou CSV (`text/csv`) como anexo |
+| `GET` | `/api/v1/host/events/{eventId}/exports/{document}` | `200` | PDF (`application/pdf`) ou CSV (`text/csv`) como anexo |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `200` | `{ "data": { "event_id": uuid, "days": integer, "series": DailyReport[] } }` |
 | `GET` | `/api/v1/host/tasks` | `200` | `{ "data": Task[], "pagination": Pagination }` |
 | `POST` | `/api/v1/host/tasks` | `201` | `{ "data": Task }` |
@@ -2050,6 +2080,7 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `DELETE` | `/api/v1/host/notifications` | `401 host_session_invalid`; `403 csrf_invalid`; `429 rate_limited` |
 | `GET` | `/api/v1/host/reports/summary` | `401 host_session_invalid` |
 | `GET` | `/api/v1/host/reports/export` | `401 host_session_invalid`; `422 validation_failed` |
+| `GET` | `/api/v1/host/events/{eventId}/exports/{document}` | `400 bad_request`; `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed` |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/tasks` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |

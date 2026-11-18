@@ -1,428 +1,250 @@
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import PDFDocument from 'pdfkit';
+import { Readable } from 'node:stream';
+import { BadRequestError, NotFoundError } from '../errors';
+import { eventRepository } from '../repositories/event.repository';
+import { invitationRepository } from '../repositories/invitation.repository';
 import { HostReportSummary, reportRepository } from '../repositories/report.repository';
-import { EventAccessScope, EventReportRow } from '../types/event.types';
+import { EventAccessScope, EventRecord, EventStats } from '../types/event.types';
+import {
+  documentCode,
+  eventStatusLabel,
+  exportDateStamp,
+  exportFilename,
+} from '../utils/exportFormat.util';
+import { csvExportService } from './csvExport.service';
+import {
+  renderAttendancePdf,
+  renderEventSummaryPdf,
+  renderGuestsPdf,
+  renderTicketPdf,
+} from './pdf/eventDocuments';
+import {
+  drawDonut,
+  drawHighlightBlock,
+  drawSectionTitle,
+  drawTable,
+  drawTitle,
+  renderPdf,
+  TableCell,
+  TableColumn,
+} from './pdf/pdfLayout';
+import { PDF_COLORS } from './pdf/pdfTheme';
 
 export type ReportExportFormat = 'csv' | 'pdf';
+export type EventExportDocument = 'guests' | 'summary' | 'attendance' | 'ticket';
 
 export interface ReportExport {
   filename: string;
   contentType: string;
-  body: Buffer;
+  stream: Readable;
 }
 
-const BRAND = '#0F3D3E';
-const BRAND_SOFT = '#E7F0EC';
-const ACCENT = '#FFB627';
-const MINT = '#2F9E6E';
-const CORAL = '#D95D4F';
-const AMBER = '#C58A18';
-const INK = '#1F2A2A';
-const MUTED = '#647474';
-const LINE = '#DCE5E2';
-const CANVAS = '#F6F9F7';
-
-const PAGE_MARGIN = 48;
-const CONTENT_WIDTH = 595.28 - PAGE_MARGIN * 2;
-
-let logoCache: Buffer | null = null;
-
-/**
- * Logo oficial usada no documento exportado.
- *
- * O PNG é copiado de `src/assets` para `dist/assets` no build. A fonte
- * original é o SVG público do frontend (`conta-comigo-logo.svg`).
- */
-function logo(): Buffer {
-  if (!logoCache) {
-    logoCache = readFileSync(path.join(__dirname, '..', 'assets', 'conta-comigo-logo.png'));
-  }
-  return logoCache;
+export interface EventExportOptions {
+  invitationId?: string;
 }
 
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat('pt-PT', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  }).format(date);
+function bufferStream(body: Buffer): Readable {
+  return Readable.from([body], { objectMode: false });
+}
+
+function pdfExport(body: Buffer, filename: string): ReportExport {
+  return {
+    filename,
+    contentType: 'application/pdf',
+    stream: bufferStream(body),
+  };
 }
 
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-function responseRate(event: EventReportRow): number {
-  if (event.totalInvitations === 0) return 0;
-  return (event.accepted + event.declined) / event.totalInvitations;
-}
-
-function statusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    draft: 'Rascunho',
-    scheduled: 'Agendado',
-    cancelled: 'Cancelado',
-    completed: 'Concluído',
-  };
-  return labels[status] ?? status;
-}
-
-function csvCell(value: string | number): string {
-  return `"${String(value).replaceAll('"', '""')}"`;
-}
-
-function safeCsvText(value: string): string {
-  return /^[\t\r ]*[=+\-@]/.test(value) ? `'${value}` : value;
-}
-
-function truncate(value: string, max: number): string {
-  return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 1))}…`;
-}
-
-function summaryCsv(summary: HostReportSummary, generatedAt: Date): Buffer {
-  const lines: string[] = [
-    csvCell('Conto Contigo — Relatório de eventos'),
-    `${csvCell('Gerado em')},${csvCell(formatDate(generatedAt))}`,
-    '',
-    [
-      'Evento',
-      'Estado',
-      'Convites',
-      'Confirmados',
-      'Recusados',
-      'Pendentes',
-      'Taxa de resposta (%)',
-    ]
-      .map(csvCell)
-      .join(','),
+function reportColumns(): TableColumn[] {
+  return [
+    { label: 'Evento', weight: 3 },
+    { label: 'Estado', weight: 1.3 },
+    { label: 'Convites', weight: 1, align: 'right' },
+    { label: 'Confirmados', weight: 1.2, align: 'right' },
+    { label: 'Pendentes', weight: 1.1, align: 'right' },
+    { label: 'Recusados', weight: 1.1, align: 'right' },
+    { label: 'Taxa', weight: 1, align: 'right' },
   ];
-
-  for (const event of summary.events) {
-    lines.push(
-      [
-        csvCell(safeCsvText(event.title)),
-        csvCell(statusLabel(event.status)),
-        event.totalInvitations,
-        event.accepted,
-        event.declined,
-        event.pending,
-        Math.round(responseRate(event) * 100),
-      ].join(',')
-    );
-  }
-
-  lines.push(
-    [
-      csvCell('Total'),
-      csvCell(''),
-      summary.totals.total_invitations,
-      summary.totals.accepted,
-      summary.totals.declined,
-      summary.totals.pending,
-      Math.round(summary.totals.response_rate * 100),
-    ].join(',')
-  );
-
-  return Buffer.from(`\uFEFF${lines.join('\r\n')}`, 'utf8');
 }
 
-function drawWatermark(doc: PDFKit.PDFDocument): void {
-  doc.save();
-  doc.opacity(0.05);
-  const width = 380;
-  const image = logo();
-  const height = (width / 1200) * 351;
-  doc.image(image, (doc.page.width - width) / 2, (doc.page.height - height) / 2, { width });
-  doc.restore();
-}
+function reportRows(summary: HostReportSummary): TableCell[][] {
+  return summary.events.map((event) => {
+    const rate =
+      event.totalInvitations === 0
+        ? 0
+        : (event.accepted + event.declined) / event.totalInvitations;
 
-function drawHeader(doc: PDFKit.PDFDocument, generatedAt: Date): void {
-  const image = logo();
-  doc.image(image, PAGE_MARGIN, PAGE_MARGIN - 6, { width: 108 });
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(9)
-    .fillColor(MUTED)
-    .text('RELATÓRIO DE EVENTOS', PAGE_MARGIN, PAGE_MARGIN + 4, {
-      width: CONTENT_WIDTH,
-      align: 'right',
-      characterSpacing: 1.2,
-    });
-
-  doc
-    .font('Helvetica')
-    .fontSize(8)
-    .fillColor(MUTED)
-    .text(`Gerado em ${formatDate(generatedAt)}`, PAGE_MARGIN, PAGE_MARGIN + 18, {
-      width: CONTENT_WIDTH,
-      align: 'right',
-    });
-
-  doc
-    .moveTo(PAGE_MARGIN, PAGE_MARGIN + 42)
-    .lineTo(PAGE_MARGIN + CONTENT_WIDTH, PAGE_MARGIN + 42)
-    .lineWidth(1)
-    .strokeColor(LINE)
-    .stroke();
-}
-
-function drawTitle(doc: PDFKit.PDFDocument): void {
-  const y = PAGE_MARGIN + 62;
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(24)
-    .fillColor(BRAND)
-    .text('Resumo de respostas', PAGE_MARGIN, y, { width: CONTENT_WIDTH });
-
-  doc
-    .font('Helvetica')
-    .fontSize(9.5)
-    .fillColor(MUTED)
-    .text(
-      'Visão agregada dos convites, confirmações e recusas de todos os eventos da conta.',
-      PAGE_MARGIN,
-      y + 32,
-      { width: CONTENT_WIDTH }
-    );
-}
-
-function drawMetric(
-  doc: PDFKit.PDFDocument,
-  x: number,
-  y: number,
-  width: number,
-  label: string,
-  value: string,
-  color: string
-): void {
-  doc.roundedRect(x, y, width, 58, 9).fillColor(CANVAS).fill();
-  doc.roundedRect(x, y, 4, 58, 2).fillColor(color).fill();
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(17)
-    .fillColor(INK)
-    .text(value, x + 12, y + 10, { width: width - 20 });
-
-  doc
-    .font('Helvetica')
-    .fontSize(7.5)
-    .fillColor(MUTED)
-    .text(label.toUpperCase(), x + 12, y + 34, {
-      width: width - 20,
-      characterSpacing: 0.6,
-    });
-}
-
-function drawMetrics(doc: PDFKit.PDFDocument, summary: HostReportSummary): void {
-  const y = PAGE_MARGIN + 118;
-  const gap = 8;
-  const width = (CONTENT_WIDTH - gap * 4) / 5;
-  const metrics = [
-    { label: 'Convites', value: String(summary.totals.total_invitations), color: BRAND },
-    { label: 'Confirmados', value: String(summary.totals.accepted), color: MINT },
-    { label: 'Pendentes', value: String(summary.totals.pending), color: AMBER },
-    { label: 'Recusados', value: String(summary.totals.declined), color: CORAL },
-    { label: 'Resposta', value: percent(summary.totals.response_rate), color: ACCENT },
-  ];
-
-  metrics.forEach((metric, index) => {
-    drawMetric(
-      doc,
-      PAGE_MARGIN + index * (width + gap),
-      y,
-      width,
-      metric.label,
-      metric.value,
-      metric.color
-    );
-  });
-}
-
-const COLUMNS = [
-  { label: 'Evento', width: 196, align: 'left' as const },
-  { label: 'Estado', width: 62, align: 'left' as const },
-  { label: 'Convites', width: 48, align: 'right' as const },
-  { label: 'Conf.', width: 44, align: 'right' as const },
-  { label: 'Pend.', width: 44, align: 'right' as const },
-  { label: 'Rec.', width: 44, align: 'right' as const },
-  { label: 'Taxa', width: 61, align: 'right' as const },
-];
-
-function tableHeader(doc: PDFKit.PDFDocument, y: number): number {
-  const height = 24;
-  doc.rect(PAGE_MARGIN, y, CONTENT_WIDTH, height).fillColor(BRAND_SOFT).fill();
-
-  let x = PAGE_MARGIN + 8;
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(BRAND);
-  for (const column of COLUMNS) {
-    doc.text(column.label.toUpperCase(), x, y + 8, {
-      width: column.width - 8,
-      align: column.align,
-      characterSpacing: 0.4,
-      lineBreak: false,
-    });
-    x += column.width;
-  }
-
-  return y + height;
-}
-
-function drawTable(doc: PDFKit.PDFDocument, summary: HostReportSummary): void {
-  let y = PAGE_MARGIN + 194;
-  y = tableHeader(doc, y);
-
-  if (summary.events.length === 0) {
-    doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor(MUTED)
-      .text('Ainda não existem eventos para apresentar.', PAGE_MARGIN + 8, y + 14);
-    return;
-  }
-
-  const rowHeight = 24;
-
-  summary.events.forEach((event, index) => {
-    if (y + rowHeight > doc.page.height - 72) {
-      doc.addPage();
-      drawWatermark(doc);
-      y = PAGE_MARGIN;
-      y = tableHeader(doc, y);
-    }
-
-    if (index % 2 === 1) {
-      doc.rect(PAGE_MARGIN, y, CONTENT_WIDTH, rowHeight).fillColor('#FBFDFC').fill();
-    }
-
-    const values = [
-      truncate(event.title, 42),
-      statusLabel(event.status),
+    return [
+      event.title,
+      eventStatusLabel(event.status),
       String(event.totalInvitations),
       String(event.accepted),
       String(event.pending),
       String(event.declined),
-      percent(responseRate(event)),
+      percent(rate),
     ];
-
-    let x = PAGE_MARGIN + 8;
-    doc.font('Helvetica').fontSize(8).fillColor(INK);
-    values.forEach((value, columnIndex) => {
-      const column = COLUMNS[columnIndex];
-      if (!column) return;
-
-      doc.fillColor(columnIndex === 6 ? BRAND : INK);
-      doc.text(value, x, y + 8, {
-        width: column.width - 8,
-        align: column.align,
-        lineBreak: false,
-        ellipsis: true,
-      });
-      x += column.width;
-    });
-
-    doc
-      .moveTo(PAGE_MARGIN, y + rowHeight)
-      .lineTo(PAGE_MARGIN + CONTENT_WIDTH, y + rowHeight)
-      .lineWidth(0.5)
-      .strokeColor(LINE)
-      .stroke();
-
-    y += rowHeight;
   });
 }
 
-function drawFooters(doc: PDFKit.PDFDocument, generatedAt: Date): void {
-  const range = doc.bufferedPageRange();
+/** Relatório agregado com o mesmo gráfico circular da página de relatórios. */
+function reportPdf(summary: HostReportSummary, generatedAt: Date): Promise<Buffer> {
+  const meta = {
+    documentType: 'Relatório de eventos',
+    documentCode: documentCode('CC-REL', '00000000', generatedAt),
+    generatedAt,
+    title: 'Conto Contigo — Relatório de eventos',
+    subject: 'Resumo de respostas aos convites de todos os eventos da conta',
+  };
 
-  for (let index = 0; index < range.count; index += 1) {
-    doc.switchToPage(range.start + index);
-    const y = doc.page.height - 42;
-
-    doc
-      .moveTo(PAGE_MARGIN, y - 8)
-      .lineTo(PAGE_MARGIN + CONTENT_WIDTH, y - 8)
-      .lineWidth(0.5)
-      .strokeColor(LINE)
-      .stroke();
-
-    doc
-      .font('Helvetica')
-      .fontSize(7.5)
-      .fillColor(MUTED)
-      .text(`Conto Contigo · ${formatDate(generatedAt)}`, PAGE_MARGIN, y, {
-        width: CONTENT_WIDTH / 2,
-        lineBreak: false,
-      });
-
-    doc.text(`Página ${index + 1} de ${range.count}`, PAGE_MARGIN + CONTENT_WIDTH / 2, y, {
-      width: CONTENT_WIDTH / 2,
-      align: 'right',
-      lineBreak: false,
-    });
-  }
-}
-
-function summaryPdf(summary: HostReportSummary, generatedAt: Date): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: 'A4',
-      margin: PAGE_MARGIN,
-      bufferPages: true,
-      info: {
-        Title: 'Conto Contigo — Relatório de eventos',
-        Author: 'Conto Contigo',
-        Subject: 'Resumo de respostas aos convites',
+  return renderPdf(meta, (ctx) => {
+    const y = drawTitle(ctx, 'Relatório de eventos', [
+      'Visão agregada dos convites, confirmações e recusas de todos os eventos da conta.',
+    ]);
+    const afterHighlight = drawHighlightBlock(ctx, y, [
+      { label: 'Convites', value: String(summary.totals.total_invitations) },
+      { label: 'Confirmados', value: String(summary.totals.accepted) },
+      { label: 'Pendentes', value: String(summary.totals.pending) },
+      { label: 'Recusados', value: String(summary.totals.declined) },
+      { label: 'Taxa de resposta', value: percent(summary.totals.response_rate) },
+    ]);
+    const afterDonut = drawDonut(ctx, afterHighlight, [
+      {
+        key: 'confirmed',
+        label: 'Confirmado',
+        value: summary.totals.accepted,
+        color: PDF_COLORS.confirmedText,
       },
+      {
+        key: 'pending',
+        label: 'Pendente',
+        value: summary.totals.pending,
+        color: PDF_COLORS.pendingText,
+      },
+      {
+        key: 'declined',
+        label: 'Recusado',
+        value: summary.totals.declined,
+        color: PDF_COLORS.declinedText,
+      },
+    ]);
+    const tableY = drawSectionTitle(ctx, afterDonut, 'Respostas por evento');
+
+    drawTable(ctx, tableY, reportColumns(), reportRows(summary), {
+      emptyMessage: 'Ainda não existem eventos para apresentar.',
     });
-
-    const chunks: Buffer[] = [];
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-
-    doc.on('pageAdded', () => drawWatermark(doc));
-
-    drawWatermark(doc);
-    drawHeader(doc, generatedAt);
-    drawTitle(doc);
-    drawMetrics(doc, summary);
-    drawTable(doc, summary);
-    drawFooters(doc, generatedAt);
-    doc.end();
   });
 }
 
-/**
- * Gera o relatório agregado em CSV ou PDF.
- *
- * O PDF reutiliza a identidade visual do site (logo, cores e tipografia)
- * e aplica a marca de água da plataforma em todas as páginas.
- */
+function eventPdfFilename(
+  kind: string,
+  event: EventRecord,
+  generatedAt: Date
+): string {
+  return exportFilename(kind, event.title, generatedAt, 'pdf');
+}
+
 export const reportExportService = {
-  async summary(scope: EventAccessScope, format: ReportExportFormat): Promise<ReportExport> {
+  /**
+   * Relatório agregado de todos os eventos da conta.
+   *
+   * O CSV é emitido em streaming; o PDF usa o layout partilhado e
+   * inclui o gráfico circular da página de relatórios.
+   */
+  async summary(
+    scope: EventAccessScope,
+    format: ReportExportFormat
+  ): Promise<ReportExport> {
     const summary = await reportRepository.summaryForHost(scope);
     const generatedAt = new Date();
-    const date = generatedAt.toISOString().slice(0, 10);
 
     if (format === 'csv') {
-      return {
-        filename: `conto-contigo-relatorio-${date}.csv`,
-        contentType: 'text/csv; charset=utf-8',
-        body: summaryCsv(summary, generatedAt),
-      };
+      return csvExportService.report(summary, generatedAt);
     }
 
-    return {
-      filename: `conto-contigo-relatorio-${date}.pdf`,
-      contentType: 'application/pdf',
-      body: await summaryPdf(summary, generatedAt),
-    };
+    const body = await reportPdf(summary, generatedAt);
+    return pdfExport(
+      body,
+      `conto-contigo_relatorio_${exportDateStamp(generatedAt)}.pdf`
+    );
+  },
+
+  /**
+   * Documento de um evento: lista de convidados, resumo, presenças ou
+   * bilhete individual.
+   *
+   * O acesso é validado com `findByIdForAccess`, para que um UUID de
+   * evento não seja autorização suficiente. O bilhete exige
+   * `invitation_id` e só existe em PDF.
+   */
+  async eventDocument(
+    scope: EventAccessScope,
+    eventId: string,
+    document: EventExportDocument,
+    format: ReportExportFormat,
+    options: EventExportOptions = {}
+  ): Promise<ReportExport> {
+    const access = await eventRepository.findByIdForAccess(eventId, scope);
+    if (!access) {
+      throw new NotFoundError('Evento não encontrado.');
+    }
+
+    const event = access.event;
+    const generatedAt = new Date();
+
+    if (document === 'ticket') {
+      if (format !== 'pdf') {
+        throw new BadRequestError('O bilhete só está disponível em PDF.');
+      }
+      if (!options.invitationId) {
+        throw new BadRequestError(
+          'Indica o convite do bilhete.',
+          'bad_request',
+          { invitation_id: ['Obrigatório para o bilhete.'] }
+        );
+      }
+
+      const invitation = await invitationRepository.findById(options.invitationId);
+      if (!invitation || invitation.eventId !== event.id) {
+        throw new NotFoundError('Convite não encontrado.');
+      }
+
+      const body = await renderTicketPdf(event, invitation, generatedAt);
+      return pdfExport(
+        body,
+        eventPdfFilename('bilhete', event, generatedAt)
+      );
+    }
+
+    if (format === 'csv') {
+      if (document === 'guests') {
+        return csvExportService.guests(event, generatedAt);
+      }
+      if (document === 'attendance') {
+        return csvExportService.attendance(event, generatedAt);
+      }
+
+      const stats = await invitationRepository.statsForEvent(event.id);
+      return csvExportService.eventSummary(event, stats, generatedAt);
+    }
+
+    const stats: EventStats = await invitationRepository.statsForEvent(event.id);
+
+    if (document === 'summary') {
+      const body = await renderEventSummaryPdf(event, stats, generatedAt);
+      return pdfExport(body, eventPdfFilename('resumo', event, generatedAt));
+    }
+
+    const guests = await invitationRepository.listByEvent(event.id);
+
+    if (document === 'attendance') {
+      const body = await renderAttendancePdf(event, guests, stats, generatedAt);
+      return pdfExport(body, eventPdfFilename('presencas', event, generatedAt));
+    }
+
+    const body = await renderGuestsPdf(event, guests, stats, generatedAt);
+    return pdfExport(body, eventPdfFilename('convidados', event, generatedAt));
   },
 };

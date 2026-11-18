@@ -73,6 +73,11 @@ export const errorResponses = {
     'invalid_json',
     'Corpo da requisição não é um JSON válido.'
   ),
+  BadRequest: errorResponse(
+    'A requisição está malformada ou não faz sentido como veio.',
+    'bad_request',
+    'Requisição inválida.'
+  ),
   HostSessionInvalid: errorResponse(
     'Sessão de gestão ou de conta ausente, expirada ou de outro evento.',
     'host_session_invalid',
@@ -538,6 +543,12 @@ export const operationErrorResponses: Record<
   },
   'get /api/v1/host/reports/export': {
     401: 'HostSessionInvalid',
+    422: 'ValidationFailed',
+  },
+  'get /api/v1/host/events/{eventId}/exports/{document}': {
+    400: 'BadRequest',
+    401: 'HostSessionInvalid',
+    404: 'EventNotFound',
     422: 'ValidationFailed',
   },
   'get /api/v1/host/events/{eventId}/reports': {

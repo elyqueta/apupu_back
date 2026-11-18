@@ -113,6 +113,16 @@ const eventReportQuerySchema = z.object({
     .default(30),
 });
 
+const eventExportParamsSchema = z.object({
+  eventId: z.uuid('Identificador de evento inválido.'),
+  document: z.enum(['guests', 'summary', 'attendance', 'ticket']),
+});
+
+const eventExportQuerySchema = z.object({
+  format: z.enum(['csv', 'pdf']).default('pdf'),
+  invitation_id: z.uuid('Identificador de convite inválido.').optional(),
+});
+
 const tasksQuerySchema = z.object({
   event_id: z.uuid('Identificador de evento inválido.').optional(),
   status: z.enum(['all', 'pending', 'done']).default('all'),
@@ -207,6 +217,8 @@ export {
   paginatedQuerySchema,
   eventReportQuerySchema,
   reportExportQuerySchema,
+  eventExportParamsSchema,
+  eventExportQuerySchema,
   tasksQuerySchema,
   createTaskSchema,
   updateTaskSchema,
@@ -228,6 +240,8 @@ export type HostGuestsQuery = z.infer<typeof hostGuestsQuerySchema>;
 export type GuestInvitationsQuery = z.infer<typeof guestInvitationsQuerySchema>;
 export type EventReportQuery = z.infer<typeof eventReportQuerySchema>;
 export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>;
+export type EventExportParams = z.infer<typeof eventExportParamsSchema>;
+export type EventExportQuery = z.infer<typeof eventExportQuerySchema>;
 export type TasksQuery = z.infer<typeof tasksQuerySchema>;
 export type CreateTaskBody = z.infer<typeof createTaskSchema>;
 export type UpdateTaskBody = z.infer<typeof updateTaskSchema>;

@@ -28,6 +28,8 @@ import {
   createTaskSchema,
   eventManagerParamsSchema,
   eventReportQuerySchema,
+  eventExportParamsSchema,
+  eventExportQuerySchema,
   guestInvitationsQuerySchema,
   hostEventsQuerySchema,
   hostGuestsQuerySchema,
@@ -1046,6 +1048,58 @@ router.get(
   asyncHandler(hostAccountAuth),
   validate({ query: reportExportQuerySchema }),
   asyncHandler(reportController.exportSummary)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/exports/{document}:
+ *   get:
+ *     tags: [Workspace]
+ *     summary: Exporta um documento do evento em PDF ou CSV
+ *     description: >
+ *       `document` aceita `guests` (lista de convidados), `summary`
+ *       (resumo do evento), `attendance` (presenças confirmadas) ou
+ *       `ticket` (bilhete individual com QR, só PDF). O CSV usa UTF-8
+ *       com BOM, separador `;` e CRLF; o PDF segue a identidade visual
+ *       do Conto Contigo.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: document
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [guests, summary, attendance, ticket]
+ *       - in: query
+ *         name: format
+ *         schema: { type: string, enum: [pdf, csv], default: pdf }
+ *       - in: query
+ *         name: invitation_id
+ *         description: Obrigatório quando `document` é `ticket`.
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Ficheiro PDF ou CSV.
+ *         content:
+ *           application/pdf:
+ *             schema: { type: string, format: binary }
+ *           text/csv:
+ *             schema: { type: string, format: binary }
+ *       400:
+ *         description: Parâmetros inválidos (por exemplo, bilhete em CSV).
+ *       404:
+ *         description: Evento ou convite não encontrado.
+ */
+router.get(
+  '/events/:eventId/exports/:document',
+  validate({ params: eventExportParamsSchema, query: eventExportQuerySchema }),
+  asyncHandler(hostAccountAuth),
+  asyncHandler(reportController.eventExport)
 );
 
 /**
