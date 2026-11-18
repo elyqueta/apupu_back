@@ -63,7 +63,7 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
 | `404` | `event_not_found` / `invitation_not_found` / `task_not_found` / `manager_not_found` / `notification_not_found` / `activity_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
 | `404` | `route_not_found` | Rota inexistente |
-| `409` | `event_not_scheduled`, `event_cancelled`, `event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`, `invitation_limit_reached`, `email_already_registered` | Conflito de estado |
+| `409` | `event_not_scheduled`, `event_cancelled`, `event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`, `invitation_limit_reached`, `invitation_host_email`, `email_already_registered` | Conflito de estado |
 | `409` | `invitation_revoked`, `invitation_not_resendable` | Convite revogado ou sem link reutilizável para reenvio |
 | `409` | `manager_already_exists` | O email já é gestor activo do evento |
 | `422` | `validation_failed` | Validação Zod; inclui `fields` |
@@ -557,6 +557,11 @@ Qualquer tentativa de um gestor executar uma ação reservada devolve
 
 - O email é normalizado para minúsculas e comparado sem distinção de
   maiúsculas (`citext`).
+- Ao adicionar ou reativar um gestor, se ainda não existir convite para
+  esse email no evento, é criado automaticamente um convite de convidado
+  (nome derivado da parte local do email) e enfileiradas as mensagens de
+  onboarding. Se já existir convite, nada é duplicado. O gestor recebe
+  tanto o link de gestão como o convite de convidado.
 - `409 manager_already_exists` se o email já for gestor activo.
 - `422 validation_failed` se o email for inválido ou igual ao do
   anfitrião.
@@ -1159,7 +1164,10 @@ revogar o acesso também enfileira o aviso ao destinatário actual. O aviso
 invitation_removed`.
 
 Só é possível adicionar convidados a um evento `scheduled`. O limite é
-`MAX_INVITATIONS_PER_EVENT`. Todas as rotas mutáveis exigem
+`MAX_INVITATIONS_PER_EVENT`. O email do próprio anfitrião não pode ser
+usado como convidado: a criação do evento falha com `422 validation_failed`
+em `guests.{index}.email`, e adicionar ou alterar um convite devolve
+`409 invitation_host_email`. Todas as rotas mutáveis exigem
 `X-CSRF-Token`.
 
 ## Fluxo do convidado
@@ -1891,8 +1899,9 @@ corpos reutilizáveis e, depois, o mapa de que erros cada rota devolve.
 
 Valores possíveis: `event_not_scheduled`, `event_cancelled`,
 `event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`,
-`invitation_limit_reached`, `invitation_revoked`,
-`invitation_not_resendable`, `email_already_registered`.
+`invitation_limit_reached`, `invitation_host_email`,
+`invitation_revoked`, `invitation_not_resendable`,
+`email_already_registered`.
 
 `422` de token ou OTP — o `code` identifica o passo:
 
@@ -1980,8 +1989,8 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `PATCH` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 event_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
 | `DELETE` | `/api/v1/host/events/{eventId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `404 event_not_found` |
-| `POST` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
-| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_email_duplicate`; `409 invitation_already_opened`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`; `409 invitation_host_email`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_email_duplicate`; `409 invitation_already_opened`; `409 invitation_host_email`; `422 validation_failed`; `429 rate_limited` |
 | `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/resend` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_not_resendable`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/revoke` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `429 rate_limited` |

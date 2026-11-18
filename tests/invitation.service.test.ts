@@ -9,6 +9,8 @@ vi.mock('../src/repositories/invitation.repository', () => ({
     findById: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    create: vi.fn(),
+    countByEvent: vi.fn(),
   },
 }));
 
@@ -76,13 +78,53 @@ function makeInvitation(overrides: Partial<Invitation> = {}): Invitation {
   };
 }
 
+describe('invitationService.add', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('bloqueia um convidado com o email do anfitrião', async () => {
+    await expect(
+      invitationService.add(
+        {
+          id: eventId,
+          status: 'scheduled',
+          hostEmail: 'Anfitriao@Exemplo.ao',
+        } as never,
+        { name: 'Ana', email: 'anfitriao@exemplo.ao' }
+      )
+    ).rejects.toMatchObject({
+      code: 'invitation_host_email',
+      statusCode: 409,
+    });
+
+    expect(invitationRepository.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('invitationService.update', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(eventRepository.findById).mockResolvedValue({ id: eventId } as never);
+    vi.mocked(eventRepository.findById).mockResolvedValue({
+      id: eventId,
+      hostEmail: 'anfitriao@exemplo.ao',
+    } as never);
     vi.mocked(invitationRepository.update).mockImplementation(async (id, changes) =>
       makeInvitation({ id, guestEmail: changes.guestEmail ?? 'joao@exemplo.ao' })
     );
+  });
+
+  it('bloqueia a alteração para o email do anfitrião', async () => {
+    vi.mocked(invitationRepository.findById).mockResolvedValue(makeInvitation());
+
+    await expect(
+      invitationService.update(eventId, invitationId, { email: 'ANFITRIAO@exemplo.ao' })
+    ).rejects.toMatchObject({
+      code: 'invitation_host_email',
+      statusCode: 409,
+    });
+
+    expect(invitationRepository.update).not.toHaveBeenCalled();
   });
 
   it('bloqueia a alteração de email depois de o convite ser aberto', async () => {

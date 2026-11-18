@@ -112,6 +112,23 @@ describe('createEventSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejeita um convidado com o email do anfitrião', () => {
+    const result = createEventSchema.safeParse({
+      event: validEvent,
+      guests: [{ name: 'Ana', email: 'ANA@exemplo.ao' }],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ['guests', 0, 'email'],
+          message: 'O email do anfitrião não pode ser usado como convidado.',
+        }),
+      ])
+    );
+  });
+
   it('rejeita campos desconhecidos (não aceita token nem estado RSVP)', () => {
     const result = createEventSchema.safeParse({
       ...validBody,

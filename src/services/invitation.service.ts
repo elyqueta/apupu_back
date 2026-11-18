@@ -29,6 +29,21 @@ import {
  */
 const INVITATION_NOT_FOUND = 'Convite não encontrado.';
 
+/**
+ * O anfitrião não pode ser convidado do próprio evento: o email dele
+ * identifica a conta que gere o evento e receberia um link de convidado
+ * ambíguo. A regra aplica-se a criar e a alterar convites.
+ */
+function assertGuestEmailIsNotHost(event: Event, email: string): void {
+  if (email.trim().toLowerCase() !== event.hostEmail.trim().toLowerCase()) return;
+
+  throw new ConflictError(
+    'O email do anfitrião não pode ser adicionado como convidado.',
+    'invitation_host_email',
+    { email: ['O email do anfitrião não pode ser adicionado como convidado.'] }
+  );
+}
+
 export function isRsvpDeadlinePassed(event: Event): boolean {
   return event.rsvpDeadline !== null && event.rsvpDeadline.getTime() <= Date.now();
 }
@@ -71,6 +86,8 @@ export const invitationService = {
         'event_not_scheduled'
       );
     }
+
+    assertGuestEmailIsNotHost(event, input.email);
 
     const total = await invitationRepository.countByEvent(event.id);
 
@@ -131,11 +148,24 @@ export const invitationService = {
     try {
       return await withTransaction(async (client) => {
         const current = await findOwnedInvitation(eventId, invitationId, client);
+        const emailChanged =
+          input.email !== undefined && input.email !== current.guestEmail;
+        let event: Event | null = null;
+
+        if (input.email !== undefined) {
+          event = await eventRepository.findById(eventId, client);
+
+          if (!event) {
+            throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+          }
+
+          assertGuestEmailIsNotHost(event, input.email);
+        }
 
         // Depois de o convidado abrir o link, email e telefone ficam
         // bloqueados: o link está associado ao destinatário original.
         const changesContact =
-          (input.email !== undefined && input.email !== current.guestEmail) ||
+          emailChanged ||
           (input.phone !== undefined && input.phone !== current.guestPhone);
 
         if (changesContact && (current.claimedAt || current.claimHash)) {
@@ -145,10 +175,7 @@ export const invitationService = {
           );
         }
 
-        const emailChanged =
-          input.email !== undefined && input.email !== current.guestEmail;
         const changes: UpdateInvitationInput = {};
-        let event: Event | null = null;
 
         if (input.name !== undefined) changes.guestName = input.name;
         if (input.email !== undefined) changes.guestEmail = input.email;
@@ -156,12 +183,6 @@ export const invitationService = {
         if (input.table_name !== undefined) changes.tableName = input.table_name;
 
         if (emailChanged) {
-          event = await eventRepository.findById(eventId, client);
-
-          if (!event) {
-            throw new NotFoundError('Evento não encontrado.', 'event_not_found');
-          }
-
           // O link é pessoal: ao corrigir o email, o link anterior deixa
           // de corresponder a este convite e o destinatário antigo é
           // avisado de que foi removido.

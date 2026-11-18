@@ -208,6 +208,33 @@ export const invitationRepository = {
     return row ? toInvitation(row) : null;
   },
 
+  /**
+   * Procura o convite de um email num evento.
+   *
+   * A comparação é case-insensitive porque o email do convidado é
+   * guardado normalizado, mas registos antigos podem ter maiúsculas.
+   * Usado para garantir que um gestor não duplica o convite ao ser
+   * automaticamente incluído na lista de convidados.
+   */
+  async findByEventAndEmail(
+    eventId: string,
+    email: string,
+    client?: PoolClient
+  ): Promise<Invitation | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `SELECT ${SELECT_COLUMNS}
+         FROM invitations
+        WHERE event_id = $1
+          AND lower(guest_email) = lower($2)
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1`,
+      [eventId, email]
+    );
+    const row = result.rows[0];
+    return row ? toInvitation(row) : null;
+  },
+
   async listByEvent(eventId: string, client?: PoolClient): Promise<Invitation[]> {
     const runner = client ?? pool;
     const result = await runner.query<InvitationRow>(

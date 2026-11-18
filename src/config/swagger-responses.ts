@@ -139,9 +139,14 @@ export const errorResponses = {
     'O evento ainda não está agendado.'
   ),
   EmailDuplicate: errorResponse(
-    'O email já está na lista de convidados deste evento.',
+    'O email já está na lista de convidados, o convite já foi aberto (`invitation_already_opened`) ou pertence ao anfitrião (`invitation_host_email`).',
     'invitation_email_duplicate',
     'Este email já está na lista de convidados.'
+  ),
+  InvitationHostEmail: errorResponse(
+    'Conflito: evento não agendado, limite de convidados atingido ou email do anfitrião.',
+    'invitation_host_email',
+    'O email do anfitrião não pode ser adicionado como convidado.'
   ),
   InvitationNotResendable: errorResponse(
     'O convite está revogado ou não tem um link reutilizável.',
@@ -330,7 +335,7 @@ export const operationErrorResponses: Record<
     401: 'HostSessionInvalid',
     403: 'CsrfInvalid',
     404: 'EventNotFound',
-    409: 'ConflictGeneric',
+    409: 'InvitationHostEmail',
     422: 'ValidationFailed',
     429: 'RateLimited',
   },

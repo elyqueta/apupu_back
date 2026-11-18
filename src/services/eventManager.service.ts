@@ -1,21 +1,41 @@
 import { randomUUID } from 'node:crypto';
+import { PoolClient } from 'pg';
 import { logger } from '../config/logger';
 import { withTransaction } from '../database/pool';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
+import { activityRepository } from '../repositories/activity.repository';
 import { eventManagerRepository } from '../repositories/eventManager.repository';
 import { eventRepository } from '../repositories/event.repository';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { hostSessionRepository } from '../repositories/hostSession.repository';
+import { invitationRepository } from '../repositories/invitation.repository';
 import { EventRecord } from '../types/event.types';
 import { EventManager, HostEventManager } from '../types/eventManager.types';
+import { Invitation } from '../types/invitation.types';
 import { encryptToken } from '../utils/crypto.util';
+import { generateToken, hashToken } from '../utils/token.util';
 import {
   ManageEmailStatus,
   generateManageToken,
 } from './manageLink.service';
+import { enqueueOnboardingMessages } from './reminder.service';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+/**
+ * Nome provisório para o convite criado automaticamente a partir do
+ * email do gestor. O gestor não tem nome no modelo, por isso usa-se a
+ * parte local do email; o anfitrião pode corrigir depois na lista.
+ */
+function guestNameFromEmail(email: string): string {
+  const local = email.split('@')[0]?.trim() ?? '';
+  const cleaned = local.replace(/[._-]+/g, ' ').trim();
+
+  if (cleaned.length < 2) return email;
+
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -60,6 +80,57 @@ async function deliverManagerInvite(
     );
     return 'failed';
   }
+}
+
+/**
+ * Garante que o gestor também faz parte da lista de convidados.
+ *
+ * Um gestor pode não ter conta e só receber o link de gestão; ainda
+ * assim deve aparecer como convidado do evento. O convite só é criado
+ * quando ainda não existe um para o mesmo email, para não duplicar a
+ * lista nem disparar emails repetidos. As mensagens seguem a outbox e
+ * ficam canceladas enquanto o evento estiver em rascunho.
+ */
+async function ensureManagerIsGuest(
+  event: EventRecord,
+  email: string,
+  client: PoolClient
+): Promise<Invitation | null> {
+  const existing = await invitationRepository.findByEventAndEmail(
+    event.id,
+    email,
+    client
+  );
+
+  if (existing) return null;
+
+  const token = generateToken();
+  const invitation = await invitationRepository.create(
+    {
+      eventId: event.id,
+      guestName: guestNameFromEmail(email),
+      guestEmail: email,
+      guestPhone: null,
+      tableName: null,
+      tokenHash: hashToken(token),
+      tokenEncrypted: encryptToken(token),
+    },
+    client
+  );
+
+  await enqueueOnboardingMessages(event, invitation, client);
+
+  await activityRepository.create(
+    {
+      eventId: event.id,
+      invitationId: invitation.id,
+      kind: 'guest_added',
+      guestName: invitation.guestName,
+    },
+    client
+  );
+
+  return invitation;
 }
 
 export interface AddManagerResult {
@@ -126,6 +197,8 @@ export const eventManagerService = {
           client
         );
 
+        let saved: EventManager;
+
         if (existing) {
           if (!existing.revokedAt) {
             throw new ConflictError(
@@ -147,18 +220,22 @@ export const eventManagerService = {
             throw new Error('Falha ao reativar gestor do evento.');
           }
 
-          return reactivated;
+          saved = reactivated;
+        } else {
+          saved = await eventManagerRepository.create(
+            {
+              eventId,
+              email,
+              tokenHash: material.hash,
+              tokenExpiresAt: material.expiresAt,
+            },
+            client
+          );
         }
 
-        return eventManagerRepository.create(
-          {
-            eventId,
-            email,
-            tokenHash: material.hash,
-            tokenExpiresAt: material.expiresAt,
-          },
-          client
-        );
+        await ensureManagerIsGuest(event, email, client);
+
+        return saved;
       });
     } catch (error) {
       if (isUniqueViolation(error)) {

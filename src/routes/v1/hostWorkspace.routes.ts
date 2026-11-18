@@ -507,7 +507,9 @@ router.get(
  *     description: >
  *       O gestor não precisa de conta. Recebe um link próprio por
  *       email; se já tiver uma conta verificada com o mesmo email,
- *       passa também a ver o evento no workspace.
+ *       passa também a ver o evento no workspace. Se ainda não existir
+ *       convite para esse email, o gestor é automaticamente incluído
+ *       na lista de convidados e recebe também o convite.
  *     security:
  *       - accountSession: []
  *     parameters:

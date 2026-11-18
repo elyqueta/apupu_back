@@ -221,7 +221,16 @@ export const createEventSchema = z
     }
 
     const seen = new Set<string>();
+    const hostEmail = value.event.host_email.trim().toLowerCase();
     value.guests.forEach((guest, index) => {
+      if (guest.email === hostEmail) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['guests', index, 'email'],
+          message: 'O email do anfitrião não pode ser usado como convidado.',
+        });
+      }
+
       if (seen.has(guest.email)) {
         ctx.addIssue({
           code: 'custom',

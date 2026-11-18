@@ -399,7 +399,9 @@ router.delete(
  *           application/json:
  *             schema: { $ref: '#/components/schemas/InvitationEnvelope' }
  *       409:
- *         description: Email duplicado, evento não agendado ou limite atingido.
+ *         description: >-
+ *           Email duplicado, evento não agendado, limite atingido ou email
+ *           do anfitrião (`invitation_host_email`).
  */
 router.get(
   '/events/:eventId/invitations',
@@ -455,9 +457,10 @@ router.post(
  *         description: Convidado não encontrado.
  *       409:
  *         description: >-
- *           Email duplicado ou o convidado já abriu o convite
+ *           Email duplicado, o convidado já abriu o convite
  *           (`invitation_already_opened`), caso em que email e telefone não
- *           podem ser alterados.
+ *           podem ser alterados, ou email do anfitrião
+ *           (`invitation_host_email`).
  *   delete:
  *     tags: [Convidados]
  *     summary: Remove um convidado e as entregas associadas
