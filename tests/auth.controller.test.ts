@@ -34,6 +34,7 @@ async function requestRegistrationCodeResponse(): Promise<Record<string, unknown
 describe('authController.requestRegistrationCode', () => {
   beforeEach(() => {
     vi.mocked(authService.requestRegistrationCode).mockResolvedValue({
+      status: 'accepted',
       expiresAt: new Date('2026-11-16T04:00:00.000Z'),
       resendAvailableAt: new Date('2026-11-16T03:51:00.000Z'),
       code: '004271',
@@ -69,6 +70,39 @@ describe('authController.requestRegistrationCode', () => {
     expect(body.data).not.toHaveProperty('dev_code');
     expect(body.data).not.toHaveProperty('code');
     expect(JSON.stringify(body)).not.toContain('004271');
+  });
+
+  it('dispensa o OTP para emails já inscritos por um anfitrião', async () => {
+    vi.mocked(authService.requestRegistrationCode).mockResolvedValue({
+      status: 'guest',
+      displayName: 'Ana Silva',
+      verificationToken: 'guest-token',
+      expiresAt: new Date('2026-11-16T04:00:00.000Z'),
+    });
+
+    const json = vi.fn();
+    const status = vi.fn(() => ({ json }));
+    const response = { status, json } as unknown as Response;
+
+    await authController.requestRegistrationCode(
+      {
+        body: { email: 'ana@example.test' },
+        ip: '127.0.0.1',
+        id: 'test-request',
+      } as Request,
+      response
+    );
+
+    expect(status).toHaveBeenCalledWith(200);
+    expect(json).toHaveBeenCalledWith({
+      data: {
+        status: 'guest_verified',
+        email: 'ana@example.test',
+        display_name: 'Ana Silva',
+        verification_token: 'guest-token',
+        expires_at: '2026-11-16T04:00:00.000Z',
+      },
+    });
   });
 });
 

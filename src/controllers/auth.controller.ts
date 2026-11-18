@@ -30,6 +30,22 @@ export const authController = {
     const body = req.body as RegisterRequestCodeBody;
     const result = await authService.requestRegistrationCode(body, auditContext(req));
 
+    // Email já inscrito por um anfitrião: o convite serve de prova de
+    // posse, o OTP é dispensado e o token de registo segue já na
+    // resposta para o front saltar directamente para a senha.
+    if (result.status === 'guest') {
+      res.status(200).json({
+        data: {
+          status: 'guest_verified',
+          email: body.email,
+          display_name: result.displayName,
+          verification_token: result.verificationToken,
+          expires_at: result.expiresAt.toISOString(),
+        },
+      });
+      return;
+    }
+
     res.status(202).json({
       data: {
         status: 'accepted',

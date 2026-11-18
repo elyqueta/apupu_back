@@ -95,6 +95,33 @@ export const registrationVerificationRepository = {
     return toVerification(row);
   },
 
+  /**
+   * Cria uma verificação já validada e emite o token de registo.
+   *
+   * Usado quando o email já foi inscrito por um anfitrião: nesse caso o
+   * convite serve de prova de posse e o OTP é dispensado.
+   */
+  async createVerified(
+    email: string,
+    tokenHash: string,
+    tokenExpiresAt: Date,
+    client?: PoolClient
+  ): Promise<RegistrationVerification> {
+    const runner = client ?? pool;
+    const result = await runner.query<RegistrationVerificationRow>(
+      `INSERT INTO registration_verifications
+         (email, code_hash, expires_at, verified_at,
+          verification_token_hash, verification_token_expires_at)
+       VALUES ($1, $2, $3, now(), $2, $3)
+       RETURNING ${SELECT_COLUMNS}`,
+      [email, tokenHash, tokenExpiresAt]
+    );
+
+    const row = result.rows[0];
+    if (!row) throw new Error('Falha ao criar verificação de registo.');
+    return toVerification(row);
+  },
+
   /** Pedido mais recente do email ainda não consumido nem expirado. */
   async findLatestActiveForEmail(
     email: string,

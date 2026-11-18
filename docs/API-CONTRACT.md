@@ -122,7 +122,9 @@ workspace (`/host/events` sem `:eventId`, `/host/profile`,
 ### Registo e verificação
 
 O registo tem três passos. A conta **só é criada** depois de o email
-ser verificado por código OTP.
+ser verificado por código OTP — excepto quando o email já foi inscrito
+por um anfitrião num evento. Nesse caso o convite serve de prova de
+posse, o OTP é dispensado e o nome do convite pré-preenche o formulário.
 
 #### 1. Pedir o código
 
@@ -162,6 +164,28 @@ Resposta `202`:
 
 Erros: `409 email_already_registered`, `422 validation_failed`,
 `429 otp_resend_too_soon` ou `429 rate_limited`.
+
+#### 1b. Email já inscrito por um anfitrião
+
+Quando o email já consta num convite (`invitations.guest_email`), o
+convite é aceite como prova de posse: não é enviado OTP e a resposta é
+`200` com o token de registo e o nome do convite.
+
+```json
+{
+  "data": {
+    "status": "guest_verified",
+    "email": "ana@exemplo.ao",
+    "display_name": "Ana Silva",
+    "verification_token": "DKNAPJMDeXHmDxeIQDvxMsD47GYjqtzgGwh3gWlPr2I",
+    "expires_at": "2026-11-16T02:35:49.786Z"
+  }
+}
+```
+
+O frontend guarda o `verification_token`, pré-preenche `display_name` e
+salta directamente para o passo 3 (definir senha). O passo 2 não é
+executado.
 
 #### 2. Verificar o código
 
@@ -1670,7 +1694,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 
 | Método | Rota | Sucesso | Corpo |
 |---|---|---|---|
-| `POST` | `/api/v1/auth/register/request-code` | `202` | `{ "data": { "status": "accepted", "email": string, "expires_at": string, "resend_available_at": string } }` |
+| `POST` | `/api/v1/auth/register/request-code` | `202` `{ "data": { "status": "accepted", "email": string, "expires_at": string, "resend_available_at": string } }`; `200` `{ "data": { "status": "guest_verified", "email": string, "display_name": string \| null, "verification_token": string, "expires_at": string } }` |
 | `POST` | `/api/v1/auth/register/verify-code` | `200` | `{ "data": { "email": string, "verification_token": string, "expires_at": string } }` |
 | `POST` | `/api/v1/auth/register` | `201` | `{ "data": { "host": Host, "csrf_token": string, "expires_at": string } }` |
 | `POST` | `/api/v1/auth/email/verify` | `200` | `{ "data": { "host": Host } }` |

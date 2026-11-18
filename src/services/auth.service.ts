@@ -11,6 +11,7 @@ import {
 import { eventRepository } from '../repositories/event.repository';
 import { hostAuthSessionRepository } from '../repositories/hostAuthSession.repository';
 import { hostRepository } from '../repositories/host.repository';
+import { invitationRepository } from '../repositories/invitation.repository';
 import {
   emailVerificationRepository,
   passwordResetRepository,
@@ -85,6 +86,27 @@ type RegistrationCodeOutcome =
   | { status: 'verified'; verificationToken: string; expiresAt: Date }
   | { status: 'invalid'; reason: 'otp_invalid' | 'otp_attempts_exceeded' };
 
+/**
+ * Resultado do primeiro passo do registo.
+ *
+ * `accepted` segue o fluxo normal por OTP. `guest` aplica-se a emails
+ * que o anfitrião já inscreveu num evento: o convite serve de prova de
+ * posse, o OTP é dispensado e o token de registo é devolvido logo.
+ */
+export type RegistrationCodeResult =
+  | {
+      status: 'accepted';
+      expiresAt: Date;
+      resendAvailableAt: Date;
+      code: string;
+    }
+  | {
+      status: 'guest';
+      displayName: string;
+      verificationToken: string;
+      expiresAt: Date;
+    };
+
 function tokenExpiry(minutes: number): Date {
   return new Date(Date.now() + minutes * 60 * 1000);
 }
@@ -114,20 +136,51 @@ async function createAccountSession(
 
 export const authService = {
   /**
-   * Valida a disponibilidade do email e envia um código OTP.
+   * Valida a disponibilidade do email e prepara o registo.
+   *
+   * Fluxo normal: envia um código OTP de 6 dígitos. Quando o email já
+   * foi inscrito por um anfitrião, o convite serve de prova de posse:
+   * o OTP é dispensado e devolvemos logo o token de registo e o nome do
+   * convite para pré-preencher o formulário.
    *
    * O código anterior do mesmo email é invalidado. A conta ainda não
-   * existe: só é criada no passo `register`, depois de o código ser
-   * verificado e o token de verificação ser consumido.
+   * existe: só é criada no passo `register`, depois de o código (ou o
+   * token de convidado) ser consumido.
    */
   async requestRegistrationCode(
     input: RegisterRequestCodeBody,
     context?: AuditContext
-  ): Promise<{ expiresAt: Date; resendAvailableAt: Date; code: string }> {
+  ): Promise<RegistrationCodeResult> {
     if (await hostRepository.emailExists(input.email)) {
       throw new ConflictError('Este email já está registado.', 'email_already_registered', {
         email: ['Este email já está registado.'],
       });
+    }
+
+    const guestName = await invitationRepository.findLatestGuestNameByEmail(input.email);
+
+    if (guestName) {
+      const verificationToken = generateToken();
+      const expiresAt = tokenExpiry(env.REGISTRATION_VERIFICATION_TTL_MINUTES);
+
+      await withTransaction(async (client) => {
+        await registrationVerificationRepository.consumePendingForEmail(input.email, client);
+        await registrationVerificationRepository.createVerified(
+          input.email,
+          hashToken(verificationToken),
+          expiresAt,
+          client
+        );
+      });
+
+      await auditService.record({
+        action: 'registration_code_requested',
+        ip: context?.ip ?? null,
+        requestId: context?.requestId ?? null,
+        metadata: { skipped_otp: true, reason: 'known_guest' },
+      });
+
+      return { status: 'guest', displayName: guestName, verificationToken, expiresAt };
     }
 
     const latest = await registrationVerificationRepository.findLatestActiveForEmail(
@@ -166,7 +219,7 @@ export const authService = {
       requestId: context?.requestId ?? null,
     });
 
-    return { expiresAt, resendAvailableAt, code };
+    return { status: 'accepted', expiresAt, resendAvailableAt, code };
   },
 
   /**

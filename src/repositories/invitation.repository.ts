@@ -235,6 +235,26 @@ export const invitationRepository = {
     return row ? toInvitation(row) : null;
   },
 
+  /**
+   * Nome do convidado mais recente associado a um email.
+   *
+   * Usado no registo: quando o anfitrião já inscreveu este email num
+   * evento, o convidado não precisa de confirmar o email por OTP e o
+   * nome pode ser pré-preenchido a partir do convite.
+   */
+  async findLatestGuestNameByEmail(email: string): Promise<string | null> {
+    const result = await query<{ guest_name: string }>(
+      `SELECT guest_name
+         FROM invitations
+        WHERE lower(guest_email) = lower($1)
+          AND claim_revoked_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+      [email]
+    );
+    return result.rows[0]?.guest_name ?? null;
+  },
+
   async listByEvent(eventId: string, client?: PoolClient): Promise<Invitation[]> {
     const runner = client ?? pool;
     const result = await runner.query<InvitationRow>(

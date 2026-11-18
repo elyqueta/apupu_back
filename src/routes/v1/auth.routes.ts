@@ -28,16 +28,20 @@ const router = Router();
  * /api/v1/auth/register/request-code:
  *   post:
  *     tags: [Conta]
- *     summary: Valida o email e envia um código OTP
+ *     summary: Valida o email e prepara o registo
  *     description: >
  *       Primeiro passo do registo. Confirma que o email ainda não está
- *       registado e envia um código de 6 dígitos, válido por
- *       `REGISTRATION_OTP_TTL_MINUTES` minutos. Pedidos repetidos antes
- *       de `REGISTRATION_OTP_RESEND_SECONDS` devolvem `429`
- *       `otp_resend_too_soon`. A conta só é criada depois de o código
- *       ser verificado em `/auth/register/verify-code`. O código é
- *       enviado exclusivamente por email, com um link que pré-preenche
- *       o ecrã de verificação; nunca é devolvido na resposta da API.
+ *       registado. Se o email já tiver sido inscrito por um anfitrião
+ *       num evento, o convite serve de prova de posse: o OTP é
+ *       dispensado e a resposta (`200`, `guest_verified`) inclui o
+ *       `verification_token` e o nome do convite para pré-preencher o
+ *       formulário. Caso contrário (`202`, `accepted`) envia um código
+ *       de 6 dígitos, válido por `REGISTRATION_OTP_TTL_MINUTES`
+ *       minutos. Pedidos repetidos antes de
+ *       `REGISTRATION_OTP_RESEND_SECONDS` devolvem `429`
+ *       `otp_resend_too_soon`. A conta só é criada no passo
+ *       `/auth/register`, depois de o token de verificação ser
+ *       consumido. O código nunca é devolvido na resposta da API.
  *     requestBody:
  *       required: true
  *       content:
@@ -48,6 +52,19 @@ const router = Router();
  *             properties:
  *               email: { type: string, format: email }
  *     responses:
+ *       200:
+ *         description: >
+ *           Email já inscrito por um anfitrião. O OTP é dispensado e o
+ *           token de registo segue na resposta.
+ *         content:
+ *           application/json:
+ *             example:
+ *               data:
+ *                 status: guest_verified
+ *                 email: convidado@exemplo.ao
+ *                 display_name: Ana Silva
+ *                 verification_token: 6d2c...
+ *                 expires_at: '2026-11-18T22:00:00.000Z'
  *       202:
  *         description: Código enfileirado para envio por email.
  *         content:
