@@ -39,6 +39,13 @@ export interface HighlightItem {
   value: string;
 }
 
+export interface HighlightBlockOptions {
+  /** Cor de fundo (por omissão, o amarelo claro dos documentos). */
+  background?: string;
+  /** Opacidade do fundo, para deixar a marca de água visível. */
+  backgroundOpacity?: number;
+}
+
 export interface DonutDatum {
   key: StatusTone;
   label: string;
@@ -67,14 +74,14 @@ function siteUrl(): string {
 }
 
 function drawWatermark(ctx: PdfContext): void {
-  const width = mm(110);
+  const width = mm(100);
   const height = width * (240 / 168);
   const x = (ctx.pageWidth - width) / 2;
   const y = (ctx.pageHeight - height) / 2;
 
+  // A opacidade de 6 % está dentro do SVG; ver `watermarkSvg()`.
   ctx.doc.save();
-  ctx.doc.opacity(0.06);
-  SVGtoPDF(ctx.doc, watermarkSvg(), x, y, {
+  SVGtoPDF(ctx.doc, watermarkSvg(0.06), x, y, {
     width,
     height,
     preserveAspectRatio: 'xMidYMid meet',
@@ -258,14 +265,27 @@ export function drawSectionTitle(ctx: PdfContext, y: number, title: string): num
 }
 
 /** Bloco de destaque com a barra dourada à esquerda. */
-export function drawHighlightBlock(ctx: PdfContext, y: number, items: HighlightItem[]): number {
+export function drawHighlightBlock(
+  ctx: PdfContext,
+  y: number,
+  items: HighlightItem[],
+  options: HighlightBlockOptions = {}
+): number {
   const { doc } = ctx;
   const height = mm(22);
 
-  doc
+  // `fillOpacity` faz parte do graphics state: save/restore garante
+  // que o texto seguinte continua totalmente opaco.
+  doc.save();
+  const background = doc
     .roundedRect(ctx.left, y, ctx.width, height, mm(1.5))
-    .fillColor(PDF_COLORS.highlight)
-    .fill();
+    .fillColor(options.background ?? PDF_COLORS.highlight);
+  if (options.backgroundOpacity !== undefined) {
+    background.fillOpacity(options.backgroundOpacity);
+  }
+  background.fill();
+  doc.restore();
+
   doc.rect(ctx.left, y, mm(3), height).fillColor(PDF_COLORS.accent).fill();
 
   const innerLeft = ctx.left + mm(6);
@@ -373,33 +393,54 @@ export function drawDonut(ctx: PdfContext, y: number, data: DonutDatum[]): numbe
       lineBreak: false,
     });
 
-  let legendY = y;
-  const legendX = cx + radius + mm(16);
+  // Legenda num bloco fixo de 210 pt, 24 pt à direita do donut e
+  // centrado verticalmente com ele. Rótulo à esquerda, valor à direita
+  // dentro do mesmo bloco.
+  const legendWidth = 210;
+  const legendGap = 24;
+  const lineHeight = 20;
+  const bulletSize = 8;
+  const legendX = cx + radius + thickness / 2 + legendGap;
+  const legendTop = cy - (data.length * lineHeight) / 2;
 
-  for (const item of data) {
+  doc.font(PDF_FONTS.regular).fontSize(9);
+  const textLine = doc.currentLineHeight();
+
+  data.forEach((item, index) => {
     const percent = total > 0 ? Math.round((item.value / total) * 100) : 0;
+    const rowY = legendTop + index * lineHeight;
+
     doc
-      .circle(legendX + mm(1.5), legendY + mm(2), mm(1.5))
+      .circle(
+        legendX + bulletSize / 2,
+        rowY + lineHeight / 2,
+        bulletSize / 2
+      )
       .fillColor(item.color)
       .fill();
+
     doc
       .font(PDF_FONTS.regular)
       .fontSize(9)
       .fillColor(PDF_COLORS.ink)
-      .text(item.label, legendX + mm(5), legendY, { width: mm(45), lineBreak: false });
+      .text(item.label, legendX + 16, rowY + (lineHeight - textLine) / 2, {
+        width: legendWidth - 16 - 90,
+        lineBreak: false,
+      });
+
     doc
       .font(PDF_FONTS.bold)
       .fontSize(9)
       .fillColor(PDF_COLORS.brand)
-      .text(`${item.value} · ${percent}%`, legendX + mm(50), legendY, {
-        width: mm(35),
-        align: 'right',
-        lineBreak: false,
-      });
-    legendY += mm(8);
-  }
+      .text(
+        `${item.value} · ${percent} %`,
+        legendX + legendWidth - 90,
+        rowY + (lineHeight - textLine) / 2,
+        { width: 90, align: 'right', lineBreak: false }
+      );
+  });
 
-  const bottom = Math.max(cy + radius + thickness / 2, legendY);
+  const bottom = Math.max(cy + radius + thickness / 2, legendTop + data.length * lineHeight);
   return bottom + mm(6);
 }
 

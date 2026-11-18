@@ -5,6 +5,7 @@ interface SummaryRow {
   event_id: string;
   title: string;
   status: EventReportRow['status'];
+  starts_at: Date | string | null;
   total: string;
   accepted: string;
   declined: string;
@@ -59,7 +60,7 @@ export const reportRepository = {
     }
 
     const result = await query<SummaryRow>(
-      `SELECT e.id AS event_id, e.title, e.status,
+      `SELECT e.id AS event_id, e.title, e.status, e.starts_at,
               count(i.id)::text AS total,
               count(i.id) FILTER (WHERE i.rsvp_status = 'accepted')::text AS accepted,
               count(i.id) FILTER (WHERE i.rsvp_status = 'declined')::text AS declined,
@@ -76,6 +77,7 @@ export const reportRepository = {
       eventId: row.event_id,
       title: row.title,
       status: row.status,
+      startsAt: row.starts_at ? new Date(row.starts_at) : null,
       totalInvitations: Number(row.total),
       accepted: Number(row.accepted),
       declined: Number(row.declined),

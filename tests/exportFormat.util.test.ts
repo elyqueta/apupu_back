@@ -11,7 +11,13 @@ import {
   formatExportDateTime,
   formatExportNumber,
   formatKz,
+  formatReportCount,
+  formatReportPercent,
+  formatWeekdayDateTime,
   protectCsvFormula,
+  reportDocumentCode,
+  reportResponseRate,
+  reportRowIsConsistent,
   slugify,
 } from '../src/utils/exportFormat.util';
 
@@ -99,5 +105,46 @@ describe('exportFormat.util', () => {
     expect(
       documentCode('CC-LST', '11111111-2222-4333-8444-555555555555', generatedAt)
     ).toBe('CC-LST-2026-655765');
+  });
+
+  it('formata percentagens do relatório com espaço antes do %', () => {
+    expect(formatReportPercent(0.75)).toBe('75 %');
+    expect(formatReportPercent(7 / 12)).toBe('58 %');
+    expect(formatReportPercent(0)).toBe('0 %');
+    expect(formatReportPercent(1)).toBe('100 %');
+  });
+
+  it('apresenta a data do evento com dia da semana e ponto médio', () => {
+    expect(formatWeekdayDateTime(new Date('2026-11-21T14:00:00Z'))).toBe(
+      'sáb, 21 nov 2026 · 15:00'
+    );
+    expect(formatWeekdayDateTime(new Date('2026-11-18T10:00:00Z'))).toBe(
+      'qua, 18 nov 2026 · 11:00'
+    );
+    expect(formatWeekdayDateTime(null)).toBe('');
+  });
+
+  it('agrupa contagens grandes sem partir as colunas', () => {
+    expect(formatReportCount(0)).toBe('0');
+    expect(formatReportCount(5000)).toBe('5 000');
+    expect(formatReportCount(12_500)).toBe('12 500');
+  });
+
+  it('gera um código de relatório estável e alfanumérico', () => {
+    const generatedAt = new Date('2026-11-18T10:00:00Z');
+    const code = reportDocumentCode('host-1', generatedAt);
+
+    expect(code).toMatch(/^CC-REL-20261118-[A-Z0-9]{4}$/);
+    expect(reportDocumentCode('host-1', generatedAt)).toBe(code);
+    expect(reportDocumentCode('host-2', generatedAt)).not.toBe(code);
+  });
+
+  it('calcula a taxa de resposta e valida a soma por linha', () => {
+    const counts = { totalInvitations: 12, accepted: 6, pending: 5, declined: 1 };
+
+    expect(reportResponseRate(counts)).toBeCloseTo(7 / 12);
+    expect(reportResponseRate({ ...counts, totalInvitations: 0 })).toBe(0);
+    expect(reportRowIsConsistent(counts)).toBe(true);
+    expect(reportRowIsConsistent({ ...counts, totalInvitations: 13 })).toBe(false);
   });
 });

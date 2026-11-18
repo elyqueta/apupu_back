@@ -162,6 +162,8 @@ export interface EventReportRow {
   eventId: string;
   title: string;
   status: EventStatus;
+  /** Data do evento, usada apenas no PDF; não faz parte do contrato da API. */
+  startsAt?: Date | null;
   totalInvitations: number;
   accepted: number;
   declined: number;

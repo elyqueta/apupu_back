@@ -60,12 +60,24 @@ export function logoHorizontalSvg(): string {
   return logoCache;
 }
 
-/** Símbolo do pin usado como marca de água. */
-export function watermarkSvg(): string {
+/**
+ * Símbolo do pin usado como marca de água.
+ *
+ * A opacidade viaja dentro do próprio SVG (`stroke-opacity`/
+ * `fill-opacity`). O `svg-to-pdfkit` reaplica a cor de traço com a
+ * opacidade recebida no ficheiro, pelo que definir apenas
+ * `doc.opacity()` antes de o desenhar não é suficiente: a cor do SVG
+ * repõe a opacidade a 1.
+ */
+export function watermarkSvg(opacity = 0.06): string {
   if (!watermarkCache) {
     watermarkCache = readFileSync(assetPath('pdf', 'watermark-symbol.svg'), 'utf8');
   }
-  return watermarkCache;
+
+  const value = String(opacity);
+  return watermarkCache
+    .replace(/stroke="#0F3D3E"/g, `stroke="#0F3D3E" stroke-opacity="${value}"`)
+    .replace(/fill="#0F3D3E"/g, `fill="#0F3D3E" fill-opacity="${value}"`);
 }
 
 /** Regista as três variantes da Figtree embebidas no PDF. */

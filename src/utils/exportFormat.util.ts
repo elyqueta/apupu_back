@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * Formatação partilhada pelos PDFs e CSVs exportados.
  *
@@ -223,4 +225,82 @@ export function documentCode(prefix: string, eventId: string, generatedAt: Date)
   const numeric = Number.parseInt(hex, 16);
   const sequence = Number.isFinite(numeric) ? numeric % 1_000_000 : 0;
   return `${prefix}-${year}-${String(sequence).padStart(6, '0')}`;
+}
+
+/**
+ * Código do relatório de eventos: `CC-REL-AAAAMMDD-XXXX`.
+ *
+ * Os quatro caracteres finais derivam de um hash estável do pedido
+ * (conta + instante de geração), pelo que o mesmo pedido produz sempre
+ * o mesmo código sem depender de uma sequência persistida.
+ */
+export function reportDocumentCode(seed: string, generatedAt: Date): string {
+  const stamp = exportDateStamp(generatedAt).replace(/-/g, '');
+  const digest = createHash('sha256').update(seed).digest();
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let suffix = '';
+
+  for (let index = 0; index < 4; index += 1) {
+    suffix += alphabet.charAt((digest[index] ?? 0) % alphabet.length);
+  }
+
+  return `CC-REL-${stamp}-${suffix}`;
+}
+
+/** Percentagem pt-PT com espaço antes do `%`: `75 %`. */
+export function formatReportPercent(value: number): string {
+  if (!Number.isFinite(value)) return '0 %';
+  return `${Math.round(value * 100)} %`;
+}
+
+const WEEKDAY_ABBREVIATIONS: Record<string, string> = {
+  Mon: 'seg',
+  Tue: 'ter',
+  Wed: 'qua',
+  Thu: 'qui',
+  Fri: 'sex',
+  Sat: 'sáb',
+  Sun: 'dom',
+};
+
+/** Data curta com dia da semana: `sáb, 21 nov 2026 · 15:00`. */
+export function formatWeekdayDateTime(value: Date | string | null | undefined): string {
+  const date = asDate(value);
+  if (!date) return '';
+
+  // O ICU de pt-PT devolve o nome completo em `weekday: 'short'`;
+  // en-GB dá a chave estável (Mon..Sun) que aqui abreviados em pt-PT.
+  const weekdayKey = new Intl.DateTimeFormat('en-GB', {
+    timeZone: EXPORT_TIME_ZONE,
+    weekday: 'short',
+  }).format(date);
+  const weekday = WEEKDAY_ABBREVIATIONS[weekdayKey] ?? weekdayKey.toLowerCase();
+
+  return `${weekday}, ${formatDisplayDateTime(date).replace(', ', ' · ')}`;
+}
+
+/** Contagem legível: `5000`, `12 500`. */
+export function formatReportCount(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+
+  const integer = Math.trunc(value);
+  return String(integer).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+export interface ReportRowCounts {
+  totalInvitations: number;
+  accepted: number;
+  declined: number;
+  pending: number;
+}
+
+/** Taxa de resposta = respostas (confirmadas + recusadas) ÷ convites. */
+export function reportResponseRate(counts: ReportRowCounts): number {
+  if (counts.totalInvitations <= 0) return 0;
+  return (counts.accepted + counts.declined) / counts.totalInvitations;
+}
+
+/** Confirma que Confirmados + Pendentes + Recusados = Convites. */
+export function reportRowIsConsistent(counts: ReportRowCounts): boolean {
+  return counts.accepted + counts.pending + counts.declined === counts.totalInvitations;
 }

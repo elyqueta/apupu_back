@@ -36,6 +36,7 @@ const summary = {
       eventId: '00000000-0000-4000-8000-000000000001',
       title: 'Casamento da Ana e do João',
       status: 'scheduled' as const,
+      startsAt: new Date('2026-11-21T14:00:00Z'),
       totalInvitations: 10,
       accepted: 6,
       declined: 1,
@@ -167,6 +168,57 @@ describe('reportExportService', () => {
     const body = await collect(file.stream);
     expect(body.subarray(0, 4).toString('latin1')).toBe('%PDF');
     expect(body.byteLength).toBeGreaterThan(1000);
+    expect(body.byteLength).toBeLessThan(300 * 1024);
+  });
+
+  it('gera o relatório vazio com KPIs a zero', async () => {
+    vi.mocked(reportRepository.summaryForHost).mockResolvedValue({
+      events: [],
+      totals: {
+        total_invitations: 0,
+        accepted: 0,
+        declined: 0,
+        pending: 0,
+        response_rate: 0,
+        acceptance_rate: 0,
+      },
+    });
+
+    const file = await reportExportService.summary(scope, 'pdf');
+    const body = await collect(file.stream);
+
+    expect(body.subarray(0, 4).toString('latin1')).toBe('%PDF');
+    expect(body.byteLength).toBeLessThan(300 * 1024);
+  });
+
+  it('pagina o relatório com muitos eventos', async () => {
+    const events = Array.from({ length: 30 }, (_, index) => ({
+      eventId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      title: `Evento número ${index + 1} · Celebração com nome comprido`,
+      status: (['scheduled', 'completed', 'cancelled', 'draft'] as const)[index % 4],
+      startsAt: new Date('2026-11-21T14:00:00Z'),
+      totalInvitations: 100,
+      accepted: 60,
+      pending: 30,
+      declined: 10,
+    }));
+
+    vi.mocked(reportRepository.summaryForHost).mockResolvedValue({
+      events,
+      totals: {
+        total_invitations: 3000,
+        accepted: 1800,
+        declined: 300,
+        pending: 900,
+        response_rate: 0.7,
+        acceptance_rate: 0.6,
+      },
+    });
+
+    const file = await reportExportService.summary(scope, 'pdf');
+    const body = await collect(file.stream);
+
+    expect(body.subarray(0, 4).toString('latin1')).toBe('%PDF');
     expect(body.byteLength).toBeLessThan(300 * 1024);
   });
 
