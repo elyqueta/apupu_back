@@ -100,6 +100,10 @@ const paginatedQuerySchema = z.object({
   ...paginationQueryFields,
 });
 
+const reportExportQuerySchema = z.object({
+  format: z.enum(['csv', 'pdf']).default('pdf'),
+});
+
 const eventReportQuerySchema = z.object({
   days: z.coerce
     .number({ error: 'O número de dias deve ser um número.' })
@@ -202,6 +206,7 @@ export {
   guestInvitationsQuerySchema,
   paginatedQuerySchema,
   eventReportQuerySchema,
+  reportExportQuerySchema,
   tasksQuerySchema,
   createTaskSchema,
   updateTaskSchema,
@@ -222,6 +227,7 @@ export type HostEventsQuery = z.infer<typeof hostEventsQuerySchema>;
 export type HostGuestsQuery = z.infer<typeof hostGuestsQuerySchema>;
 export type GuestInvitationsQuery = z.infer<typeof guestInvitationsQuerySchema>;
 export type EventReportQuery = z.infer<typeof eventReportQuerySchema>;
+export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>;
 export type TasksQuery = z.infer<typeof tasksQuerySchema>;
 export type CreateTaskBody = z.infer<typeof createTaskSchema>;
 export type UpdateTaskBody = z.infer<typeof updateTaskSchema>;

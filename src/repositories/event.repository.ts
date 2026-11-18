@@ -202,10 +202,10 @@ export const eventRepository = {
          location_name, location_address, online_url, message, rules, dress_code,
          template_id, theme, contribution_enabled, contribution_bank_name,
          contribution_account_holder, contribution_account_reference,
-         rsvp_deadline, status
+         rsvp_deadline, cover_url, status
        )
        VALUES (
-         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'scheduled'
+         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'scheduled'
        )
        RETURNING ${SELECT_COLUMNS}`,
       [
@@ -233,6 +233,7 @@ export const eventRepository = {
         data.contribution.accountHolder,
         data.contribution.accountReference,
         data.rsvpDeadline,
+        data.coverUrl ?? null,
       ]
     );
 

@@ -34,6 +34,7 @@ import {
   notificationIdParamsSchema,
   notificationsQuerySchema,
   paginatedQuerySchema,
+  reportExportQuerySchema,
   taskIdParamsSchema,
   tasksQuerySchema,
   updateNotificationSchema,
@@ -447,6 +448,32 @@ router.post(
   requireAuthCsrf,
   requireVerifiedEmail,
   asyncHandler(hostEventController.resendManageLink)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/managers:
+ *   get:
+ *     tags: [Gestores]
+ *     summary: Lista os gestores de todos os eventos da conta
+ *     description: >
+ *       Página global de equipas. Devolve apenas gestores activos de
+ *       eventos cujo proprietário é a conta autenticada.
+ *     security:
+ *       - accountSession: []
+ *     responses:
+ *       200:
+ *         description: Gestores activos com o evento a que pertencem.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEventManagerList' }
+ *       401:
+ *         description: Sessão inválida.
+ */
+router.get(
+  '/managers',
+  asyncHandler(hostAccountAuth),
+  asyncHandler(eventManagerController.listAll)
 );
 
 /**
@@ -981,6 +1008,42 @@ router.get(
   '/reports/summary',
   asyncHandler(hostAccountAuth),
   asyncHandler(reportController.summary)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/reports/export:
+ *   get:
+ *     tags: [Workspace]
+ *     summary: Exporta o relatório agregado em PDF ou CSV
+ *     description: >
+ *       Documento gerado no servidor com a identidade visual do Conto
+ *       Contigo. O PDF inclui a logo da plataforma e marca de água; o CSV
+ *       inclui o mesmo resumo em formato tabular.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: query
+ *         name: format
+ *         schema: { type: string, enum: [pdf, csv], default: pdf }
+ *     responses:
+ *       200:
+ *         description: Ficheiro do relatório.
+ *         content:
+ *           application/pdf:
+ *             schema: { type: string, format: binary }
+ *           text/csv:
+ *             schema: { type: string }
+ *       401:
+ *         description: Sessão inválida.
+ *       422:
+ *         description: Formato inválido (`validation_failed`).
+ */
+router.get(
+  '/reports/export',
+  asyncHandler(hostAccountAuth),
+  validate({ query: reportExportQuerySchema }),
+  asyncHandler(reportController.exportSummary)
 );
 
 /**

@@ -42,6 +42,12 @@ export interface UpdateInvitationInput {
   guestEmail?: string;
   guestPhone?: string | null;
   tableName?: string | null;
+  /** Novo hash do link, usado quando o email do convidado é corrigido. */
+  tokenHash?: string;
+  /** Novo token cifrado, para reconstruir o link depois da alteração. */
+  tokenEncrypted?: string;
+  /** Limpa a reivindicação do link antigo. */
+  resetClaim?: boolean;
 }
 
 /** Convite com o resumo do evento, usado na lista global de convidados. */
@@ -66,6 +72,7 @@ export interface AccountInvitation extends Invitation {
   eventStatus: EventStatus;
   eventCategory: EventCategory | null;
   eventTemplateId: string | null;
+  eventCoverUrl: string | null;
   eventLocation: EventLocation;
 }
 

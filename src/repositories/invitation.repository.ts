@@ -86,6 +86,7 @@ interface AccountInvitationRow extends InvitationRow {
   event_status: EventStatus;
   event_category: EventCategory | null;
   event_template_id: string | null;
+  event_cover_url: string | null;
   event_location_type: 'venue' | 'online';
   event_location_name: string | null;
   event_location_address: string | null;
@@ -109,6 +110,7 @@ function toAccountInvitation(row: AccountInvitationRow): AccountInvitation {
     eventStatus: row.event_status,
     eventCategory: row.event_category,
     eventTemplateId: row.event_template_id,
+    eventCoverUrl: row.event_cover_url,
     eventLocation,
   };
 }
@@ -355,6 +357,7 @@ export const invitationRepository = {
               e.status AS event_status,
               e.category AS event_category,
               e.template_id AS event_template_id,
+              e.cover_url AS event_cover_url,
               e.location_type AS event_location_type,
               e.location_name AS event_location_name,
               e.location_address AS event_location_address,
@@ -431,6 +434,17 @@ export const invitationRepository = {
     if ('tableName' in changes) {
       values.push(changes.tableName);
       set.push(`table_name = $${values.length}`);
+    }
+    if ('tokenHash' in changes) {
+      values.push(changes.tokenHash);
+      set.push(`token_hash = $${values.length}`);
+    }
+    if ('tokenEncrypted' in changes) {
+      values.push(changes.tokenEncrypted);
+      set.push(`token_encrypted = $${values.length}`);
+    }
+    if (changes.resetClaim) {
+      set.push('claim_hash = NULL', 'claimed_at = NULL', 'claim_revoked_at = NULL');
     }
 
     if (set.length === 0) return this.findById(id, client);

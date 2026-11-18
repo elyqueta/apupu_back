@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../database/pool';
-import { EventManager } from '../types/eventManager.types';
+import { EventStatus } from '../types/event.types';
+import { EventManager, HostEventManager } from '../types/eventManager.types';
 
 interface EventManagerRow {
   id: string;
@@ -13,6 +14,12 @@ interface EventManagerRow {
   created_at: Date;
   updated_at: Date;
   has_account: boolean;
+}
+
+interface HostEventManagerRow extends EventManagerRow {
+  event_title: string;
+  event_starts_at: Date | null;
+  event_status: EventStatus;
 }
 
 function toManager(row: EventManagerRow): EventManager {
@@ -61,6 +68,35 @@ export const eventManagerRepository = {
     );
 
     return result.rows.map(toManager);
+  },
+
+  /**
+   * Lista todos os gestores activos dos eventos de um anfitrião.
+   *
+   * A página global de equipas mostra, numa só lista, quem gere cada
+   * evento. Só os eventos cujo `host_id` é o da conta entram: eventos
+   * em que a conta é apenas gestora não expõem a equipa.
+   */
+  async listActiveByHost(hostId: string): Promise<HostEventManager[]> {
+    const result = await query<HostEventManagerRow>(
+      `SELECT ${SELECT_WITH_ACCOUNT},
+              e.title AS event_title,
+              e.starts_at AS event_starts_at,
+              e.status AS event_status
+         FROM event_managers m
+         JOIN events e ON e.id = m.event_id
+        WHERE e.host_id = $1
+          AND m.revoked_at IS NULL
+        ORDER BY e.starts_at ASC NULLS LAST, e.created_at ASC, m.created_at ASC`,
+      [hostId]
+    );
+
+    return result.rows.map((row) => ({
+      ...toManager(row),
+      eventTitle: row.event_title,
+      eventStartsAt: row.event_starts_at,
+      eventStatus: row.event_status,
+    }));
   },
 
   async findById(id: string): Promise<EventManager | null> {

@@ -130,6 +130,7 @@ const eventObjectSchema = z
     rules: optionalText(4000),
     dress_code: optionalText(200),
     template_id: z.uuid('Template inválido.').nullable().optional(),
+    cover_url: z.url('URL de capa inválida.').max(2048).nullable().optional(),
     theme: themeSchema.optional(),
     contribution: contributionSchema.optional(),
     rsvp_deadline: optionalDate,

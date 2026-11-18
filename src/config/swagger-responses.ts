@@ -422,6 +422,9 @@ export const operationErrorResponses: Record<
     401: 'HostSessionInvalid',
     404: 'EventNotFound',
   },
+  'get /api/v1/host/managers': {
+    401: 'HostSessionInvalid',
+  },
   'post /api/v1/host/events/{eventId}/managers': {
     401: 'HostSessionInvalid',
     403: 'EmailNotVerified',
@@ -527,6 +530,10 @@ export const operationErrorResponses: Record<
   },
   'get /api/v1/host/reports/summary': {
     401: 'HostSessionInvalid',
+  },
+  'get /api/v1/host/reports/export': {
+    401: 'HostSessionInvalid',
+    422: 'ValidationFailed',
   },
   'get /api/v1/host/events/{eventId}/reports': {
     401: 'HostSessionInvalid',

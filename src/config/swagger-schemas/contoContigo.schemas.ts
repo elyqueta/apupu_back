@@ -462,6 +462,12 @@ export const contoContigoSchemas = {
         enum: ['wedding', 'birthday', 'corporate', 'baby', 'other'],
       },
       template_id: { type: 'string', nullable: true, example: 'aurora' },
+      cover_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description: 'Imagem de capa do evento, quando definida.',
+      },
       location: { $ref: '#/components/schemas/EventLocation' },
     },
   },
@@ -1017,6 +1023,44 @@ export const contoContigoSchemas = {
       data: {
         type: 'array',
         items: { $ref: '#/components/schemas/EventManager' },
+      },
+    },
+  },
+
+  HostEventManager: {
+    type: 'object',
+    description:
+      'Gestor activo de um evento do anfitrião, com o resumo do evento ' +
+      'para a página global de equipas.',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      event_id: { type: 'string', format: 'uuid' },
+      email: { type: 'string', format: 'email' },
+      has_account: { type: 'boolean' },
+      last_used_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+      event: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          title: { type: 'string' },
+          starts_at: { type: 'string', format: 'date-time', nullable: true },
+          status: {
+            type: 'string',
+            enum: ['draft', 'scheduled', 'cancelled', 'completed'],
+          },
+        },
+      },
+    },
+  },
+
+  HostEventManagerList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/HostEventManager' },
       },
     },
   },

@@ -8,13 +8,12 @@ vi.mock('../src/repositories/invitation.repository', () => ({
   invitationRepository: {
     findById: vi.fn(),
     update: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
 vi.mock('../src/repositories/emailDelivery.repository', () => ({
-  emailDeliveryRepository: {
-    updatePendingRecipient: vi.fn(),
-  },
+  emailDeliveryRepository: {},
 }));
 
 vi.mock('../src/repositories/event.repository', () => ({
@@ -29,6 +28,7 @@ vi.mock('../src/services/reminder.service', () => ({
   cancelMessagesForInvitation: vi.fn(),
   enqueueDeclineNotification: vi.fn(),
   enqueueInvitationEmail: vi.fn(),
+  enqueueInvitationRemoved: vi.fn(),
   enqueueOnboardingMessages: vi.fn(),
   enqueueRemindersForInvitation: vi.fn(),
 }));
@@ -37,9 +37,15 @@ vi.mock('../src/services/guestAccess.service', () => ({
   accountOwnsInvitation: vi.fn(),
 }));
 
-import { emailDeliveryRepository } from '../src/repositories/emailDelivery.repository';
+import { eventRepository } from '../src/repositories/event.repository';
 import { invitationRepository } from '../src/repositories/invitation.repository';
 import { invitationService } from '../src/services/invitation.service';
+import {
+  cancelMessagesForInvitation,
+  enqueueInvitationEmail,
+  enqueueInvitationRemoved,
+  enqueueRemindersForInvitation,
+} from '../src/services/reminder.service';
 import { Invitation } from '../src/types/invitation.types';
 
 const eventId = '00000000-0000-4000-8000-000000000001';
@@ -73,6 +79,7 @@ function makeInvitation(overrides: Partial<Invitation> = {}): Invitation {
 describe('invitationService.update', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(eventRepository.findById).mockResolvedValue({ id: eventId } as never);
     vi.mocked(invitationRepository.update).mockImplementation(async (id, changes) =>
       makeInvitation({ id, guestEmail: changes.guestEmail ?? 'joao@exemplo.ao' })
     );
@@ -127,14 +134,30 @@ describe('invitationService.update', () => {
 
     expect(invitationRepository.update).toHaveBeenCalledWith(
       invitationId,
-      { guestEmail: 'novo@exemplo.ao' },
+      expect.objectContaining({
+        guestEmail: 'novo@exemplo.ao',
+        tokenHash: expect.any(String),
+        tokenEncrypted: expect.any(String),
+        resetClaim: true,
+      }),
       expect.anything()
     );
-    expect(emailDeliveryRepository.updatePendingRecipient).toHaveBeenCalledWith(
+    expect(cancelMessagesForInvitation).toHaveBeenCalledWith(
       invitationId,
-      'novo@exemplo.ao',
       expect.anything()
     );
+    expect(enqueueInvitationRemoved).toHaveBeenCalledWith(
+      expect.objectContaining({ id: eventId }),
+      'joao@exemplo.ao',
+      expect.anything()
+    );
+    expect(enqueueInvitationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ id: eventId }),
+      expect.objectContaining({ guestEmail: 'novo@exemplo.ao' }),
+      { resend: true },
+      expect.anything()
+    );
+    expect(enqueueRemindersForInvitation).toHaveBeenCalled();
   });
 
   it('não bloqueia quando o contacto enviado é igual ao actual', async () => {

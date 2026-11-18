@@ -1,8 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { env } from '../config/env';
 import { withTransaction } from '../database/pool';
 import { ConflictError, NotFoundError } from '../errors';
 import { activityRepository } from '../repositories/activity.repository';
-import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { eventRepository } from '../repositories/event.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { CreateInvitationBody, UpdateInvitationBody } from '../schemas/event.schemas';
@@ -17,6 +17,7 @@ import {
   cancelMessagesForInvitation,
   enqueueDeclineNotification,
   enqueueInvitationEmail,
+  enqueueInvitationRemoved,
   enqueueOnboardingMessages,
   enqueueRemindersForInvitation,
 } from './reminder.service';
@@ -144,11 +145,31 @@ export const invitationService = {
           );
         }
 
+        const emailChanged =
+          input.email !== undefined && input.email !== current.guestEmail;
         const changes: UpdateInvitationInput = {};
+        let event: Event | null = null;
+
         if (input.name !== undefined) changes.guestName = input.name;
         if (input.email !== undefined) changes.guestEmail = input.email;
         if (input.phone !== undefined) changes.guestPhone = input.phone;
         if (input.table_name !== undefined) changes.tableName = input.table_name;
+
+        if (emailChanged) {
+          event = await eventRepository.findById(eventId, client);
+
+          if (!event) {
+            throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+          }
+
+          // O link é pessoal: ao corrigir o email, o link anterior deixa
+          // de corresponder a este convite e o destinatário antigo é
+          // avisado de que foi removido.
+          const token = generateToken();
+          changes.tokenHash = hashToken(token);
+          changes.tokenEncrypted = encryptToken(token);
+          changes.resetClaim = true;
+        }
 
         const updated = await invitationRepository.update(current.id, changes, client);
 
@@ -156,8 +177,13 @@ export const invitationService = {
           throw new NotFoundError('Convidado não encontrado.', 'invitation_not_found');
         }
 
-        if (input.email !== undefined && input.email !== current.guestEmail) {
-          await emailDeliveryRepository.updatePendingRecipient(current.id, input.email, client);
+        if (emailChanged && event) {
+          await cancelMessagesForInvitation(current.id, client);
+          await enqueueInvitationRemoved(event, current.guestEmail, client);
+          await enqueueInvitationEmail(event, updated, { resend: true }, client);
+          await enqueueRemindersForInvitation(event, updated, client, {
+            keySuffix: randomUUID(),
+          });
         }
 
         return updated;
@@ -176,6 +202,12 @@ export const invitationService = {
   async remove(eventId: string, invitationId: string): Promise<void> {
     await withTransaction(async (client) => {
       const invitation = await findOwnedInvitation(eventId, invitationId, client);
+      const event = await eventRepository.findById(eventId, client);
+
+      if (event) {
+        await enqueueInvitationRemoved(event, invitation.guestEmail, client);
+      }
+
       await invitationRepository.delete(invitation.id, client);
     });
   },
@@ -213,6 +245,12 @@ export const invitationService = {
 
       await invitationRepository.revokeClaim(invitation.id, client);
       await cancelMessagesForInvitation(invitation.id, client);
+
+      const event = await eventRepository.findById(eventId, client);
+
+      if (event) {
+        await enqueueInvitationRemoved(event, invitation.guestEmail, client);
+      }
 
       const updated = await invitationRepository.findById(invitation.id, client);
 

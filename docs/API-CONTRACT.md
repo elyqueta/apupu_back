@@ -362,6 +362,7 @@ pesquisa.
 | `DELETE` | `/api/v1/host/events/{eventId}` | Apaga evento e dados em cascata; exige email verificado e posse |
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | Emite e envia um novo link de gestão; invalida o anterior; só o anfitrião |
 | `GET` | `/api/v1/host/events/{eventId}/managers` | Lista os gestores activos; só o anfitrião |
+| `GET` | `/api/v1/host/managers` | Lista os gestores de todos os eventos da conta; só o anfitrião |
 | `POST` | `/api/v1/host/events/{eventId}/managers` | Adiciona um gestor por email e enfileira o convite; só o anfitrião |
 | `DELETE` | `/api/v1/host/events/{eventId}/managers/{managerId}` | Remove o acesso de um gestor; só o anfitrião |
 | `POST` | `/api/v1/host/events/{eventId}/managers/{managerId}/resend` | Emite um novo link para o gestor; só o anfitrião |
@@ -375,6 +376,7 @@ pesquisa.
 | `POST` | `/api/v1/host/events/{eventId}/cover/upload` | Carrega a capa por `multipart/form-data` |
 | `DELETE` | `/api/v1/host/events/{eventId}/cover` | Remove a capa (idempotente) |
 | `GET` | `/api/v1/host/reports/summary` | Agregados por evento e taxas |
+| `GET` | `/api/v1/host/reports/export` | Exporta o resumo em PDF ou CSV |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | Série diária do evento |
 | `GET` | `/api/v1/host/notifications` | Notificações da conta (paginadas, com filtros e pesquisa) |
 | `GET` | `/api/v1/host/notifications/unread-count` | Contagem de notificações não lidas |
@@ -398,6 +400,7 @@ Parâmetros de lista:
   é sempre a do email da conta autenticada.
 - Relatório diário: `days` (1 a 365, por omissão 30); a série usa dias
   UTC, um ponto por dia, incluindo dias sem movimento.
+- Exportação do relatório: `format` (`pdf` \| `csv`, omissão `pdf`).
 - Tarefas: `event_id`, `status` (`all` \| `pending` \| `done`, omissão
   `all`), `assignee` (`all` \| `host` \| `manager`, omissão `all`),
   `manager_id`, `q`, `page`, `page_size`. A resposta é
@@ -410,6 +413,11 @@ Criar um evento autenticado devolve o mesmo envelope de
 `POST /events` (`event`, `manage_email_status`, `deliveries`); o link de
 gestão continua a ser enviado para `host_email`. Antes da verificação do
 email, a criação/remoção devolve `403 email_not_verified`.
+
+O corpo de `POST /api/v1/host/events` aceita `event.cover_url` opcional
+(URL `https`), pelo que a capa pode ser definida logo na criação. Os
+endpoints dedicados de capa continuam disponíveis para substituir ou
+remover a imagem depois.
 
 #### Respostas do workspace
 
@@ -786,6 +794,46 @@ Regras de "Meus convites":
   sem movimento.
 - `date` é `YYYY-MM-DD`.
 
+`GET /api/v1/host/reports/export?format=pdf|csv` — `200`:
+
+- Devolve o ficheiro directamente (`Content-Disposition: attachment`),
+  não o envelope JSON.
+- `pdf`: `application/pdf`, gerado no servidor com a logo do Conto
+  Contigo, as cores do site e marca de água em todas as páginas.
+- `csv`: `text/csv; charset=utf-8`, com BOM para o Excel e o mesmo
+  resumo em tabela. Células que começam por `=`, `+`, `-` ou `@` são
+  prefixadas com `'` para não serem interpretadas como fórmulas.
+- Nome do ficheiro: `conto-contigo-relatorio-YYYY-MM-DD.{pdf,csv}`.
+- `format` inválido devolve `422 validation_failed`.
+
+`GET /api/v1/host/managers` — `200`:
+
+```json
+{
+  "data": [
+    {
+      "id": "b2d5f4a1-3c47-4a3e-9c2d-1f2a3b4c5d6e",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "email": "paulo@exemplo.ao",
+      "has_account": true,
+      "last_used_at": "2026-11-16T09:00:00.000Z",
+      "created_at": "2026-11-10T08:00:00.000Z",
+      "updated_at": "2026-11-10T08:00:00.000Z",
+      "event": {
+        "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+        "title": "Casamento da Ana e do Paulo",
+        "starts_at": "2026-12-20T15:00:00.000Z",
+        "status": "scheduled"
+      }
+    }
+  ]
+}
+```
+
+- A lista global só inclui eventos cujo `host_id` é o da conta; eventos
+  em que a conta é apenas gestora não expõem a equipa.
+- Adicionar, reenviar e remover continuam a usar as rotas por evento.
+
 `GET /api/v1/host/tasks` — `200`, paginado:
 
 ```json
@@ -1102,6 +1150,14 @@ Depois da primeira abertura, alterações a esses dois campos são rejeitadas
 com `409 invitation_already_opened`; `name` e `table_name` continuam
 editáveis.
 
+Ao alterar o email, o convite roda o token do link, cancela mensagens
+pendentes, envia um aviso `invitation_removed` ao email antigo e volta a
+enviar o convite e os lembretes ao novo email. Remover o convite ou
+revogar o acesso também enfileira o aviso ao destinatário actual. O aviso
+é entregue mesmo que o convite já tenha sido apagado: fica registado em
+`email_deliveries` com `invitation_id = NULL` e `message_type =
+invitation_removed`.
+
 Só é possível adicionar convidados a um evento `scheduled`. O limite é
 `MAX_INVITATIONS_PER_EVENT`. Todas as rotas mutáveis exigem
 `X-CSRF-Token`.
@@ -1360,6 +1416,7 @@ o próprio convite e um resumo público do evento:
     "status": "scheduled",
     "category": "wedding",
     "template_id": "aurora",
+    "cover_url": "https://res.cloudinary.com/demo/image/upload/capa.jpg",
     "location": {
       "type": "venue",
       "name": "Salão X",
@@ -1633,6 +1690,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `DELETE` | `/api/v1/host/events/{eventId}` | `204` | — |
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `202` | `{ "data": { "event_id": uuid, "manage_email_status": "queued" \| "failed", "manage_token_expires_at": string \| null } }` |
 | `GET` | `/api/v1/host/events/{eventId}/managers` | `200` | `{ "data": EventManager[] }` |
+| `GET` | `/api/v1/host/managers` | `200` | `{ "data": HostEventManager[] }` |
 | `POST` | `/api/v1/host/events/{eventId}/managers` | `201` | `{ "data": { "manager": EventManager, "invite_email_status": "queued" \| "failed" } }` |
 | `DELETE` | `/api/v1/host/events/{eventId}/managers/{managerId}` | `204` | — |
 | `POST` | `/api/v1/host/events/{eventId}/managers/{managerId}/resend` | `202` | `{ "data": { "manager": EventManager, "invite_email_status": "queued" \| "failed" } }` |
@@ -1652,6 +1710,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `POST` | `/api/v1/host/notifications/read-all` | `200` | `{ "data": { "updated": integer } }` |
 | `DELETE` | `/api/v1/host/notifications` | `200` | `{ "data": { "removed": integer } }` |
 | `GET` | `/api/v1/host/reports/summary` | `200` | `{ "data": ReportSummary }` |
+| `GET` | `/api/v1/host/reports/export` | `200` | PDF (`application/pdf`) ou CSV (`text/csv`) como anexo |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `200` | `{ "data": { "event_id": uuid, "days": integer, "series": DailyReport[] } }` |
 | `GET` | `/api/v1/host/tasks` | `200` | `{ "data": Task[], "pagination": Pagination }` |
 | `POST` | `/api/v1/host/tasks` | `201` | `{ "data": Task }` |
@@ -1937,6 +1996,7 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `POST` | `/api/v1/host/events` | `401 host_session_invalid`; `403 email_not_verified`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/manage-link/resend` | `401 host_session_invalid`; `403 email_not_verified`; `404 event_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}/managers` | `401 host_session_invalid`; `404 event_not_found` |
+| `GET` | `/api/v1/host/managers` | `401 host_session_invalid` |
 | `POST` | `/api/v1/host/events/{eventId}/managers` | `401 host_session_invalid`; `403 email_not_verified`; `404 event_not_found`; `409 manager_already_exists`; `422 validation_failed`; `429 rate_limited` |
 | `DELETE` | `/api/v1/host/events/{eventId}/managers/{managerId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 manager_not_found`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/managers/{managerId}/resend` | `401 host_session_invalid`; `403 csrf_invalid`; `404 manager_not_found`; `429 rate_limited` |
@@ -1956,6 +2016,7 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `POST` | `/api/v1/host/notifications/read-all` | `401 host_session_invalid`; `403 csrf_invalid`; `429 rate_limited` |
 | `DELETE` | `/api/v1/host/notifications` | `401 host_session_invalid`; `403 csrf_invalid`; `429 rate_limited` |
 | `GET` | `/api/v1/host/reports/summary` | `401 host_session_invalid` |
+| `GET` | `/api/v1/host/reports/export` | `401 host_session_invalid`; `422 validation_failed` |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/tasks` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |

@@ -101,7 +101,7 @@ export interface CreateEventInput {
   theme: EventTheme;
   contribution: EventContribution;
   rsvpDeadline: Date | null;
-  /** Definidos pelos endpoints dedicados de capa, não no create. */
+  /** Capa opcional na criação ou através dos endpoints dedicados. */
   coverUrl?: string | null;
   coverHash?: string | null;
   coverPublicId?: string | null;

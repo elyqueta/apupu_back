@@ -7,7 +7,7 @@ import { eventRepository } from '../repositories/event.repository';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { hostSessionRepository } from '../repositories/hostSession.repository';
 import { EventRecord } from '../types/event.types';
-import { EventManager } from '../types/eventManager.types';
+import { EventManager, HostEventManager } from '../types/eventManager.types';
 import { encryptToken } from '../utils/crypto.util';
 import {
   ManageEmailStatus,
@@ -84,6 +84,11 @@ export interface ResendManagerResult {
  * o id do gestor nunca são autorização por si só.
  */
 export const eventManagerService = {
+  /** Gestores activos de todos os eventos do anfitrião. */
+  async listAll(hostId: string): Promise<HostEventManager[]> {
+    return eventManagerRepository.listActiveByHost(hostId);
+  },
+
   async list(hostId: string, eventId: string): Promise<EventManager[]> {
     const event = await eventRepository.findByIdForHost(eventId, hostId);
 

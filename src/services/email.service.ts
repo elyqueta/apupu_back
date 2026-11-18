@@ -567,6 +567,32 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
       };
     }
 
+    case 'invitation_removed': {
+      const event = requireEventSummary(context);
+
+      return {
+        to: context.recipientEmail,
+        subject: `Convite removido — ${event.title}`,
+        messageKey: context.idempotencyKey,
+        text: [
+          'Olá,',
+          '',
+          `O teu convite para ${event.title} foi removido pelo anfitrião.`,
+          'O link que recebeste deixou de ser válido e já não é necessário responder.',
+          '',
+          'Se recebeste um convite novo para este evento, usa apenas o link mais recente.',
+          'Se não reconheces este evento, podes ignorar esta mensagem.',
+        ].join('\n'),
+        html: `
+          <p>Olá,</p>
+          <p>O teu convite para <strong>${escapeHtml(event.title)}</strong> foi removido pelo anfitrião.</p>
+          <p>O link que recebeste deixou de ser válido e já não é necessário responder.</p>
+          <p>Se recebeste um convite novo para este evento, usa apenas o link mais recente.</p>
+          <p>Se não reconheces este evento, podes ignorar esta mensagem.</p>
+        `,
+      };
+    }
+
     case 'event_cancelled': {
       const event = requireEventSummary(context);
       const guest = context.guestName ?? 'convidado';

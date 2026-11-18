@@ -46,6 +46,8 @@ describe('app', () => {
         '/api/v1/host/guests',
         '/api/v1/host/invitations',
         '/api/v1/host/reports/summary',
+        '/api/v1/host/reports/export',
+        '/api/v1/host/managers',
         '/api/v1/host/tasks',
         '/api/v1/host/session',
         '/api/v1/host/events/{eventId}',

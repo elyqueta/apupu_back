@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { toEventManagerDto } from '../dto/eventManager.dto';
+import { toEventManagerDto, toHostEventManagerDto } from '../dto/eventManager.dto';
 import { auditService } from '../services/audit.service';
 import { eventManagerService } from '../services/eventManager.service';
 
@@ -16,6 +16,13 @@ function requireHostId(req: Request): string {
 }
 
 export const eventManagerController = {
+  /** Equipa global: gestores de todos os eventos do anfitrião. */
+  listAll: async (req: Request, res: Response): Promise<void> => {
+    const managers = await eventManagerService.listAll(requireHostId(req));
+
+    res.status(200).json({ data: managers.map(toHostEventManagerDto) });
+  },
+
   list: async (req: Request, res: Response): Promise<void> => {
     const managers = await eventManagerService.list(
       requireHostId(req),

@@ -48,7 +48,8 @@ export async function enqueueInvitationEmail(
 export async function enqueueRemindersForInvitation(
   event: Event,
   invitation: Invitation,
-  client?: PoolClient
+  client?: PoolClient,
+  options: { keySuffix?: string } = {}
 ): Promise<void> {
   if (isSuppressed(invitation)) return;
 
@@ -58,6 +59,7 @@ export async function enqueueRemindersForInvitation(
     env.REMINDER_OFFSETS_DAYS,
     env.REMINDER_LOCAL_HOUR
   );
+  const suffix = options.keySuffix ? `:${options.keySuffix}` : '';
 
   for (const reminder of schedule) {
     await emailDeliveryRepository.enqueue(
@@ -68,7 +70,7 @@ export async function enqueueRemindersForInvitation(
         reminderKind: reminder.kind,
         recipientEmail: invitation.guestEmail,
         scheduledFor: reminder.scheduledFor,
-        idempotencyKey: `reminder:${invitation.id}:${reminder.scheduledFor.toISOString()}`,
+        idempotencyKey: `reminder:${invitation.id}:${reminder.scheduledFor.toISOString()}${suffix}`,
       },
       client
     );
@@ -105,6 +107,32 @@ export async function rescheduleRemindersForEvent(
   for (const invitation of invitations) {
     await enqueueRemindersForInvitation(event, invitation, client);
   }
+}
+
+/**
+ * Avisa o destinatário anterior de que o convite deixou de existir.
+ *
+ * A entrega fica sem `invitation_id`: o convite pode ser apagado logo a
+ * seguir (ou já ter sido revogado) e o email continua a ser enviado. O
+ * nome do convidado não é incluído para não depender do registo.
+ */
+export async function enqueueInvitationRemoved(
+  event: Event,
+  recipientEmail: string,
+  client?: PoolClient
+): Promise<void> {
+  await emailDeliveryRepository.enqueue(
+    {
+      eventId: event.id,
+      invitationId: null,
+      messageType: 'invitation_removed',
+      reminderKind: null,
+      recipientEmail,
+      scheduledFor: new Date(),
+      idempotencyKey: `invitation_removed:${event.id}:${randomUUID()}`,
+    },
+    client
+  );
 }
 
 /** Cancela lembretes e reenvios pendentes de um convite. */

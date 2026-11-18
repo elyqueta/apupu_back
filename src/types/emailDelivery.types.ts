@@ -7,6 +7,7 @@ export const MESSAGE_TYPES = [
   'reminder',
   'decline_notification',
   'event_cancelled',
+  'invitation_removed',
   'email_verification',
   'registration_otp',
   'host_welcome',

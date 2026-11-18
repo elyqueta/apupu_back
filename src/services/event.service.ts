@@ -194,6 +194,7 @@ export const eventService = {
       rules: normalizeOptional(input.event.rules),
       dressCode: normalizeOptional(input.event.dress_code),
       templateId: input.event.template_id ?? null,
+      coverUrl: input.event.cover_url ?? null,
       theme: toTheme(input.event.theme),
       contribution: toContribution(input.event.contribution),
       rsvpDeadline: input.event.rsvp_deadline ?? null,

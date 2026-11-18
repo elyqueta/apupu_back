@@ -54,6 +54,12 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
     return { ok: true };
   }
 
+  // O aviso de remoção é o último email do link antigo: continua a ser
+  // entregue mesmo depois de o convite ser revogado ou apagado.
+  if (context.messageType === 'invitation_removed') {
+    return { ok: true };
+  }
+
   // Enquanto o evento estiver em `draft` não está pronto: convites e
   // lembretes não podem sair. Avisos operacionais (recusa) continuam a
   // ser entregues ao anfitrião.

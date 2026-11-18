@@ -1,4 +1,4 @@
-import { EventManager } from '../types/eventManager.types';
+import { EventManager, HostEventManager } from '../types/eventManager.types';
 
 /**
  * Gestor de evento exposto ao anfitrião.
@@ -30,5 +30,27 @@ export function toEventManagerDto(manager: EventManager): EventManagerDto {
     last_used_at: iso(manager.lastUsedAt),
     created_at: manager.createdAt.toISOString(),
     updated_at: manager.updatedAt.toISOString(),
+  };
+}
+
+/** Gestor na página global de equipas, com o evento a que pertence. */
+export interface HostEventManagerDto extends EventManagerDto {
+  event: {
+    id: string;
+    title: string;
+    starts_at: string | null;
+    status: string;
+  };
+}
+
+export function toHostEventManagerDto(manager: HostEventManager): HostEventManagerDto {
+  return {
+    ...toEventManagerDto(manager),
+    event: {
+      id: manager.eventId,
+      title: manager.eventTitle,
+      starts_at: iso(manager.eventStartsAt),
+      status: manager.eventStatus,
+    },
   };
 }

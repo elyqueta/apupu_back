@@ -124,6 +124,7 @@ export interface GuestEventSummaryDto {
   status: string;
   category: string | null;
   template_id: string | null;
+  cover_url: string | null;
   location: EventLocationDto;
 }
 
@@ -165,6 +166,7 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
       status: invitation.eventStatus,
       category: invitation.eventCategory,
       template_id: invitation.eventTemplateId,
+      cover_url: invitation.eventCoverUrl,
       location: {
         type: invitation.eventLocation.type,
         name: invitation.eventLocation.name,
