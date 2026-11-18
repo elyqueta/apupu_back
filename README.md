@@ -252,6 +252,20 @@ A outbox tem retries com backoff exponencial (`EMAIL_MAX_ATTEMPTS`,
 `EMAIL_RETRY_BASE_MS`) e chaves idempotentes que impedem envios
 duplicados.
 
+Os templates com a identidade Conto Contigo vivem em `src/emails/`: o
+catálogo é a única fonte de copy para e-mail, texto simples, push e SMS.
+O HTML usa tabelas e estilos inline, tem modo escuro e carrega o
+logótipo por URL absoluta a partir de `APP_BASE_URL`. Para gerar todos os
+exemplos numa pasta local:
+
+```bash
+npm run email:preview
+# abre tmp/email-preview/index.html
+```
+
+`EMAIL_PREVIEW_BASE_URL` permite apontar o logótipo e as ligações do
+rodapé para outra origem (por omissão usa `APP_BASE_URL`).
+
 ## Avatares (Cloudinary)
 
 - `POST /api/v1/host/profile/avatar/upload` recebe
@@ -285,12 +299,13 @@ src/
 ├── controllers/    camada HTTP (sem regras de negócio)
 ├── database/       pool Postgres e helpers de transacção
 ├── dto/            conversão explícita para o contrato (snake_case)
+├── emails/         catálogo, layout e formatação das mensagens
 ├── errors/         AppError + erros HTTP tipados
 ├── middlewares/    asyncHandler, validate, errorHandler, hostAuth, hostAccountAuth, guestAuth, CSRF
 ├── repositories/   SQL e mapeamento de linhas
 ├── routes/v1/      routers por domínio + agregador
 ├── schemas/        validação Zod
-├── scripts/        seeds, smoke test, ciclo manual da outbox
+├── scripts/        seeds, smoke test, ciclo manual da outbox, pré-visualização de e-mails
 ├── services/       contas, eventos, convites, sessão, email, lembretes, outbox
 ├── types/          tipos do domínio
 ├── utils/          tokens, senhas, cifra, datas, links, cookies, paginação

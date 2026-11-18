@@ -3,8 +3,11 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import nodemailer, { Transporter } from 'nodemailer';
 import { env } from '../config/env';
+import { catalog } from '../emails/catalog';
+import { formatEmailClock, formatEmailDate } from '../emails/format';
+import { renderEmailHtml, renderEmailText } from '../emails/render';
+import { EmailTemplateCode, EmailVars } from '../emails/types';
 import { DeliveryContext } from '../repositories/emailDelivery.repository';
-import { formatDateTime } from '../utils/date.util';
 import { decryptToken } from '../utils/crypto.util';
 import { links } from '../utils/links.util';
 import { emailSender } from './emailSender.service';
@@ -97,15 +100,6 @@ async function sendWithResend(message: MailMessage): Promise<SendResult> {
   return { providerMessageId: typeof body.id === 'string' ? body.id : null };
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function safeFileKey(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 120);
 }
@@ -186,37 +180,16 @@ interface EventSummary {
   dressCode: string | null;
 }
 
-function eventLines(event: EventSummary): string[] {
-  const lines = [event.title, `Data: ${formatDateTime(event.startsAt, event.timezone)}`];
-
-  if (event.locationType === 'online' && event.onlineUrl) {
-    lines.push(`Online: ${event.onlineUrl}`);
-  } else {
-    if (event.locationName) lines.push(`Local: ${event.locationName}`);
-    if (event.locationAddress) lines.push(`Endereço: ${event.locationAddress}`);
+function eventLocation(event: EventSummary): string | undefined {
+  if (event.locationType === 'online') {
+    return event.onlineUrl ? `Online: ${event.onlineUrl}` : 'Online';
   }
 
-  if (event.dressCode) lines.push(`Dress code: ${event.dressCode}`);
-  return lines;
-}
+  const parts = [event.locationName, event.locationAddress].filter(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0
+  );
 
-function eventHtml(event: EventSummary): string {
-  const rows = [
-    `<p><strong>${escapeHtml(event.title)}</strong></p>`,
-    `<p>Data: ${escapeHtml(formatDateTime(event.startsAt, event.timezone))}</p>`,
-  ];
-
-  if (event.locationType === 'online' && event.onlineUrl) {
-    rows.push(
-      `<p>Online: <a href="${escapeHtml(event.onlineUrl)}">${escapeHtml(event.onlineUrl)}</a></p>`
-    );
-  } else {
-    if (event.locationName) rows.push(`<p>Local: ${escapeHtml(event.locationName)}</p>`);
-    if (event.locationAddress) rows.push(`<p>Endereço: ${escapeHtml(event.locationAddress)}</p>`);
-  }
-
-  if (event.dressCode) rows.push(`<p>Dress code: ${escapeHtml(event.dressCode)}</p>`);
-  return rows.join('\n');
+  return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
 function summaryFromContext(context: DeliveryContext): EventSummary | null {
@@ -260,7 +233,7 @@ function inviteToken(context: DeliveryContext): string {
 
 /**
  * Segredo cifrado das mensagens de conta (OTP, verificação e
- * reposição de senha).
+ * reposição de palavra-passe).
  */
 function hostToken(context: DeliveryContext): string {
   if (!context.tokenEncrypted) {
@@ -269,301 +242,169 @@ function hostToken(context: DeliveryContext): string {
   return decryptToken(context.tokenEncrypted);
 }
 
-function reminderText(kind: string | null): { lead: string; subject: string } {
-  const days = Number.parseInt((kind ?? '').replace('d', ''), 10);
-
-  if (!Number.isFinite(days)) {
-    return { lead: 'Lembrete do evento', subject: 'Lembrete' };
-  }
-
-  if (days === 1) {
-    return { lead: 'O evento é amanhã', subject: 'O evento é amanhã' };
-  }
-
-  return { lead: `Faltam ${days} dias para o evento`, subject: `Faltam ${days} dias` };
+/** Variáveis comuns a todas as mensagens de evento. */
+function eventVars(
+  context: DeliveryContext,
+  event: EventSummary,
+  overrides: Partial<EmailVars> = {}
+): EmailVars {
+  return {
+    anfitriao: context.hostName ?? undefined,
+    evento: event.title,
+    data: formatEmailDate(event.startsAt, event.timezone),
+    hora: formatEmailClock(event.startsAt, event.timezone),
+    local: eventLocation(event),
+    online: event.locationType === 'online',
+    vestuario: event.dressCode ?? undefined,
+    ...overrides,
+  };
 }
 
 /**
- * Renderiza uma entrega a partir do contexto carregado da base de dados.
- *
- * O link é reconstruído apenas aqui, imediatamente antes do envio, e
- * nunca é persistido na linha de entrega.
+ * Os lembretes são agendados por dias (`14d`, `7d`, `3d`, `1d`), mas o
+ * catálogo distingue o dia anterior e a última hora. Um eventual
+ * `reminderKind` em horas (`2h`) também é reconhecido.
  */
-export function renderDelivery(context: DeliveryContext): MailMessage {
+function reminderCode(kind: string | null): EmailTemplateCode {
+  if (kind === '2h') return 'lembrete_2h';
+
+  const days = Number.parseInt((kind ?? '').replace('d', ''), 10);
+  if (days === 0) return 'lembrete_2h';
+  if (days === 1) return 'lembrete_24h';
+
+  return 'lembrete';
+}
+
+function reminderDays(kind: string | null): number | undefined {
+  if (kind === '2h') return undefined;
+
+  const days = Number.parseInt((kind ?? '').replace('d', ''), 10);
+  return Number.isFinite(days) ? days : undefined;
+}
+
+interface DeliveryEmail {
+  to: string;
+  code: EmailTemplateCode;
+  vars: EmailVars;
+}
+
+/**
+ * Traduz a entrega da outbox para uma entrada do catálogo.
+ *
+ * As ligações são reconstruídas apenas aqui, imediatamente antes do
+ * envio, e nunca são persistidas na linha de entrega.
+ */
+function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
   switch (context.messageType) {
     case 'manage_link': {
-      const manageUrl = links.manageEvent(hostToken(context));
-      const title = context.eventTitle ?? 'o teu evento';
-      const hostName = context.hostName ?? 'anfitrião';
+      const event = requireEventSummary(context);
 
       return {
         to: context.recipientEmail,
-        subject: `O teu link de gestão — ${title}`,
-        messageKey: context.idempotencyKey,
-        text: [
-          `Olá ${hostName},`,
-          '',
-          `O teu evento ${title} foi criado no Conto Contigo.`,
-          'Guarda este link: é a única forma de gerir o evento.',
-          manageUrl,
-          '',
-          'Quem tiver o link pode gerir o evento e ver a lista de convidados.',
-          'Não o partilhes com os convidados.',
-        ].join('\n'),
-        html: `
-          <p>Olá ${escapeHtml(hostName)},</p>
-          <p>O teu evento <strong>${escapeHtml(title)}</strong> foi criado no Conto Contigo.</p>
-          <p>Guarda este link — é a única forma de gerir o evento:</p>
-          <p><a href="${escapeHtml(manageUrl)}">${escapeHtml(manageUrl)}</a></p>
-          <p>Quem tiver o link pode gerir o evento e ver a lista de convidados. Não o partilhes com os convidados.</p>
-        `,
+        code: 'manage_link',
+        vars: eventVars(context, event, {
+          nome: context.hostName ?? undefined,
+          url: links.manageEvent(hostToken(context)),
+        }),
       };
     }
 
     case 'manager_invite': {
-      const manageUrl = links.manageEvent(hostToken(context));
-      const title = context.eventTitle ?? 'um evento';
-      const hostName = context.hostName ?? 'o anfitrião';
+      const event = requireEventSummary(context);
 
       return {
         to: context.recipientEmail,
-        subject: `Foste adicionado como gestor — ${title}`,
-        messageKey: context.idempotencyKey,
-        text: [
-          'Olá,',
-          '',
-          `${hostName} adicionou-te como gestor do evento ${title} no Conto Contigo.`,
-          'Usa este link para ver os convidados e ajudar a gerir o evento:',
-          manageUrl,
-          '',
-          'Podes adicionar convidados e editar as informações do evento.',
-          'Cancelar o evento, alterar o estado ou gerir convites existentes continua reservado ao anfitrião.',
-          'Não partilhes este link com os convidados.',
-        ].join('\n'),
-        html: `
-          <p>Olá,</p>
-          <p>${escapeHtml(hostName)} adicionou-te como gestor do evento <strong>${escapeHtml(title)}</strong> no Conto Contigo.</p>
-          <p>Usa este link para ver os convidados e ajudar a gerir o evento:</p>
-          <p><a href="${escapeHtml(manageUrl)}">${escapeHtml(manageUrl)}</a></p>
-          <p>Podes adicionar convidados e editar as informações do evento. Cancelar o evento, alterar o estado ou gerir convites existentes continua reservado ao anfitrião.</p>
-          <p>Não partilhes este link com os convidados.</p>
-        `,
+        code: 'manager_invite',
+        vars: eventVars(context, event, {
+          url: links.manageEvent(hostToken(context)),
+        }),
       };
     }
 
-    case 'email_verification': {
-      const url = links.verifyEmail(hostToken(context));
-
+    case 'email_verification':
       return {
         to: context.recipientEmail,
-        subject: 'Confirma o teu email — Conto Contigo',
-        messageKey: context.idempotencyKey,
-        text: [
-          'Olá,',
-          '',
-          'Criaste uma conta no Conto Contigo. Confirma o teu email para poderes criar e gerir eventos:',
-          url,
-          '',
-          'Este link expira ao fim de 24 horas e só pode ser usado uma vez.',
-        ].join('\n'),
-        html: `
-          <p>Olá,</p>
-          <p>Criaste uma conta no Conto Contigo. Confirma o teu email para poderes criar e gerir eventos:</p>
-          <p><a href="${escapeHtml(url)}">Confirmar email</a></p>
-          <p>Este link expira ao fim de 24 horas e só pode ser usado uma vez.</p>
-        `,
+        code: 'email_verification',
+        vars: { url: links.verifyEmail(hostToken(context)) },
       };
-    }
 
     case 'registration_otp': {
       const code = hostToken(context);
-      const minutes = env.REGISTRATION_OTP_TTL_MINUTES;
-      const url = links.registerOtp(context.recipientEmail, code);
 
       return {
         to: context.recipientEmail,
-        subject: 'O teu código de confirmação — Conto Contigo',
-        messageKey: context.idempotencyKey,
-        text: [
-          'Olá,',
-          '',
-          'O teu código de confirmação do Conto Contigo é:',
-          code,
-          '',
-          'Para continuares com o código já preenchido, abre este link:',
-          url,
-          '',
-          `O código expira ao fim de ${minutes} minutos e só pode ser usado uma vez.`,
-          'Se não pediste este código, ignora este email.',
-        ].join('\n'),
-        html: `
-          <p>Olá,</p>
-          <p>O teu código de confirmação do Conto Contigo é:</p>
-          <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px;">${escapeHtml(code)}</p>
-          <p><a href="${escapeHtml(url)}">Continuar com o código preenchido</a></p>
-          <p>O código expira ao fim de ${minutes} minutos e só pode ser usado uma vez.</p>
-          <p>Se não pediste este código, ignora este email.</p>
-        `,
+        code: 'verificacao_codigo',
+        vars: {
+          codigo: code,
+          expiraEm: `${env.REGISTRATION_OTP_TTL_MINUTES} minutos`,
+          url: links.registerOtp(context.recipientEmail, code),
+        },
       };
     }
 
-    case 'password_reset': {
-      const url = links.resetPassword(hostToken(context));
-
+    case 'password_reset':
       return {
         to: context.recipientEmail,
-        subject: 'Reposição de senha — Conto Contigo',
-        messageKey: context.idempotencyKey,
-        text: [
-          'Olá,',
-          '',
-          'Recebemos um pedido para repor a senha da tua conta no Conto Contigo:',
-          url,
-          '',
-          'Se não fizeste este pedido, ignora este email. O link expira ao fim de 60 minutos.',
-        ].join('\n'),
-        html: `
-          <p>Olá,</p>
-          <p>Recebemos um pedido para repor a senha da tua conta no Conto Contigo:</p>
-          <p><a href="${escapeHtml(url)}">Definir nova senha</a></p>
-          <p>Se não fizeste este pedido, ignora este email. O link expira ao fim de 60 minutos.</p>
-        `,
+        code: 'recuperar_senha',
+        vars: { url: links.resetPassword(hostToken(context)) },
       };
-    }
 
-    case 'host_welcome': {
+    case 'host_welcome':
       return {
         to: context.recipientEmail,
-        subject: 'Bem-vindo ao Conto Contigo',
-        messageKey: context.idempotencyKey,
-        text: [
-          'Olá,',
-          '',
-          'A tua conta no Conto Contigo foi criada e o teu email já está confirmado.',
-          'Já podes criar e gerir os teus eventos.',
-          links.login(),
-        ].join('\n'),
-        html: `
-          <p>Olá,</p>
-          <p>A tua conta no Conto Contigo foi criada e o teu email já está confirmado.</p>
-          <p>Já podes criar e gerir os teus eventos.</p>
-          <p><a href="${escapeHtml(links.login())}">Entrar no Conto Contigo</a></p>
-        `,
+        code: 'boas_vindas',
+        vars: { url: links.createEvent() },
       };
-    }
 
-    case 'profile_reminder': {
+    case 'profile_reminder':
       return {
         to: context.recipientEmail,
-        subject: 'Completa o teu perfil — Conto Contigo',
-        messageKey: context.idempotencyKey,
-        text: [
-          'Olá,',
-          '',
-          'Falta preencher a tua data de nascimento no perfil do Conto Contigo.',
-          'Podes fazê-lo nas definições da conta.',
-          links.login(),
-        ].join('\n'),
-        html: `
-          <p>Olá,</p>
-          <p>Falta preencher a tua data de nascimento no perfil do Conto Contigo.</p>
-          <p>Podes fazê-lo nas definições da conta.</p>
-          <p><a href="${escapeHtml(links.login())}">Abrir definições</a></p>
-        `,
+        code: 'profile_reminder',
+        vars: { url: links.settings() },
       };
-    }
 
     case 'invitation': {
       const event = requireEventSummary(context);
-      const url = links.invitation(inviteToken(context));
-      const guest = context.guestName ?? 'convidado';
 
       return {
         to: context.recipientEmail,
-        subject: `Convite: ${event.title}`,
-        messageKey: context.idempotencyKey,
-        text: [
-          `Olá ${guest},`,
-          '',
-          `${context.hostName ?? 'O anfitrião'} convida-te para ${event.title}.`,
-          '',
-          eventLines(event).join('\n'),
-          '',
-          context.eventContributionEnabled
-            ? 'Os dados de contribuição estão disponíveis na página do convite.'
-            : '',
-          `Confirma a tua presença: ${url}`,
-          '',
-          'Este link é pessoal. Não o partilhes.',
-        ]
-          .filter((line) => line !== '')
-          .join('\n'),
-        html: `
-          <p>Olá ${escapeHtml(guest)},</p>
-          <p><strong>${escapeHtml(context.hostName ?? 'O anfitrião')}</strong> convida-te para <strong>${escapeHtml(event.title)}</strong>.</p>
-          ${eventHtml(event)}
-          ${context.eventContributionEnabled ? '<p>Os dados de contribuição estão disponíveis na página do convite.</p>' : ''}
-          <p><a href="${escapeHtml(url)}">Confirmar presença</a></p>
-          <p>Este link é pessoal. Não o partilhes.</p>
-        `,
+        code: 'convite_recebido',
+        vars: eventVars(context, event, {
+          nome: context.guestName ?? undefined,
+          convidado: context.guestName ?? undefined,
+          url: links.invitation(inviteToken(context)),
+          contribuicao: context.eventContributionEnabled === true,
+        }),
       };
     }
 
     case 'reminder': {
       const event = requireEventSummary(context);
-      const url = links.invitation(inviteToken(context));
-      const guest = context.guestName ?? 'convidado';
-      const { lead, subject } = reminderText(context.reminderKind);
-
-      const callToAction =
-        context.rsvpStatus === 'accepted'
-          ? 'A tua presença está confirmada. Aqui ficam os detalhes do evento.'
-          : 'Ainda não respondeste. Confirma ou atualiza a tua resposta:';
 
       return {
         to: context.recipientEmail,
-        subject: `${subject} — ${event.title}`,
-        messageKey: context.idempotencyKey,
-        text: [
-          `Olá ${guest},`,
-          '',
-          `${lead}: ${event.title}.`,
-          '',
-          eventLines(event).join('\n'),
-          '',
-          callToAction,
-          url,
-        ].join('\n'),
-        html: `
-          <p>Olá ${escapeHtml(guest)},</p>
-          <p><strong>${escapeHtml(lead)}</strong>: ${escapeHtml(event.title)}.</p>
-          ${eventHtml(event)}
-          <p>${escapeHtml(callToAction)}</p>
-          <p><a href="${escapeHtml(url)}">Abrir convite</a></p>
-        `,
+        code: reminderCode(context.reminderKind),
+        vars: eventVars(context, event, {
+          nome: context.guestName ?? undefined,
+          convidado: context.guestName ?? undefined,
+          url: links.invitation(inviteToken(context)),
+          confirmado: context.rsvpStatus === 'accepted',
+          dias: reminderDays(context.reminderKind),
+        }),
       };
     }
 
     case 'decline_notification': {
       const event = requireEventSummary(context);
-      const guest = context.guestName ?? 'Um convidado';
-      const guestEmail = context.guestEmail ?? context.recipientEmail;
 
       return {
         to: context.hostEmail ?? context.recipientEmail,
-        subject: `Convite recusado — ${event.title}`,
-        messageKey: context.idempotencyKey,
-        text: [
-          `Olá ${context.hostName ?? 'anfitrião'},`,
-          '',
-          `${guest} (${guestEmail}) recusou o convite para ${event.title}.`,
-          'Os lembretes para este convidado foram cancelados.',
-        ].join('\n'),
-        html: `
-          <p>Olá ${escapeHtml(context.hostName ?? 'anfitrião')},</p>
-          <p><strong>${escapeHtml(guest)}</strong> (${escapeHtml(guestEmail)}) recusou o convite para <strong>${escapeHtml(event.title)}</strong>.</p>
-          <p>Os lembretes para este convidado foram cancelados.</p>
-        `,
+        code: 'decline_notification',
+        vars: eventVars(context, event, {
+          nome: context.hostName ?? undefined,
+          convidado: context.guestName ?? undefined,
+          detalhe: context.guestEmail ?? context.recipientEmail,
+        }),
       };
     }
 
@@ -572,47 +413,44 @@ export function renderDelivery(context: DeliveryContext): MailMessage {
 
       return {
         to: context.recipientEmail,
-        subject: `Convite removido — ${event.title}`,
-        messageKey: context.idempotencyKey,
-        text: [
-          'Olá,',
-          '',
-          `O teu convite para ${event.title} foi removido pelo anfitrião.`,
-          'O link que recebeste deixou de ser válido e já não é necessário responder.',
-          '',
-          'Se recebeste um convite novo para este evento, usa apenas o link mais recente.',
-          'Se não reconheces este evento, podes ignorar esta mensagem.',
-        ].join('\n'),
-        html: `
-          <p>Olá,</p>
-          <p>O teu convite para <strong>${escapeHtml(event.title)}</strong> foi removido pelo anfitrião.</p>
-          <p>O link que recebeste deixou de ser válido e já não é necessário responder.</p>
-          <p>Se recebeste um convite novo para este evento, usa apenas o link mais recente.</p>
-          <p>Se não reconheces este evento, podes ignorar esta mensagem.</p>
-        `,
+        code: 'invitation_removed',
+        vars: eventVars(context, event, {
+          nome: context.guestName ?? undefined,
+          convidado: context.guestName ?? undefined,
+        }),
       };
     }
 
     case 'event_cancelled': {
       const event = requireEventSummary(context);
-      const guest = context.guestName ?? 'convidado';
 
       return {
         to: context.recipientEmail,
-        subject: `Evento cancelado — ${event.title}`,
-        messageKey: context.idempotencyKey,
-        text: [
-          `Olá ${guest},`,
-          '',
-          `O evento ${event.title} foi cancelado pelo anfitrião.`,
-          'Não é necessário responder ao convite.',
-        ].join('\n'),
-        html: `
-          <p>Olá ${escapeHtml(guest)},</p>
-          <p>O evento <strong>${escapeHtml(event.title)}</strong> foi cancelado pelo anfitrião.</p>
-          <p>Não é necessário responder ao convite.</p>
-        `,
+        code: 'evento_cancelado',
+        vars: eventVars(context, event, {
+          nome: context.guestName ?? undefined,
+          convidado: context.guestName ?? undefined,
+        }),
       };
     }
   }
+}
+
+/**
+ * Renderiza uma entrega a partir do contexto carregado da base de dados.
+ *
+ * O HTML e o texto simples vêm do mesmo catálogo, pelo que a copy e os
+ * detalhes nunca divergem entre os dois formatos.
+ */
+export function renderDelivery(context: DeliveryContext): MailMessage {
+  const delivery = buildDeliveryEmail(context);
+  const content = catalog[delivery.code].email(delivery.vars);
+
+  return {
+    to: delivery.to,
+    subject: content.subject,
+    messageKey: context.idempotencyKey,
+    text: renderEmailText(content),
+    html: renderEmailHtml(content),
+  };
 }

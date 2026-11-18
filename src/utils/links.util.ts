@@ -60,14 +60,25 @@ export const links = {
     return `${publicAppBaseUrl()}/verificar-email/${token}`;
   },
 
-  /** Página de definição de nova senha. */
+  /** Página de definição de nova palavra-passe. */
   resetPassword(token: string): string {
-    return `${publicAppBaseUrl()}/recuperar-senha/${token}`;
+    const params = new URLSearchParams({ token });
+    return `${publicAppBaseUrl()}/redefinir-senha?${params.toString()}`;
   },
 
   /** Página de login da conta. */
   login(): string {
     return `${publicAppBaseUrl()}/entrar`;
+  },
+
+  /** Página de criação de um novo evento. */
+  createEvent(): string {
+    return `${publicAppBaseUrl()}/criar-evento`;
+  },
+
+  /** Página de definições da conta. */
+  settings(): string {
+    return `${publicAppBaseUrl()}/definicoes`;
   },
 
   /**

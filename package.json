@@ -21,6 +21,7 @@
     "seed": "tsx src/scripts/seeds/index.ts",
     "seed:docker": "node dist/scripts/seeds/index.js",
     "smoke": "tsx src/scripts/smokeTest.ts",
+    "email:preview": "tsx src/scripts/previewEmails.ts",
     "outbox:run": "tsx src/scripts/runReminders.ts",
     "worker": "tsx src/worker.ts",
     "worker:start": "node dist/worker.js",

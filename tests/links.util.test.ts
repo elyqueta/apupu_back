@@ -31,7 +31,7 @@ describe('publicAppBaseUrl', () => {
       'https://apupu-front.vercel.app/verificar-email/tok'
     );
     expect(links.resetPassword('tok')).toBe(
-      'https://apupu-front.vercel.app/recuperar-senha/tok'
+      'https://apupu-front.vercel.app/redefinir-senha?token=tok'
     );
     expect(links.login()).toBe('https://apupu-front.vercel.app/entrar');
   });
