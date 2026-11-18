@@ -30,6 +30,7 @@ import {
   eventReportQuerySchema,
   eventExportParamsSchema,
   eventExportQuerySchema,
+  eventPeriodReportQuerySchema,
   guestInvitationsQuerySchema,
   hostEventsQuerySchema,
   hostGuestsQuerySchema,
@@ -1100,6 +1101,58 @@ router.get(
   validate({ params: eventExportParamsSchema, query: eventExportQuerySchema }),
   asyncHandler(hostAccountAuth),
   asyncHandler(reportController.eventExport)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/reports/export:
+ *   get:
+ *     tags: [Workspace]
+ *     summary: Exporta o relatório de um evento num período
+ *     description: >
+ *       Relatório de um único projeto. `from` e `to` são dias de
+ *       calendário `YYYY-MM-DD` interpretados em UTC, inclusive. O
+ *       documento mostra o movimento do período (convites criados,
+ *       respostas recebidas e lembretes enviados) e, em separado, o
+ *       estado atual do evento. Aceita no máximo 366 dias.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: from
+ *         required: true
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         required: true
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: format
+ *         schema: { type: string, enum: [pdf, csv], default: pdf }
+ *     responses:
+ *       200:
+ *         description: Ficheiro PDF ou CSV.
+ *         content:
+ *           application/pdf:
+ *             schema: { type: string, format: binary }
+ *           text/csv:
+ *             schema: { type: string, format: binary }
+ *       401:
+ *         description: Sessão inválida.
+ *       404:
+ *         description: Evento não encontrado.
+ *       422:
+ *         description: Datas inválidas, período invertido ou superior a 366 dias.
+ */
+router.get(
+  '/events/:eventId/reports/export',
+  validate({ params: eventIdParamsSchema, query: eventPeriodReportQuerySchema }),
+  asyncHandler(hostAccountAuth),
+  asyncHandler(reportController.eventPeriodExport)
 );
 
 /**

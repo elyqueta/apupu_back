@@ -113,6 +113,42 @@ const eventReportQuerySchema = z.object({
     .default(30),
 });
 
+const MAX_REPORT_PERIOD_DAYS = 366;
+
+function calendarPeriodDays(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  return Math.floor((end - start) / 86_400_000) + 1;
+}
+
+/**
+ * Relatório de um evento num período.
+ *
+ * As datas são dias de calendário `YYYY-MM-DD` interpretados em UTC,
+ * tal como a série diária do evento. O limite de 366 dias evita PDFs
+ * com centenas de páginas e consultas desnecessariamente longas.
+ */
+const eventPeriodReportQuerySchema = z
+  .object({
+    format: z.enum(['csv', 'pdf']).default('pdf'),
+    from: z
+      .string()
+      .trim()
+      .refine(isValidCalendarDate, 'Indique uma data inicial válida no formato AAAA-MM-DD.'),
+    to: z
+      .string()
+      .trim()
+      .refine(isValidCalendarDate, 'Indique uma data final válida no formato AAAA-MM-DD.'),
+  })
+  .refine((value) => value.from <= value.to, {
+    message: 'A data final deve ser igual ou posterior à inicial.',
+    path: ['to'],
+  })
+  .refine((value) => calendarPeriodDays(value.from, value.to) <= MAX_REPORT_PERIOD_DAYS, {
+    message: `O período não pode exceder ${MAX_REPORT_PERIOD_DAYS} dias.`,
+    path: ['to'],
+  });
+
 const eventExportParamsSchema = z.object({
   eventId: z.uuid('Identificador de evento inválido.'),
   document: z.enum(['guests', 'summary', 'attendance', 'ticket']),
@@ -219,6 +255,7 @@ export {
   reportExportQuerySchema,
   eventExportParamsSchema,
   eventExportQuerySchema,
+  eventPeriodReportQuerySchema,
   tasksQuerySchema,
   createTaskSchema,
   updateTaskSchema,
@@ -242,6 +279,7 @@ export type EventReportQuery = z.infer<typeof eventReportQuerySchema>;
 export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>;
 export type EventExportParams = z.infer<typeof eventExportParamsSchema>;
 export type EventExportQuery = z.infer<typeof eventExportQuerySchema>;
+export type EventPeriodReportQuery = z.infer<typeof eventPeriodReportQuerySchema>;
 export type TasksQuery = z.infer<typeof tasksQuerySchema>;
 export type CreateTaskBody = z.infer<typeof createTaskSchema>;
 export type UpdateTaskBody = z.infer<typeof updateTaskSchema>;

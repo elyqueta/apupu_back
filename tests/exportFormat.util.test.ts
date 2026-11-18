@@ -7,6 +7,7 @@ import {
   exportDateStamp,
   exportFilename,
   formatAngolaPhone,
+  formatCalendarDate,
   formatDisplayDateTime,
   formatExportDateTime,
   formatExportNumber,
@@ -14,6 +15,7 @@ import {
   formatReportCount,
   formatReportPercent,
   formatWeekdayDateTime,
+  periodExportFilename,
   protectCsvFormula,
   reportDocumentCode,
   reportResponseRate,
@@ -33,6 +35,13 @@ describe('exportFormat.util', () => {
   it('devolve string vazia para datas ausentes ou inválidas', () => {
     expect(formatDisplayDateTime(null)).toBe('');
     expect(formatExportDateTime('não é uma data')).toBe('');
+  });
+
+  it('apresenta datas de calendário sem deslocar o dia', () => {
+    expect(formatCalendarDate('2026-11-01')).toBe('01 nov 2026');
+    expect(formatCalendarDate('2026-12-31')).toBe('31 dez 2026');
+    expect(formatCalendarDate('2026-02-30')).toBe('');
+    expect(formatCalendarDate('01/11/2026')).toBe('');
   });
 
   it('formata kwanzas com espaço de milhares e vírgula decimal', () => {
@@ -97,6 +106,18 @@ describe('exportFormat.util', () => {
         'pdf'
       )
     ).toBe('conto-contigo_convidados_casamento-da-ana-do-joao_2026-11-18.pdf');
+
+    expect(
+      periodExportFilename(
+        'relatorio',
+        'Casamento da Ana & do João',
+        '2026-11-01',
+        '2026-11-30',
+        'csv'
+      )
+    ).toBe(
+      'conto-contigo_relatorio_casamento-da-ana-do-joao_2026-11-01_a_2026-11-30.csv'
+    );
   });
 
   it('deriva o código do documento do evento e do ano', () => {

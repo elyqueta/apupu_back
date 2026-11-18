@@ -53,6 +53,11 @@ export interface DonutDatum {
   color: string;
 }
 
+export interface DonutOptions {
+  /** Rótulo sob o total, no centro do gráfico. */
+  centerLabel?: string;
+}
+
 export interface TableColumn {
   label: string;
   weight: number;
@@ -331,7 +336,12 @@ function arcPath(
  * Gráfico circular (donut) com legenda, equivalente ao da página de
  * relatórios. Desenhado com arcos vetoriais.
  */
-export function drawDonut(ctx: PdfContext, y: number, data: DonutDatum[]): number {
+export function drawDonut(
+  ctx: PdfContext,
+  y: number,
+  data: DonutDatum[],
+  options: DonutOptions = {}
+): number {
   const { doc } = ctx;
   const total = data.reduce((sum, item) => sum + item.value, 0);
   const radius = mm(15);
@@ -386,7 +396,7 @@ export function drawDonut(ctx: PdfContext, y: number, data: DonutDatum[]): numbe
     .font(PDF_FONTS.regular)
     .fontSize(7)
     .fillColor(PDF_COLORS.muted)
-    .text('CONVIDADOS', cx - radius, cy + mm(2.5), {
+    .text(options.centerLabel ?? 'CONVIDADOS', cx - radius, cy + mm(2.5), {
       width: radius * 2,
       align: 'center',
       characterSpacing: 0.6,

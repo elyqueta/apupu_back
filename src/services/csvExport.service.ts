@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream';
 import { HostReportSummary } from '../repositories/report.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
-import { EventRecord, EventReportRow, EventStats } from '../types/event.types';
+import { EventPeriodReport, EventRecord, EventReportRow, EventStats } from '../types/event.types';
 import { Invitation } from '../types/invitation.types';
 import {
   csvHeader,
@@ -10,8 +10,10 @@ import {
   exportDateStamp,
   exportFilename,
   formatAngolaPhone,
+  formatCalendarDate,
   formatExportDateTime,
   formatExportNumber,
+  periodExportFilename,
   rsvpStatusLabel,
 } from '../utils/exportFormat.util';
 
@@ -66,6 +68,23 @@ const REPORT_HEADER = [
   'Pendentes',
   'Recusados',
   'Taxa de resposta (%)',
+];
+
+const PERIOD_REPORT_HEADER = [
+  'Evento',
+  'Início do período',
+  'Fim do período',
+  'Convites criados',
+  'Confirmados no período',
+  'Recusados no período',
+  'Pendentes criados',
+  'Lembretes enviados',
+  'Convites atuais',
+  'Confirmados atuais',
+  'Pendentes atuais',
+  'Recusados atuais',
+  'Taxa de resposta atual (%)',
+  'Taxa de confirmação atual (%)',
 ];
 
 /** Junta as linhas com BOM e CRLF, sem carregar o CSV inteiro em memória. */
@@ -123,6 +142,27 @@ function reportRow(event: EventReportRow): string[] {
     String(event.pending),
     String(event.declined),
     responseRate(event.totalInvitations, event.accepted, event.declined),
+  ];
+}
+
+function periodReportRow(report: EventPeriodReport): string[] {
+  const { activity, current, event, period } = report;
+
+  return [
+    event.title,
+    formatCalendarDate(period.from),
+    formatCalendarDate(period.to),
+    String(activity.invitationsCreated),
+    String(activity.accepted),
+    String(activity.declined),
+    String(activity.pendingCreated),
+    String(activity.remindersSent),
+    String(current.totalInvitations),
+    String(current.accepted),
+    String(current.pending),
+    String(current.declined),
+    responseRate(current.totalInvitations, current.accepted, current.declined),
+    acceptanceRate(current.totalInvitations, current.accepted),
   ];
 }
 
@@ -231,6 +271,29 @@ export const csvExportService = {
       stream: streamLines(lines),
     };
   },
+
+  /**
+   * Relatório de um evento num período.
+   *
+   * Uma única linha resume o movimento do período e o estado atual do
+   * evento. O detalhe diário fica no PDF, para não misturar duas
+   * tabelas no mesmo CSV.
+   */
+  eventPeriodReport(report: EventPeriodReport): CsvExport {
+    const lines = [csvHeader(PERIOD_REPORT_HEADER), csvRow(periodReportRow(report))];
+
+    return {
+      filename: periodExportFilename(
+        'relatorio',
+        report.event.title,
+        report.period.from,
+        report.period.to,
+        'csv'
+      ),
+      contentType: CSV_CONTENT_TYPE,
+      stream: streamLines(lines),
+    };
+  },
 };
 
 /** Exposto para testes de formatação sem gerar o ficheiro completo. */
@@ -239,4 +302,5 @@ export const csvInternals = {
   attendanceRow,
   eventRow,
   reportRow,
+  periodReportRow,
 };

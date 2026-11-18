@@ -557,6 +557,11 @@ export const operationErrorResponses: Record<
     422: 'ValidationFailed',
     429: 'RateLimited',
   },
+  'get /api/v1/host/events/{eventId}/reports/export': {
+    401: 'HostSessionInvalid',
+    404: 'EventNotFound',
+    422: 'ValidationFailed',
+  },
   'get /api/v1/host/tasks': {
     401: 'HostSessionInvalid',
     422: 'ValidationFailed',

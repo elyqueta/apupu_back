@@ -3,6 +3,7 @@ import { toDailyReportDto, toReportSummaryDto } from '../dto/report.dto';
 import {
   EventExportParams,
   EventExportQuery,
+  EventPeriodReportQuery,
   EventReportQuery,
   ReportExportQuery,
 } from '../schemas/host.schemas';
@@ -69,5 +70,18 @@ export const reportController = {
         series: series.map(toDailyReportDto),
       },
     });
+  },
+
+  eventPeriodExport: async (req: Request, res: Response): Promise<void> => {
+    const eventId = req.params.eventId ?? '';
+    const { format, from, to } = req.query as unknown as EventPeriodReportQuery;
+    const file = await reportExportService.eventPeriodReport(
+      accessScope(req),
+      eventId,
+      from,
+      to,
+      format
+    );
+    sendFile(res, file);
   },
 };

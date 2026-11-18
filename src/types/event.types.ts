@@ -177,3 +177,27 @@ export interface DailyReportRow {
   declined: number;
   reminders: number;
 }
+
+/** Movimento de um evento dentro de um intervalo de datas (dias UTC). */
+export interface EventPeriodActivity {
+  invitationsCreated: number;
+  accepted: number;
+  declined: number;
+  pendingCreated: number;
+  remindersSent: number;
+}
+
+/**
+ * Relatório de um único evento num período.
+ *
+ * `activity` descreve o que aconteceu no intervalo; `current` é o
+ * retrato atual de todos os convites do evento, para que o leitor não
+ * confunda o movimento do período com o total acumulado.
+ */
+export interface EventPeriodReport {
+  event: EventRecord;
+  period: { from: string; to: string };
+  activity: EventPeriodActivity;
+  current: EventStats;
+  daily: DailyReportRow[];
+}

@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/repositories/report.repository', () => ({
   reportRepository: {
     summaryForHost: vi.fn(),
+    periodActivityForEvent: vi.fn(),
+    dailyForEventRange: vi.fn(),
   },
 }));
 
@@ -250,6 +252,88 @@ describe('reportExportService', () => {
 
     expect(body.subarray(0, 4).toString('latin1')).toBe('%PDF');
     expect(body.byteLength).toBeLessThan(300 * 1024);
+  });
+
+  it('exporta o relatório de um evento num período em CSV', async () => {
+    allowEvent();
+    vi.mocked(reportRepository.periodActivityForEvent).mockResolvedValue({
+      invitationsCreated: 12,
+      accepted: 5,
+      declined: 2,
+      pendingCreated: 5,
+      remindersSent: 3,
+    });
+    vi.mocked(reportRepository.dailyForEventRange).mockResolvedValue([
+      { date: '2026-11-01', invitations: 2, accepted: 1, declined: 0, reminders: 0 },
+      { date: '2026-11-02', invitations: 0, accepted: 0, declined: 0, reminders: 1 },
+    ]);
+    vi.mocked(invitationRepository.statsForEvent).mockResolvedValue(stats);
+
+    const file = await reportExportService.eventPeriodReport(
+      scope,
+      event.id,
+      '2026-11-01',
+      '2026-11-30',
+      'csv'
+    );
+
+    expect(file.contentType).toContain('text/csv');
+    expect(file.filename).toBe(
+      'conto-contigo_relatorio_casamento-da-ana-e-do-joao_2026-11-01_a_2026-11-30.csv'
+    );
+
+    const text = (await collect(file.stream)).toString('utf8');
+    expect(text.charCodeAt(0)).toBe(0xfeff);
+    expect(text).toContain(
+      'Evento;Início do período;Fim do período;Convites criados;Confirmados no período;Recusados no período;Pendentes criados;Lembretes enviados;Convites atuais;Confirmados atuais;Pendentes atuais;Recusados atuais;Taxa de resposta atual (%);Taxa de confirmação atual (%)'
+    );
+    expect(text).toContain(
+      'Casamento da Ana e do João;01 nov 2026;30 nov 2026;12;5;2;5;3;10;6;3;1;70,0;60,0'
+    );
+  });
+
+  it('exporta o relatório de um evento num período em PDF', async () => {
+    allowEvent();
+    vi.mocked(reportRepository.periodActivityForEvent).mockResolvedValue({
+      invitationsCreated: 0,
+      accepted: 0,
+      declined: 0,
+      pendingCreated: 0,
+      remindersSent: 0,
+    });
+    vi.mocked(reportRepository.dailyForEventRange).mockResolvedValue([]);
+    vi.mocked(invitationRepository.statsForEvent).mockResolvedValue({
+      totalInvitations: 0,
+      accepted: 0,
+      declined: 0,
+      pending: 0,
+    });
+
+    const file = await reportExportService.eventPeriodReport(
+      scope,
+      event.id,
+      '2026-11-01',
+      '2026-11-30',
+      'pdf'
+    );
+
+    expect(file.contentType).toBe('application/pdf');
+    expect(file.filename).toBe(
+      'conto-contigo_relatorio_casamento-da-ana-e-do-joao_2026-11-01_a_2026-11-30.pdf'
+    );
+
+    const body = await collect(file.stream);
+    expect(body.subarray(0, 4).toString('latin1')).toBe('%PDF');
+    expect(body.byteLength).toBeGreaterThan(1000);
+    expect(body.byteLength).toBeLessThan(300 * 1024);
+  });
+
+  it('não expõe o relatório de período de um evento de outra conta', async () => {
+    vi.mocked(eventRepository.findByIdForAccess).mockResolvedValue(null);
+
+    await expect(
+      reportExportService.eventPeriodReport(scope, event.id, '2026-11-01', '2026-11-30', 'pdf')
+    ).rejects.toThrow('Evento não encontrado.');
   });
 
   it('exporta presenças apenas com os convidados confirmados', async () => {

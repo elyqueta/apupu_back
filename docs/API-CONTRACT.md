@@ -403,6 +403,7 @@ pesquisa.
 | `GET` | `/api/v1/host/reports/export` | Exporta o resumo em PDF ou CSV |
 | `GET` | `/api/v1/host/events/{eventId}/exports/{document}` | Exporta um documento do evento em PDF ou CSV (`guests`, `summary`, `attendance`, `ticket`) |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | Série diária do evento |
+| `GET` | `/api/v1/host/events/{eventId}/reports/export` | Relatório do evento num período, em PDF ou CSV |
 | `GET` | `/api/v1/host/notifications` | Notificações da conta (paginadas, com filtros e pesquisa) |
 | `GET` | `/api/v1/host/notifications/unread-count` | Contagem de notificações não lidas |
 | `PATCH` | `/api/v1/host/notifications/{notificationId}` | Marca uma notificação como lida/não lida |
@@ -839,6 +840,32 @@ Regras de "Meus convites":
   prefixadas com `'` para não serem interpretadas como fórmulas.
 - Nome do ficheiro: `conto-contigo_relatorio_YYYY-MM-DD.{pdf,csv}`.
 - `format` inválido devolve `422 validation_failed`.
+
+`GET /api/v1/host/events/{eventId}/reports/export?from=YYYY-MM-DD&to=YYYY-MM-DD&format=pdf|csv`
+— `200`:
+
+- Relatório de **um único evento** num período. `from` e `to` são dias
+  de calendário `YYYY-MM-DD` interpretados em **UTC** e são inclusivos;
+  `to` tem de ser igual ou posterior a `from` e o intervalo não pode
+  exceder **366 dias**. Datas inválidas, período invertido ou intervalo
+  demasiado longo devolvem `422 validation_failed`.
+- O documento distingue dois conceitos:
+  - **movimento do período** — convites criados, respostas recebidas
+    (`accepted`/`declined` com `rsvp_responded_at` no intervalo),
+    convites criados que continuam pendentes e lembretes enviados;
+  - **estado atual** — totais acumulados de todos os convites do
+    evento, para não confundir período com acumulado.
+- `pdf`: `application/pdf` com o mesmo cabeçalho, rodapé, marca de
+  água e paleta do relatório agregado; inclui um bloco de destaque com
+  o movimento, um donut das respostas do período, a tabela diária
+  (um ponto por dia, incluindo dias sem movimento) e a linha do estado
+  atual do evento.
+- `csv`: `text/csv; charset=utf-8`, com BOM, separador `;` e CRLF.
+  Uma única linha de resumo com o movimento do período e o estado
+  atual; o detalhe diário fica apenas no PDF.
+- Nome do ficheiro:
+  `conto-contigo_relatorio_{slug}_{from}_a_{to}.{pdf,csv}`.
+- Evento inexistente ou de outra conta devolve `404 event_not_found`.
 
 `GET /api/v1/host/events/{eventId}/exports/{document}?format=pdf|csv` —
 `200`:
@@ -1774,6 +1801,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `GET` | `/api/v1/host/reports/export` | `200` | PDF (`application/pdf`) ou CSV (`text/csv`) como anexo |
 | `GET` | `/api/v1/host/events/{eventId}/exports/{document}` | `200` | PDF (`application/pdf`) ou CSV (`text/csv`) como anexo |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `200` | `{ "data": { "event_id": uuid, "days": integer, "series": DailyReport[] } }` |
+| `GET` | `/api/v1/host/events/{eventId}/reports/export` | `200` | PDF (`application/pdf`) ou CSV (`text/csv`) como anexo |
 | `GET` | `/api/v1/host/tasks` | `200` | `{ "data": Task[], "pagination": Pagination }` |
 | `POST` | `/api/v1/host/tasks` | `201` | `{ "data": Task }` |
 | `PATCH` | `/api/v1/host/tasks/{taskId}` | `200` | `{ "data": Task }` |
@@ -2082,6 +2110,7 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `GET` | `/api/v1/host/reports/export` | `401 host_session_invalid`; `422 validation_failed` |
 | `GET` | `/api/v1/host/events/{eventId}/exports/{document}` | `400 bad_request`; `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed` |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/events/{eventId}/reports/export` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed` |
 | `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/host/tasks` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
 | `PATCH` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |

@@ -84,6 +84,47 @@ export function exportDateStamp(value: Date = new Date()): string {
 }
 
 /**
+ * Data de calendário `AAAA-MM-DD` apresentada como `22 nov 2026`.
+ *
+ * A data é formatada em UTC de propósito: representa um dia, não um
+ * instante, pelo que não deve deslocar-se com o fuso do servidor.
+ */
+export function formatCalendarDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return '';
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day, 12));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return '';
+  }
+
+  const dayLabel = new Intl.DateTimeFormat('pt-PT', {
+    timeZone: 'UTC',
+    day: '2-digit',
+  }).format(date);
+  const monthLabel = new Intl.DateTimeFormat('pt-PT', {
+    timeZone: 'UTC',
+    month: 'short',
+  })
+    .format(date)
+    .replace(/\.$/, '');
+  const yearLabel = new Intl.DateTimeFormat('pt-PT', {
+    timeZone: 'UTC',
+    year: 'numeric',
+  }).format(date);
+
+  return `${dayLabel} ${monthLabel} ${yearLabel}`;
+}
+
+/**
  * Número sem separador de milhares e com vírgula decimal.
  *
  * `12500` → `12500,00`; `12.5` → `12,50`.
@@ -216,6 +257,22 @@ export function exportFilename(
   extension: 'pdf' | 'csv'
 ): string {
   return `conto-contigo_${kind}_${slugify(eventTitle)}_${exportDateStamp(generatedAt)}.${extension}`;
+}
+
+/**
+ * `conto-contigo_{tipo}_{slug}_{início}_a_{fim}.{ext}`.
+ *
+ * O período fica no nome para distinguir relatórios do mesmo evento
+ * sem depender apenas da data de geração.
+ */
+export function periodExportFilename(
+  kind: string,
+  eventTitle: string,
+  from: string,
+  to: string,
+  extension: 'pdf' | 'csv'
+): string {
+  return `conto-contigo_${kind}_${slugify(eventTitle)}_${from}_a_${to}.${extension}`;
 }
 
 /** Código legível do documento, derivado do evento (sem sequência persistida). */

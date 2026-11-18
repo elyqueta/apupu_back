@@ -4,7 +4,11 @@ import { eventRepository } from '../repositories/event.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { reportRepository } from '../repositories/report.repository';
 import { EventAccessScope, EventRecord, EventStats } from '../types/event.types';
-import { exportDateStamp, exportFilename } from '../utils/exportFormat.util';
+import {
+  exportDateStamp,
+  exportFilename,
+  periodExportFilename,
+} from '../utils/exportFormat.util';
 import { csvExportService } from './csvExport.service';
 import {
   renderAttendancePdf,
@@ -12,7 +16,7 @@ import {
   renderGuestsPdf,
   renderTicketPdf,
 } from './pdf/eventDocuments';
-import { renderReportPdf } from './pdf/reportDocument';
+import { renderEventPeriodPdf, renderReportPdf } from './pdf/reportDocument';
 
 export type ReportExportFormat = 'csv' | 'pdf';
 export type EventExportDocument = 'guests' | 'summary' | 'attendance' | 'ticket';
@@ -71,6 +75,54 @@ export const reportExportService = {
     return pdfExport(
       body,
       `conto-contigo_relatorio_${exportDateStamp(generatedAt)}.pdf`
+    );
+  },
+
+  /**
+   * Relatório de um único evento num período (dias UTC).
+   *
+   * O período descreve o movimento — convites criados, respostas
+   * recebidas e lembretes enviados — enquanto o estado atual do evento
+   * é mostrado em separado, para não misturar acumulado com período.
+   */
+  async eventPeriodReport(
+    scope: EventAccessScope,
+    eventId: string,
+    from: string,
+    to: string,
+    format: ReportExportFormat
+  ): Promise<ReportExport> {
+    const access = await eventRepository.findByIdForAccess(eventId, scope);
+    if (!access) {
+      throw new NotFoundError('Evento não encontrado.');
+    }
+
+    const event = access.event;
+    const generatedAt = new Date();
+    const [activity, daily, current] = await Promise.all([
+      reportRepository.periodActivityForEvent(event.id, from, to),
+      reportRepository.dailyForEventRange(event.id, from, to),
+      invitationRepository.statsForEvent(event.id),
+    ]);
+
+    const report = {
+      event,
+      period: { from, to },
+      activity,
+      current,
+      daily,
+    };
+
+    if (format === 'csv') {
+      return csvExportService.eventPeriodReport(report);
+    }
+
+    const body = await renderEventPeriodPdf(report, generatedAt, {
+      documentSeed: event.id,
+    });
+    return pdfExport(
+      body,
+      periodExportFilename('relatorio', event.title, from, to, 'pdf')
     );
   },
 

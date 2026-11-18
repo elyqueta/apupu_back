@@ -1,5 +1,9 @@
 import { query } from '../database/pool';
-import { DailyReportRow, EventReportRow } from '../types/event.types';
+import {
+  DailyReportRow,
+  EventPeriodActivity,
+  EventReportRow,
+} from '../types/event.types';
 
 interface SummaryRow {
   event_id: string;
@@ -18,6 +22,14 @@ interface DailyRow {
   accepted: string;
   declined: string;
   reminders: string;
+}
+
+interface PeriodActivityRow {
+  invitations_created: string;
+  accepted: string;
+  declined: string;
+  pending_created: string;
+  reminders_sent: string;
 }
 
 export interface HostReportSummary {
@@ -151,6 +163,115 @@ export const reportRepository = {
        FROM window_days d
        ORDER BY d.day ASC`,
       [eventId, days]
+    );
+
+    return result.rows.map((row) => ({
+      date: row.date,
+      invitations: Number(row.invitations),
+      accepted: Number(row.accepted),
+      declined: Number(row.declined),
+      reminders: Number(row.reminders),
+    }));
+  },
+
+  /**
+   * Movimento de um evento entre dois dias UTC, inclusive.
+   *
+   * `invitations_created` conta convites criados no intervalo;
+   * `accepted`/`declined` contam respostas recebidas no intervalo, mesmo
+   * que o convite tenha sido criado antes; `pending_created` conta
+   * convites criados no intervalo que continuam por responder.
+   */
+  async periodActivityForEvent(
+    eventId: string,
+    from: string,
+    to: string
+  ): Promise<EventPeriodActivity> {
+    const result = await query<PeriodActivityRow>(
+      `SELECT
+         count(*) FILTER (
+           WHERE i.created_at >= $2::date::timestamp AT TIME ZONE 'UTC'
+             AND i.created_at < ($3::date + 1)::timestamp AT TIME ZONE 'UTC'
+         )::text AS invitations_created,
+         count(*) FILTER (
+           WHERE i.rsvp_status = 'accepted'
+             AND i.rsvp_responded_at >= $2::date::timestamp AT TIME ZONE 'UTC'
+             AND i.rsvp_responded_at < ($3::date + 1)::timestamp AT TIME ZONE 'UTC'
+         )::text AS accepted,
+         count(*) FILTER (
+           WHERE i.rsvp_status = 'declined'
+             AND i.rsvp_responded_at >= $2::date::timestamp AT TIME ZONE 'UTC'
+             AND i.rsvp_responded_at < ($3::date + 1)::timestamp AT TIME ZONE 'UTC'
+         )::text AS declined,
+         count(*) FILTER (
+           WHERE i.rsvp_status = 'pending'
+             AND i.created_at >= $2::date::timestamp AT TIME ZONE 'UTC'
+             AND i.created_at < ($3::date + 1)::timestamp AT TIME ZONE 'UTC'
+         )::text AS pending_created,
+         (SELECT count(*)::text
+            FROM email_deliveries ed
+           WHERE ed.event_id = $1
+             AND ed.message_type = 'reminder'
+             AND ed.status = 'sent'
+             AND ed.sent_at >= $2::date::timestamp AT TIME ZONE 'UTC'
+             AND ed.sent_at < ($3::date + 1)::timestamp AT TIME ZONE 'UTC'
+         ) AS reminders_sent
+       FROM invitations i
+      WHERE i.event_id = $1`,
+      [eventId, from, to]
+    );
+
+    const row = result.rows[0];
+
+    return {
+      invitationsCreated: Number(row?.invitations_created ?? '0'),
+      accepted: Number(row?.accepted ?? '0'),
+      declined: Number(row?.declined ?? '0'),
+      pendingCreated: Number(row?.pending_created ?? '0'),
+      remindersSent: Number(row?.reminders_sent ?? '0'),
+    };
+  },
+
+  /**
+   * Série diária de um evento entre dois dias UTC, inclusive.
+   *
+   * Ao contrário de `dailyForEvent`, a janela é explícita e pode
+   * incluir dias futuros (sempre a zero), para que o PDF e o CSV
+   * descrevam exactamente o período pedido.
+   */
+  async dailyForEventRange(
+    eventId: string,
+    from: string,
+    to: string
+  ): Promise<DailyReportRow[]> {
+    const result = await query<DailyRow>(
+      `WITH window_days AS (
+         SELECT generate_series($2::date, $3::date, '1 day')::date AS day
+       )
+       SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
+         (SELECT count(*) FROM invitations i
+           WHERE i.event_id = $1
+             AND i.created_at >= d.day::timestamp AT TIME ZONE 'UTC'
+             AND i.created_at < (d.day + 1)::timestamp AT TIME ZONE 'UTC')::text AS invitations,
+         (SELECT count(*) FROM invitations i
+           WHERE i.event_id = $1
+             AND i.rsvp_status = 'accepted'
+             AND i.rsvp_responded_at >= d.day::timestamp AT TIME ZONE 'UTC'
+             AND i.rsvp_responded_at < (d.day + 1)::timestamp AT TIME ZONE 'UTC')::text AS accepted,
+         (SELECT count(*) FROM invitations i
+           WHERE i.event_id = $1
+             AND i.rsvp_status = 'declined'
+             AND i.rsvp_responded_at >= d.day::timestamp AT TIME ZONE 'UTC'
+             AND i.rsvp_responded_at < (d.day + 1)::timestamp AT TIME ZONE 'UTC')::text AS declined,
+         (SELECT count(*) FROM email_deliveries ed
+           WHERE ed.event_id = $1
+             AND ed.message_type = 'reminder'
+             AND ed.status = 'sent'
+             AND ed.sent_at >= d.day::timestamp AT TIME ZONE 'UTC'
+             AND ed.sent_at < (d.day + 1)::timestamp AT TIME ZONE 'UTC')::text AS reminders
+        FROM window_days d
+        ORDER BY d.day ASC`,
+      [eventId, from, to]
     );
 
     return result.rows.map((row) => ({

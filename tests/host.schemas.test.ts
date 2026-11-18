@@ -3,6 +3,7 @@ import {
   avatarSchema,
   coverSchema,
   createTaskSchema,
+  eventPeriodReportQuerySchema,
   eventReportQuerySchema,
   guestInvitationsQuerySchema,
   hostEventsQuerySchema,
@@ -102,6 +103,33 @@ describe('schemas de listas do workspace', () => {
     expect(eventReportQuerySchema.parse({ days: '7' })).toEqual({ days: 7 });
     expect(eventReportQuerySchema.safeParse({ days: 0 }).success).toBe(false);
     expect(eventReportQuerySchema.safeParse({ days: 366 }).success).toBe(false);
+  });
+
+  it('valida o período do relatório de um evento', () => {
+    expect(
+      eventPeriodReportQuerySchema.parse({
+        from: '2026-11-01',
+        to: '2026-11-30',
+      })
+    ).toEqual({ format: 'pdf', from: '2026-11-01', to: '2026-11-30' });
+
+    expect(
+      eventPeriodReportQuerySchema.safeParse({
+        format: 'csv',
+        from: '2026-11-01',
+        to: '2026-11-30',
+      }).success
+    ).toBe(true);
+
+    expect(
+      eventPeriodReportQuerySchema.safeParse({ from: '2026-11-30', to: '2026-11-01' }).success
+    ).toBe(false);
+    expect(
+      eventPeriodReportQuerySchema.safeParse({ from: '2026-02-30', to: '2026-03-01' }).success
+    ).toBe(false);
+    expect(
+      eventPeriodReportQuerySchema.safeParse({ from: '2026-01-01', to: '2027-01-02' }).success
+    ).toBe(false);
   });
 
   it('aplica a ordenação ascendente de "Meus convites"', () => {
