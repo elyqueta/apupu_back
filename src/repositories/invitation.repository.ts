@@ -10,6 +10,7 @@ import {
   UpdateInvitationInput,
 } from '../types/invitation.types';
 import { TeamGuestCandidate } from '../types/team.types';
+import { escapeLike } from '../utils/like.util';
 
 interface InvitationRow {
   id: string;
@@ -399,9 +400,11 @@ export const invitationRepository = {
       conditions.push(`i.send_status = $${values.length}`);
     }
     if (filters.q) {
-      values.push(`%${filters.q}%`);
+      values.push(`%${escapeLike(filters.q)}%`);
       conditions.push(
-        `(i.guest_name ILIKE $${values.length} OR i.guest_email ILIKE $${values.length})`
+        `(i.guest_name ILIKE $${values.length} ESCAPE '\\' OR ` +
+          `i.guest_email ILIKE $${values.length} ESCAPE '\\' OR ` +
+          `i.guest_phone ILIKE $${values.length} ESCAPE '\\')`
       );
     }
 
@@ -451,8 +454,11 @@ export const invitationRepository = {
     let qCondition = '';
 
     if (filters.q) {
-      values.push(`%${filters.q}%`);
-      qCondition = `AND (i.guest_name ILIKE $${values.length} OR i.guest_email ILIKE $${values.length})`;
+      values.push(`%${escapeLike(filters.q)}%`);
+      qCondition =
+        `AND (i.guest_name ILIKE $${values.length} ESCAPE '\\' OR ` +
+        `i.guest_email ILIKE $${values.length} ESCAPE '\\' OR ` +
+        `i.guest_phone ILIKE $${values.length} ESCAPE '\\')`;
     }
 
     const dedupeKey = `CASE WHEN btrim(i.guest_email) = '' THEN i.id::text ELSE lower(i.guest_email) END`;
