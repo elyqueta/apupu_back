@@ -1641,6 +1641,25 @@ router.post(
  *           type: string
  *           enum: [logistica, decoracao, musica, catering, rececao, outra]
  *       - in: query
+ *         name: role
+ *         description: Papel da conta na equipa.
+ *         schema:
+ *           type: string
+ *           enum: [anfitriao, gestor, membro]
+ *       - in: query
+ *         name: event_status
+ *         description: Estado observável do evento, derivado das datas.
+ *         schema:
+ *           type: string
+ *           enum: [agendado, em_curso, concluido, cancelado, rascunho]
+ *       - in: query
+ *         name: mine
+ *         description: >
+ *           Só equipas em que fui adicionado como membro/gestor ou onde
+ *           tenho tarefas por concluir atribuídas a mim. A presença
+ *           implícita do anfitrião não conta.
+ *         schema: { type: boolean }
+ *       - in: query
  *         name: q
  *         schema: { type: string }
  *       - in: query

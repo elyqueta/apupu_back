@@ -1,9 +1,15 @@
-import { TeamWithStats } from '../types/team.types';
+import {
+  TeamEventStatus,
+  TeamMyRole,
+  TeamWithStats,
+} from '../types/team.types';
 
 export interface TeamDto {
   id: string;
   event_id: string;
   event_title: string;
+  event_status: TeamEventStatus;
+  my_role: TeamMyRole;
   name: string;
   category: string;
   description: string | null;
@@ -18,6 +24,8 @@ export function toTeamDto(team: TeamWithStats): TeamDto {
     id: team.id,
     event_id: team.eventId,
     event_title: team.eventTitle,
+    event_status: team.eventStatus,
+    my_role: team.myRole ?? 'membro',
     name: team.name,
     category: team.category,
     description: team.description,

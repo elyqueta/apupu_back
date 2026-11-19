@@ -1,6 +1,12 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../database/pool';
-import { Team, TeamCategory, TeamWithStats } from '../types/team.types';
+import {
+  Team,
+  TeamCategory,
+  TeamEventStatus,
+  TeamMyRole,
+  TeamWithStats,
+} from '../types/team.types';
 
 interface TeamRow {
   id: string;
@@ -13,8 +19,10 @@ interface TeamRow {
   created_at: Date;
   updated_at: Date;
   event_title: string;
+  event_status: TeamEventStatus;
   member_count: number;
   open_task_count: number;
+  my_role?: TeamMyRole;
 }
 
 function toTeam(row: TeamRow): TeamWithStats {
@@ -29,15 +37,54 @@ function toTeam(row: TeamRow): TeamWithStats {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     eventTitle: row.event_title,
+    eventStatus: row.event_status,
     memberCount: row.member_count,
     openTaskCount: row.open_task_count,
+    myRole: row.my_role,
   };
 }
+
+/**
+ * Estado observável do evento. `draft`/`cancelled`/`completed` vêm do
+ * estado explícito; um evento agendado é classificado pelas datas.
+ */
+const EVENT_STATUS_SQL = `
+  CASE
+    WHEN e.status = 'cancelled' THEN 'cancelado'
+    WHEN e.status = 'draft' THEN 'rascunho'
+    WHEN e.status = 'completed' THEN 'concluido'
+    WHEN now() < e.starts_at THEN 'agendado'
+    WHEN e.ends_at IS NOT NULL AND now() >= e.ends_at THEN 'concluido'
+    ELSE 'em_curso'
+  END
+`;
+
+/**
+ * Papel da conta autenticada na equipa.
+ *
+ * `$1` é o `host_id` da sessão e `$2` o email efectivo da conta. O
+ * anfitrião do evento tem sempre `anfitriao`; os restantes usam a linha
+ * de `team_members` (`self`), com fallback para gestor de evento.
+ */
+const MY_ROLE_SQL = `
+  CASE
+    WHEN e.host_id = $1 THEN 'anfitriao'
+    WHEN self.role IS NOT NULL THEN self.role
+    WHEN $2::citext IS NOT NULL AND EXISTS (
+      SELECT 1 FROM event_managers em
+       WHERE em.event_id = e.id
+         AND em.email = $2::citext
+         AND em.revoked_at IS NULL
+    ) THEN 'gestor'
+    ELSE 'membro'
+  END
+`;
 
 const SELECT_TEAM = `
   t.id, t.event_id, t.name, t.category, t.description,
   t.created_by_host_id, t.deleted_at, t.created_at, t.updated_at,
   e.title AS event_title,
+  ${EVENT_STATUS_SQL} AS event_status,
   COALESCE(members.member_count, 0)::int AS member_count,
   COALESCE(tasks.open_task_count, 0)::int AS open_task_count
 `;
@@ -64,12 +111,58 @@ export interface TeamListFilters {
   hostId: string;
   /** Email verificado da conta; `null` limita a lista ao anfitrião. */
   managerEmail: string | null;
+  /**
+   * Email efectivo da conta (mesmo por verificar), usado em `my_role` e
+   * em `mine`. O anfitrião usa o email da conta.
+   */
+  actorEmail: string | null;
   eventId?: string;
   category?: TeamCategory;
+  role?: TeamMyRole;
+  eventStatus?: TeamEventStatus;
+  mine?: boolean;
   q?: string;
   offset: number;
   limit: number;
 }
+
+const SELF_MEMBER_SQL = `
+  LEFT JOIN LATERAL (
+    SELECT m.role
+      FROM team_members m
+     WHERE m.team_id = t.id
+       AND m.email = $2::citext
+       AND m.removed_at IS NULL
+     ORDER BY m.is_host DESC, m.created_at ASC
+     LIMIT 1
+  ) self ON true
+`;
+
+/**
+ * "As minhas equipas": fui adicionado como membro/gestor (excluindo a
+ * presença implícita do anfitrião) ou tenho tarefas por concluir
+ * atribuídas a mim.
+ */
+const MINE_SQL = `
+  (
+    EXISTS (
+      SELECT 1 FROM team_members mine
+       WHERE mine.team_id = t.id
+         AND mine.email = $2::citext
+         AND mine.removed_at IS NULL
+         AND mine.is_host = false
+    )
+    OR EXISTS (
+      SELECT 1
+        FROM host_tasks own
+        JOIN team_members assignee ON assignee.id = own.assignee_member_id
+       WHERE own.team_id = t.id
+         AND own.status <> 'concluida'
+         AND own.archived_at IS NULL
+         AND assignee.email = $2::citext
+    )
+  )
+`;
 
 export interface CreateTeamData {
   eventId: string;
@@ -123,7 +216,8 @@ export const teamRepository = {
   async listForAccess(
     filters: TeamListFilters
   ): Promise<{ items: TeamWithStats[]; total: number }> {
-    const values: unknown[] = [filters.hostId];
+    // $1 = host da sessão, $2 = email efectivo (usado por my_role/mine).
+    const values: unknown[] = [filters.hostId, filters.actorEmail];
     const conditions = ['t.deleted_at IS NULL'];
 
     const access = ['e.host_id = $1'];
@@ -161,6 +255,20 @@ export const teamRepository = {
       conditions.push(`t.category = $${values.length}`);
     }
 
+    if (filters.role) {
+      values.push(filters.role);
+      conditions.push(`${MY_ROLE_SQL} = $${values.length}`);
+    }
+
+    if (filters.eventStatus) {
+      values.push(filters.eventStatus);
+      conditions.push(`${EVENT_STATUS_SQL} = $${values.length}`);
+    }
+
+    if (filters.mine) {
+      conditions.push(MINE_SQL);
+    }
+
     if (filters.q) {
       values.push(`%${filters.q}%`);
       conditions.push(`t.name ILIKE $${values.length}`);
@@ -172,14 +280,17 @@ export const teamRepository = {
       `SELECT count(*)::text AS total
          FROM teams t
          JOIN events e ON e.id = t.event_id
+         ${SELF_MEMBER_SQL}
         WHERE ${where}`,
       values
     );
 
     const listValues = [...values, filters.limit, filters.offset];
     const result = await query<TeamRow>(
-      `SELECT ${SELECT_TEAM}
+      `SELECT ${SELECT_TEAM},
+              ${MY_ROLE_SQL} AS my_role
        ${FROM_TEAM}
+       ${SELF_MEMBER_SQL}
         WHERE ${where}
         ORDER BY e.starts_at ASC, t.name ASC, t.id ASC
         LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,

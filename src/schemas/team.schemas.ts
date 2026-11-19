@@ -5,8 +5,10 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
   TEAM_CATEGORIES,
+  TEAM_EVENT_STATUSES,
   TEAM_MEMBER_ROLES,
   TEAM_MEMBER_STATUSES,
+  TEAM_MY_ROLES,
 } from '../types/team.types';
 
 /**
@@ -38,6 +40,12 @@ const teamDescriptionSchema = z
 export const teamListQuerySchema = z.object({
   event_id: z.uuid('Identificador de evento inválido.').optional(),
   category: z.enum(TEAM_CATEGORIES).optional(),
+  /** Papel da conta na equipa. */
+  role: z.enum(TEAM_MY_ROLES).optional(),
+  /** Estado observável do evento (derivado das datas). */
+  event_status: z.enum(TEAM_EVENT_STATUSES).optional(),
+  /** Só equipas em que fui adicionado ou tenho tarefas por concluir. */
+  mine: booleanQuery,
   q: z.string().trim().max(150).optional(),
   ...paginationQueryFields,
 });

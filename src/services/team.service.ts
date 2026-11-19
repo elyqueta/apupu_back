@@ -9,12 +9,15 @@ import {
 } from '../schemas/team.schemas';
 import { EventAccessScope } from '../types/event.types';
 import { PaginationMeta } from '../types/pagination.types';
-import { TeamWithStats } from '../types/team.types';
+import { TeamMyRole, TeamWithStats } from '../types/team.types';
 import { buildPaginationMeta, toPageParams } from '../utils/pagination.util';
 import {
   assertCanManageTeam,
+  memberForScope,
   requireEventRole,
   resolveTeamAccess,
+  ResourceRole,
+  scopeEmail,
 } from './teamAccess.service';
 
 export interface TeamListResult {
@@ -27,6 +30,24 @@ export interface DeleteTeamResult {
   reassignedToTeamId: string | null;
   archivedTasks: number;
   reassignedTasks: number;
+}
+
+/**
+ * Papel efectivo da conta na equipa. O anfitrião do evento é sempre
+ * `anfitriao`; os restantes usam a linha de `team_members` e, na sua
+ * ausência, o papel no evento.
+ */
+async function myRoleFor(
+  teamId: string,
+  role: ResourceRole,
+  scope: EventAccessScope
+): Promise<TeamMyRole> {
+  if (role === 'host') return 'anfitriao';
+
+  const member = await memberForScope(teamId, role, scope);
+  if (member) return member.role === 'gestor' ? 'gestor' : 'membro';
+
+  return role === 'manager' ? 'gestor' : 'membro';
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -48,8 +69,12 @@ export const teamService = {
     const { items, total } = await teamRepository.listForAccess({
       hostId: scope.hostId,
       managerEmail: scope.managerEmail,
+      actorEmail: await scopeEmail(scope),
       eventId: query.event_id,
       category: query.category,
+      role: query.role,
+      eventStatus: query.event_status,
+      mine: query.mine,
       q: query.q,
       offset: page.offset,
       limit: page.limit,
@@ -63,7 +88,10 @@ export const teamService = {
 
   async get(scope: EventAccessScope, teamId: string): Promise<TeamWithStats> {
     const access = await resolveTeamAccess(teamId, scope);
-    return access.team;
+    return {
+      ...access.team,
+      myRole: await myRoleFor(teamId, access.role, scope),
+    };
   },
 
   /**
@@ -75,8 +103,8 @@ export const teamService = {
     assertCanManageTeam(role);
 
     try {
-      return await withTransaction(async (client) => {
-        const team = await teamRepository.create(
+      const team = await withTransaction(async (client) => {
+        const created = await teamRepository.create(
           {
             eventId: input.event_id,
             name: input.name,
@@ -87,9 +115,14 @@ export const teamService = {
           client
         );
 
-        await teamRepository.materializeEventStaff(team.id, client);
-        return team;
+        await teamRepository.materializeEventStaff(created.id, client);
+        return created;
       });
+
+      return {
+        ...team,
+        myRole: await myRoleFor(team.id, role, scope),
+      };
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictError(
@@ -116,7 +149,10 @@ export const teamService = {
         throw new NotFoundError('Equipa não encontrada.', 'team_not_found');
       }
 
-      return updated;
+      return {
+        ...updated,
+        myRole: await myRoleFor(teamId, access.role, scope),
+      };
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictError(

@@ -1046,6 +1046,8 @@ Regras de "Meus convites":
       "id": "4c1f0d2e-8a3b-4c5d-9e6f-7a8b9c0d1e2f",
       "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
       "event_title": "Casamento da Ana e do Paulo",
+      "event_status": "agendado",
+      "my_role": "anfitriao",
       "name": "Cozinha",
       "category": "catering",
       "description": null,
@@ -1063,6 +1065,22 @@ Regras de "Meus convites":
   só aquelas em que está activo. Criar, editar e apagar equipas é
   exclusivo do anfitrião/gestor (`403 team_action_forbidden`). Um
   `team_id` de outro evento devolve `404 team_not_found`, nunca `403`.
+- Cada equipa devolve `my_role` — o papel da conta **na equipa**
+  (`anfitriao`, `gestor` ou `membro`) — e `event_status`, derivado de
+  `events.status` e das datas: `rascunho` (`draft`), `cancelado`
+  (`cancelled`), `concluido` (`completed` ou `ends_at` no passado),
+  `agendado` (`starts_at` no futuro) ou `em_curso` (já começou e ainda
+  não terminou). O anfitrião é sempre `anfitriao`, mesmo que a linha
+  materializada em `team_members` tenha `role=gestor`.
+- Filtros do `GET /host/teams`: `event_id`, `category`, `role`
+  (`anfitriao|gestor|membro`), `event_status`
+  (`agendado|em_curso|concluido|cancelado|rascunho`), `mine` e `q`.
+  `mine=true` devolve as equipas em que a conta foi adicionada como
+  membro ou gestor, ou onde tem tarefas por concluir atribuídas a si.
+  A presença implícita do anfitrião (linha `is_host=true`) não conta;
+  as tarefas abertas do anfitrião contam. Os filtros são aplicados no
+  servidor, antes da paginação, pelo que `pagination.total` reflecte
+  sempre o conjunto filtrado.
 - `POST /api/v1/host/teams` (`{ event_id, name, category?, description? }`)
   devolve `201 { data: Team }` e chama
   `team_materialize_event_staff` na mesma transação: o anfitrião e os

@@ -581,6 +581,15 @@ export const contoContigoSchemas = {
       id: { type: 'string', format: 'uuid' },
       event_id: { type: 'string', format: 'uuid' },
       event_title: { type: 'string' },
+      event_status: {
+        type: 'string',
+        enum: ['agendado', 'em_curso', 'concluido', 'cancelado', 'rascunho'],
+      },
+      my_role: {
+        type: 'string',
+        enum: ['anfitriao', 'gestor', 'membro'],
+        description: 'Papel da conta autenticada na equipa.',
+      },
       name: { type: 'string' },
       category: {
         type: 'string',

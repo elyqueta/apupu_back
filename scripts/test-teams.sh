@@ -47,6 +47,7 @@ echo "== 4/6 Testes da API (equipas, membros, tarefas, convites e notificações
 # entregas vencidas da base e precisam de isolamento entre ficheiros.
 TEAMS_API_TEST_URL="$API_URL" npx vitest run --no-file-parallelism \
   tests/teamsPhase3Unit.test.ts \
+  tests/teamsListFilters.test.ts \
   tests/teamsApi.test.ts \
   tests/teamsApiPhase2Corrections.test.ts \
   tests/teamsPhase3.test.ts \

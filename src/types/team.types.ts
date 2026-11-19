@@ -28,6 +28,31 @@ export type TeamMemberStatus = (typeof TEAM_MEMBER_STATUSES)[number];
 export const TEAM_MEMBER_ORIGINS = ['convidado', 'email'] as const;
 export type TeamMemberOrigin = (typeof TEAM_MEMBER_ORIGINS)[number];
 
+/**
+ * Papel da conta autenticada **na equipa**.
+ *
+ * `anfitriao` só se aplica ao anfitrião do evento; os restantes usam o
+ * papel da linha em `team_members` (`gestor`/`membro`).
+ */
+export const TEAM_MY_ROLES = ['anfitriao', 'gestor', 'membro'] as const;
+export type TeamMyRole = (typeof TEAM_MY_ROLES)[number];
+
+/**
+ * Estado observável do evento para os filtros da lista de equipas.
+ *
+ * É derivado de `events.status` e das datas: um evento `scheduled`
+ * ainda por começar está `agendado`; a decorrer, `em_curso`; com
+ * `ends_at` no passado, `concluido`.
+ */
+export const TEAM_EVENT_STATUSES = [
+  'agendado',
+  'em_curso',
+  'concluido',
+  'cancelado',
+  'rascunho',
+] as const;
+export type TeamEventStatus = (typeof TEAM_EVENT_STATUSES)[number];
+
 export const TASK_STATUSES = ['por_fazer', 'em_curso', 'concluida'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
@@ -59,8 +84,15 @@ export interface Team {
 
 export interface TeamWithStats extends Team {
   eventTitle: string;
+  /** Estado observável do evento, derivado de `status` e das datas. */
+  eventStatus: TeamEventStatus;
   memberCount: number;
   openTaskCount: number;
+  /**
+   * Papel da conta autenticada na equipa. Preenchido pelas respostas da
+   * API (`GET /host/teams` e detalhe); ausente em leituras internas.
+   */
+  myRole?: TeamMyRole;
 }
 
 export interface TeamMember {
