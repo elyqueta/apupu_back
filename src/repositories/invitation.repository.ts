@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { pool, query } from '../database/pool';
-import { EventCategory, EventLocation, EventStats, EventStatus } from '../types/event.types';import {
+import { EventCategory, EventLocation, EventStats, EventStatus } from '../types/event.types';
+import {
   AccountInvitation,
   Invitation,
   InvitationWithEvent,
@@ -8,6 +9,7 @@ import { EventCategory, EventLocation, EventStats, EventStatus } from '../types/
   SendStatus,
   UpdateInvitationInput,
 } from '../types/invitation.types';
+import { TeamGuestCandidate } from '../types/team.types';
 
 interface InvitationRow {
   id: string;
@@ -131,6 +133,22 @@ export interface HostGuestListFilters {
   eventId?: string;
   rsvpStatus?: RsvpStatus;
   sendStatus?: SendStatus;
+  q?: string;
+  offset: number;
+  limit: number;
+}
+
+/**
+ * Filtros dos candidatos a membro de uma equipa.
+ *
+ * A origem é sempre limitada aos eventos em que a conta é anfitriã
+ * (mais o evento da própria equipa), pelo que um gestor nunca vê
+ * convidados de outros eventos do anfitrião.
+ */
+export interface TeamGuestCandidateFilters {
+  hostId: string;
+  teamId: string;
+  eventId: string;
   q?: string;
   offset: number;
   limit: number;
@@ -412,6 +430,94 @@ export const invitationRepository = {
 
     return {
       items: result.rows.map(toInvitationWithEvent),
+      total: Number(countResult.rows[0]?.total ?? '0'),
+    };
+  },
+
+  /**
+   * Candidatos a membro de uma equipa, a partir dos convidados.
+   *
+   * Regras de privacidade:
+   * - só entram eventos em que a conta é anfitriã (`e.host_id = $1`),
+   *   mais o evento da equipa indicada (acesso já validado no serviço);
+   * - deduplicação por email normalizado; convidados sem email
+   *   (string vazia) não são agrupados entre si;
+   * - `is_member` marca quem já pertence à equipa.
+   */
+  async listTeamGuestCandidates(
+    filters: TeamGuestCandidateFilters
+  ): Promise<{ items: TeamGuestCandidate[]; total: number }> {
+    const values: unknown[] = [filters.hostId, filters.eventId];
+    let qCondition = '';
+
+    if (filters.q) {
+      values.push(`%${filters.q}%`);
+      qCondition = `AND (i.guest_name ILIKE $${values.length} OR i.guest_email ILIKE $${values.length})`;
+    }
+
+    const dedupeKey = `CASE WHEN btrim(i.guest_email) = '' THEN i.id::text ELSE lower(i.guest_email) END`;
+
+    const candidates = `
+      SELECT DISTINCT ON (${dedupeKey})
+             i.id AS invitation_id,
+             i.event_id,
+             i.guest_name,
+             i.guest_email,
+             e.title AS event_title,
+             e.starts_at AS event_starts_at,
+             e.status AS event_status
+        FROM invitations i
+        JOIN events e ON e.id = i.event_id
+       WHERE (e.host_id = $1 OR e.id = $2)
+         ${qCondition}
+       ORDER BY ${dedupeKey}, e.starts_at ASC NULLS LAST, i.created_at ASC, i.id ASC
+    `;
+
+    const countResult = await query<{ total: string }>(
+      `SELECT count(*)::text AS total FROM (${candidates}) candidates`,
+      values
+    );
+
+    const teamParam = values.length + 1;
+    const listValues = [...values, filters.teamId, filters.limit, filters.offset];
+    const result = await query<{
+      invitation_id: string;
+      event_id: string;
+      guest_name: string;
+      guest_email: string;
+      event_title: string;
+      event_starts_at: Date | null;
+      event_status: string;
+      member_id: string | null;
+    }>(
+      `SELECT candidates.*,
+              m.id AS member_id
+         FROM (${candidates}) candidates
+         LEFT JOIN team_members m
+           ON m.team_id = $${teamParam}
+          AND btrim(candidates.guest_email) <> ''
+          AND m.email = candidates.guest_email::citext
+          AND m.removed_at IS NULL
+        ORDER BY candidates.event_starts_at ASC NULLS LAST,
+                 candidates.guest_name ASC,
+                 candidates.invitation_id ASC
+        LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,
+      listValues
+    );
+
+    return {
+      items: result.rows.map((row) => ({
+        invitationId: row.invitation_id,
+        eventId: row.event_id,
+        eventTitle: row.event_title,
+        eventStartsAt: row.event_starts_at,
+        eventStatus: row.event_status,
+        guestName: row.guest_name,
+        guestEmail: row.guest_email,
+        hasEmail: row.guest_email.trim().length > 0,
+        isMember: row.member_id !== null,
+        memberId: row.member_id,
+      })),
       total: Number(countResult.rows[0]?.total ?? '0'),
     };
   },

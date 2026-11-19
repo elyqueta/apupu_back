@@ -8,6 +8,9 @@ import { notificationController } from '../../controllers/notification.controlle
 import { profileController } from '../../controllers/profile.controller';
 import { reportController } from '../../controllers/report.controller';
 import { taskController } from '../../controllers/task.controller';
+import { teamController } from '../../controllers/team.controller';
+import { teamMemberController } from '../../controllers/teamMember.controller';
+import { teamInviteController } from '../../controllers/teamInvite.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
 import { hostAuth } from '../../middlewares/hostAuth';
@@ -44,6 +47,21 @@ import {
   updateProfileSchema,
   updateTaskSchema,
 } from '../../schemas/host.schemas';
+import {
+  addTeamMembersSchema,
+  createTeamSchema,
+  deleteTeamQuerySchema,
+  moveTaskSchema,
+  removeTeamMemberQuerySchema,
+  taskAssigneeSchema,
+  taskStatusBodySchema,
+  teamIdParamsSchema,
+  teamListQuerySchema,
+  teamMemberListQuerySchema,
+  teamMemberParamsSchema,
+  updateTeamMemberRoleSchema,
+  updateTeamSchema,
+} from '../../schemas/team.schemas';
 
 /**
  * Workspace da conta autenticada.
@@ -69,6 +87,9 @@ const router = Router();
  *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  *       401:
  *         description: Sessão ausente ou expirada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *   patch:
  *     tags: [Perfil]
  *     summary: Actualiza campos do perfil
@@ -92,6 +113,9 @@ const router = Router();
  *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  *       422:
  *         description: Data de nascimento ou outro campo inválido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get('/profile', asyncHandler(hostAccountAuth), asyncHandler(profileController.get));
 
@@ -274,6 +298,9 @@ router.post(
  *             schema: { $ref: '#/components/schemas/HostEnvelope' }
  *       503:
  *         description: Upload indisponível (`profile_cover_upload_unavailable`).
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.post(
   '/profile/cover',
@@ -358,6 +385,9 @@ router.delete(
  *             schema: { $ref: '#/components/schemas/EventCreateEnvelope' }
  *       403:
  *         description: Email por verificar.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/events',
@@ -398,6 +428,9 @@ router.post(
  *         description: Evento apagado.
  *       404:
  *         description: Evento não encontrado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.delete(
   '/events/:eventId',
@@ -438,10 +471,19 @@ router.delete(
  *             schema: { $ref: '#/components/schemas/ManageLinkResendEnvelope' }
  *       403:
  *         description: Email por verificar.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       404:
  *         description: Evento não encontrado ou de outra conta.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       429:
  *         description: Demasiados pedidos.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.post(
   '/events/:eventId/manage-link/resend',
@@ -472,6 +514,9 @@ router.post(
  *             schema: { $ref: '#/components/schemas/HostEventManagerList' }
  *       401:
  *         description: Sessão inválida.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/managers',
@@ -504,6 +549,9 @@ router.get(
  *             schema: { $ref: '#/components/schemas/EventManagerList' }
  *       404:
  *         description: Evento não encontrado ou de outra conta.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *   post:
  *     tags: [Gestores]
  *     summary: Adiciona um gestor e envia-lhe o link de gestão
@@ -537,10 +585,19 @@ router.get(
  *             schema: { $ref: '#/components/schemas/EventManagerEnvelope' }
  *       404:
  *         description: Evento não encontrado ou de outra conta.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       409:
  *         description: O email já é gestor do evento.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       422:
  *         description: Email inválido ou igual ao do anfitrião.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/events/:eventId/managers',
@@ -590,7 +647,13 @@ router.post(
  *         description: Gestor removido.
  *       404:
  *         description: Evento ou gestor não encontrado.
- *
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+
+/**
+ * @openapi
  * /api/v1/host/events/{eventId}/managers/{managerId}/resend:
  *   post:
  *     tags: [Gestores]
@@ -621,6 +684,9 @@ router.post(
  *             schema: { $ref: '#/components/schemas/EventManagerEnvelope' }
  *       404:
  *         description: Evento ou gestor não encontrado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.delete(
   '/events/:eventId/managers/:managerId',
@@ -670,6 +736,14 @@ router.get('/dashboard', asyncHandler(hostAccountAuth), asyncHandler(hostEventCo
  *     parameters:
  *       - in: query
  *         name: event_id
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: for_team
+ *         description: >
+ *           Devolve os candidatos a membro da equipa indicada: apenas
+ *           convidados de eventos em que a conta é anfitriã, mais os do
+ *           evento dessa equipa, deduplicados por email. A resposta
+ *           inclui `is_member` e `has_email`.
  *         schema: { type: string, format: uuid }
  *       - in: query
  *         name: rsvp_status
@@ -744,10 +818,19 @@ router.get(
  *             schema: { $ref: '#/components/schemas/GuestInvitationList' }
  *       401:
  *         description: Sessão ausente ou expirada (`host_session_invalid`).
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       403:
  *         description: Email da conta por verificar (`email_not_verified`).
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       422:
  *         description: Parâmetros de paginação/ordenação inválidos.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/invitations',
@@ -814,6 +897,9 @@ router.get(
  *             schema: { $ref: '#/components/schemas/EventActivityList' }
  *       404:
  *         description: Evento não encontrado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/events/:eventId/activity',
@@ -841,7 +927,7 @@ router.get(
  *         name: kind
  *         schema:
  *           type: string
- *           enum: [rsvp_accepted, rsvp_declined, guest_added, reminder_sent, event_created, event_upcoming, rsvp_deadline, task_assigned, task_completed]
+ *           enum: [rsvp_accepted, rsvp_declined, guest_added, reminder_sent, event_created, event_upcoming, rsvp_deadline, task_assigned, task_completed, task_reassigned, team_added, role_changed]
  *       - in: query
  *         name: event_id
  *         schema: { type: string, format: uuid }
@@ -928,6 +1014,9 @@ router.get(
  *         description: Notificação actualizada.
  *       404:
  *         description: Notificação não encontrada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *   delete:
  *     tags: [Notificações]
  *     summary: Remove uma notificação
@@ -1041,8 +1130,14 @@ router.get(
  *             schema: { type: string }
  *       401:
  *         description: Sessão inválida.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       422:
  *         description: Formato inválido (`validation_failed`).
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/reports/export',
@@ -1093,8 +1188,14 @@ router.get(
  *             schema: { type: string, format: binary }
  *       400:
  *         description: Parâmetros inválidos (por exemplo, bilhete em CSV).
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       404:
  *         description: Evento ou convite não encontrado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/events/:eventId/exports/:document',
@@ -1143,10 +1244,19 @@ router.get(
  *             schema: { type: string, format: binary }
  *       401:
  *         description: Sessão inválida.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       404:
  *         description: Evento não encontrado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *       422:
  *         description: Datas inválidas, período invertido ou superior a 366 dias.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/events/:eventId/reports/export',
@@ -1180,6 +1290,9 @@ router.get(
  *             schema: { $ref: '#/components/schemas/DailyReportEnvelope' }
  *       404:
  *         description: Evento não encontrado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.get(
   '/events/:eventId/reports',
@@ -1209,6 +1322,14 @@ router.get(
  *   post:
  *     tags: [Workspace]
  *     summary: Cria uma tarefa
+ *     description: >
+ *       Com `team_id`, qualquer membro activo cria na equipa. Sem
+ *       `team_id` mas com `event_id`, usa ou cria a equipa "Geral" do
+ *       evento; o responsável por omissão é o anfitrião, salvo
+ *       `manager_id`. Sem evento nem equipa, cria uma tarefa pessoal
+ *       legada visível só ao criador. Criar já concluída
+ *       (`status=concluida` ou `done=true`) só é permitido ao
+ *       responsável (`403 task_complete_forbidden`).
  *     security:
  *       - accountSession: []
  *     parameters:
@@ -1222,10 +1343,21 @@ router.get(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [label]
+ *             required: [title]
  *             properties:
- *               label: { type: string }
+ *               title: { type: string, maxLength: 200 }
+ *               label: { type: string, maxLength: 200, deprecated: true }
+ *               description: { type: string, maxLength: 2000, nullable: true }
+ *               due_date: { type: string, format: date, nullable: true }
+ *               priority:
+ *                 { type: string, enum: [baixa, normal, alta], default: normal }
+ *               status:
+ *                 { type: string, enum: [por_fazer, em_curso, concluida], default: por_fazer }
+ *               done: { type: boolean, deprecated: true }
  *               event_id: { type: string, format: uuid, nullable: true }
+ *               team_id: { type: string, format: uuid, nullable: true }
+ *               assignee_member_id: { type: string, format: uuid, nullable: true }
+ *               manager_id: { type: string, format: uuid, nullable: true, deprecated: true }
  *     responses:
  *       201:
  *         description: Tarefa criada.
@@ -1254,7 +1386,13 @@ router.post(
  * /api/v1/host/tasks/{taskId}:
  *   patch:
  *     tags: [Workspace]
- *     summary: Actualiza a descrição ou o estado de uma tarefa
+ *     summary: Actualiza os campos ou o estado de uma tarefa
+ *     description: >
+ *       O anfitrião e os gestores editam qualquer tarefa do evento; um
+ *       membro só as que criou (`403 task_edit_forbidden`). Qualquer
+ *       mudança de `status`/`done` — concluir, reabrir ou `em_curso` —
+ *       segue a mesma regra do endpoint `/status`: só o responsável, com
+ *       `403 task_complete_forbidden` para as restantes contas.
  *     security:
  *       - accountSession: []
  *     parameters:
@@ -1274,6 +1412,9 @@ router.post(
  *             schema: { $ref: '#/components/schemas/TaskEnvelope' }
  *       404:
  *         description: Tarefa não encontrada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  *   delete:
  *     tags: [Workspace]
  *     summary: Remove uma tarefa
@@ -1309,6 +1450,671 @@ router.delete(
   writeLimiter,
   requireAuthCsrf,
   asyncHandler(taskController.remove)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/tasks/{taskId}/status:
+ *   patch:
+ *     tags: [Workspace]
+ *     summary: Conclui, reabre ou passa a tarefa a em curso
+ *     description: >
+ *       Só o responsável pode mudar o estado (concluir, reabrir ou
+ *       `em_curso`); qualquer outra conta recebe
+ *       `403 task_complete_forbidden` com a mensagem
+ *       "Só {nome} pode concluir esta tarefa." (ou "...pode alterar o
+ *       estado desta tarefa."). A conclusão é atómica: pedidos
+ *       concorrentes não sobrescrevem `completed_at` nem geram
+ *       notificações duplicadas.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status: { type: string, enum: [por_fazer, em_curso, concluida] }
+ *               done: { type: boolean, deprecated: true }
+ *     responses:
+ *       200:
+ *         description: Tarefa actualizada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TaskEnvelope' }
+ *       403:
+ *         description: A conta não é o responsável pela tarefa.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       404:
+ *         description: Tarefa não encontrada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.patch(
+  '/tasks/:taskId/status',
+  validate({ params: taskIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: taskStatusBodySchema }),
+  asyncHandler(taskController.setStatus)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/tasks/{taskId}/assignee:
+ *   patch:
+ *     tags: [Workspace]
+ *     summary: Reatribui uma tarefa a outro membro da equipa
+ *     description: Exclusivo do anfitrião e dos gestores.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [assignee_member_id]
+ *             properties:
+ *               assignee_member_id: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Tarefa reatribuída.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TaskEnvelope' }
+ *       403:
+ *         description: A conta não pode reatribuir tarefas.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       404:
+ *         description: Tarefa não encontrada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.patch(
+  '/tasks/:taskId/assignee',
+  validate({ params: taskIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: taskAssigneeSchema }),
+  asyncHandler(taskController.reassign)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/tasks/{taskId}/move:
+ *   post:
+ *     tags: [Workspace]
+ *     summary: Move uma tarefa para outra equipa
+ *     description: >
+ *       Inclui "Mover para uma equipa" nas tarefas pessoais legadas
+ *       (`team_id = null`). O responsável é mantido quando o mesmo
+ *       email existe na equipa de destino.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: taskId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [team_id]
+ *             properties:
+ *               team_id: { type: string, format: uuid }
+ *               assignee_member_id: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Tarefa movida.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TaskEnvelope' }
+ *       404:
+ *         description: Tarefa ou equipa não encontrada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/tasks/:taskId/move',
+  validate({ params: taskIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: moveTaskSchema }),
+  asyncHandler(taskController.move)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams:
+ *   get:
+ *     tags: [Equipas]
+ *     summary: Lista equipas visíveis para a conta
+ *     description: >
+ *       O anfitrião e os gestores vêem todas as equipas do evento; um
+ *       membro só as equipas em que está activo.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: query
+ *         name: event_id
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *           enum: [logistica, decoracao, musica, catering, rececao, outra]
+ *       - in: query
+ *         name: role
+ *         description: Papel da conta na equipa.
+ *         schema:
+ *           type: string
+ *           enum: [anfitriao, gestor, membro]
+ *       - in: query
+ *         name: event_status
+ *         description: Estado observável do evento, derivado das datas.
+ *         schema:
+ *           type: string
+ *           enum: [agendado, em_curso, concluido, cancelado, rascunho]
+ *       - in: query
+ *         name: mine
+ *         description: >
+ *           Só equipas em que fui adicionado como membro/gestor ou onde
+ *           tenho tarefas por concluir atribuídas a mim. A presença
+ *           implícita do anfitrião não conta.
+ *         schema: { type: boolean }
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1 }
+ *       - in: query
+ *         name: page_size
+ *         schema: { type: integer, minimum: 1, maximum: 100 }
+ *     responses:
+ *       200:
+ *         description: Equipas com contagens e paginação.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TeamList' }
+ *       401:
+ *         description: Sessão ausente ou expirada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *   post:
+ *     tags: [Equipas]
+ *     summary: Cria uma equipa no evento
+ *     description: >
+ *       Exclusivo do anfitrião e dos gestores. Materializa o anfitrião e
+ *       os gestores activos como membros na mesma transação.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [event_id, name]
+ *             properties:
+ *               event_id: { type: string, format: uuid }
+ *               name: { type: string, maxLength: 80 }
+ *               category:
+ *                 type: string
+ *                 enum: [logistica, decoracao, musica, catering, rececao, outra]
+ *               description: { type: string, maxLength: 500, nullable: true }
+ *     responses:
+ *       201:
+ *         description: Equipa criada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TeamEnvelope' }
+ *       403:
+ *         description: A conta não pode gerir equipas.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       409:
+ *         description: Já existe uma equipa com esse nome no evento.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.get(
+  '/teams',
+  asyncHandler(hostAccountAuth),
+  validate({ query: teamListQuerySchema }),
+  asyncHandler(teamController.list)
+);
+
+router.post(
+  '/teams',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: createTeamSchema }),
+  asyncHandler(teamController.create)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}:
+ *   get:
+ *     tags: [Equipas]
+ *     summary: Detalhe de uma equipa
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Equipa.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TeamEnvelope' }
+ *       404:
+ *         description: Equipa não encontrada ou sem acesso.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *   patch:
+ *     tags: [Equipas]
+ *     summary: Actualiza uma equipa
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string, maxLength: 80 }
+ *               category:
+ *                 type: string
+ *                 enum: [logistica, decoracao, musica, catering, rececao, outra]
+ *               description: { type: string, maxLength: 500, nullable: true }
+ *     responses:
+ *       200:
+ *         description: Equipa actualizada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TeamEnvelope' }
+ *       403:
+ *         description: A conta não pode gerir equipas.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       404:
+ *         description: Equipa não encontrada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *   delete:
+ *     tags: [Equipas]
+ *     summary: Remove logicamente uma equipa
+ *     description: >
+ *       Com tarefas abertas devolve `409 team_has_open_tasks` com a
+ *       lista. Repetir com `confirm=true` e `reassign_to_team_id` ou
+ *       `archive=true` conclui a remoção na mesma transação.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: confirm
+ *         schema: { type: boolean }
+ *       - in: query
+ *         name: reassign_to_team_id
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: archive
+ *         schema: { type: boolean }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Equipa removida.
+ *       409:
+ *         description: A equipa tem tarefas abertas.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.get(
+  '/teams/:teamId',
+  validate({ params: teamIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  asyncHandler(teamController.get)
+);
+
+router.patch(
+  '/teams/:teamId',
+  validate({ params: teamIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: updateTeamSchema }),
+  asyncHandler(teamController.update)
+);
+
+router.delete(
+  '/teams/:teamId',
+  validate({ params: teamIdParamsSchema, query: deleteTeamQuerySchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(teamController.remove)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}/members:
+ *   get:
+ *     tags: [Equipas]
+ *     summary: Lista membros de uma equipa
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: role
+ *         schema: { type: string, enum: [gestor, membro] }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [ativo, convite_pendente] }
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1 }
+ *       - in: query
+ *         name: page_size
+ *         schema: { type: integer, minimum: 1, maximum: 100 }
+ *     responses:
+ *       200:
+ *         description: Membros com contagens e paginação.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TeamMemberList' }
+ *       404:
+ *         description: Equipa não encontrada ou sem acesso.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *   post:
+ *     tags: [Equipas]
+ *     summary: Adiciona membros por email
+ *     description: >
+ *       Normaliza e deduplica os emails, não permite adicionar a própria
+ *       conta e devolve `{added, pending, skipped}` com o motivo por
+ *       linha. Acima de 50 emails devolve `400 too_many_emails`.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [emails]
+ *             properties:
+ *               emails:
+ *                 type: array
+ *                 items: { type: string, format: email }
+ *     responses:
+ *       201:
+ *         description: Resultado por email.
+ *       400:
+ *         description: Mais de 50 emails no pedido (`too_many_emails`).
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       403:
+ *         description: A conta não pode gerir membros.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.get(
+  '/teams/:teamId/members',
+  validate({ params: teamIdParamsSchema, query: teamMemberListQuerySchema }),
+  asyncHandler(hostAccountAuth),
+  asyncHandler(teamMemberController.list)
+);
+
+router.post(
+  '/teams/:teamId/members',
+  validate({ params: teamIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: addTeamMembersSchema }),
+  asyncHandler(teamMemberController.add)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}/members/{memberId}:
+ *   patch:
+ *     tags: [Equipas]
+ *     summary: Promove ou despromove um membro
+ *     description: >
+ *       Promover e despromover são exclusivos do anfitrião
+ *       (`403 host_action_forbidden` para gestores). Promover
+ *       cria/reactiva o acesso ao evento na mesma transação;
+ *       despromover só altera o papel na equipa e não revoga o acesso.
+ *       O anfitrião nunca é despromovido.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [role]
+ *             properties:
+ *               role: { type: string, enum: [gestor, membro] }
+ *     responses:
+ *       200:
+ *         description: Papel actualizado.
+ *       403:
+ *         description: A conta não pode alterar o papel.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *   delete:
+ *     tags: [Equipas]
+ *     summary: Remove logicamente um membro
+ *     description: >
+ *       Com tarefas abertas devolve `409 member_has_open_tasks` com a
+ *       lista. Repetir com `reassign_to_member_id` reatribui tudo e
+ *       remove na mesma transação. O anfitrião nunca é removido.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: query
+ *         name: reassign_to_member_id
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Membro removido.
+ *       409:
+ *         description: O membro tem tarefas abertas.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.patch(
+  '/teams/:teamId/members/:memberId',
+  validate({ params: teamMemberParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: updateTeamMemberRoleSchema }),
+  asyncHandler(teamMemberController.updateRole)
+);
+
+router.delete(
+  '/teams/:teamId/members/:memberId',
+  validate({ params: teamMemberParamsSchema, query: removeTeamMemberQuerySchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(teamMemberController.remove)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}/members/{memberId}/invite/resend:
+ *   post:
+ *     tags: [Equipas]
+ *     summary: Reenvia o convite de equipa
+ *     description: >
+ *       Só para membros `convite_pendente`. Cada reenvio rotaciona o
+ *       token (o link anterior fica inválido) e está sujeito a
+ *       anti-spam: cooldown entre envios, máximo por convite e máximo
+ *       por email em 24 horas. Devolve `429 invite_cooldown` ou
+ *       `429 invite_rate_limited` quando os limites são atingidos e
+ *       `409 invite_send_limit` quando o convite esgotou os reenvios.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Convite reenviado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TeamInviteResendEnvelope' }
+ *       409:
+ *         description: O convite já não pode ser reenviado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       429:
+ *         description: Limite anti-spam atingido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/teams/:teamId/members/:memberId/invite/resend',
+  validate({ params: teamMemberParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(teamInviteController.resend)
 );
 
 export default router;

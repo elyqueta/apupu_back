@@ -25,8 +25,21 @@ import { emailSender } from './emailSender.service';
  *   `EMAIL_JSON_DIR` em vez de a enviar ou de a colocar nos logs — os
  *   links contêm tokens de acesso e nunca devem aparecer em logs.
  */
+/**
+ * Transporte efectivo.
+ *
+ * Fora de produção nunca há entrega real: mesmo que o `.env` local
+ * tenha `brevo`, `smtp` ou `resend`, as mensagens são escritas em
+ * `EMAIL_JSON_DIR`. Isto impede que um ambiente de desenvolvimento ou
+ * de testes envie emails para endereços reais por engano.
+ */
+export function resolveTransport(): typeof env.EMAIL_TRANSPORT {
+  if (env.NODE_ENV !== 'production') return 'json';
+  return env.EMAIL_TRANSPORT;
+}
+
 function buildTransport(): Transporter | null {
-  if (env.EMAIL_TRANSPORT !== 'smtp') return null;
+  if (resolveTransport() !== 'smtp') return null;
 
   if (!env.SMTP_PASS && env.RESEND_API_KEY) {
     return nodemailer.createTransport({
@@ -119,11 +132,13 @@ export interface SendResult {
 
 /** Envia (ou escreve em disco, em desenvolvimento) uma mensagem. */
 export async function sendMail(message: MailMessage): Promise<SendResult> {
-  if (env.EMAIL_TRANSPORT === 'brevo') {
+  const transportName = resolveTransport();
+
+  if (transportName === 'brevo') {
     return emailSender.send(message);
   }
 
-  if (env.EMAIL_TRANSPORT === 'resend') {
+  if (transportName === 'resend') {
     return sendWithResend(message);
   }
 
@@ -240,6 +255,24 @@ function hostToken(context: DeliveryContext): string {
     throw new Error('Entrega de conta sem segredo cifrado.');
   }
   return decryptToken(context.tokenEncrypted);
+}
+
+/** Lê uma string não vazia do payload da entrega. */
+function payloadString(context: DeliveryContext, key: string): string | undefined {
+  const value = context.payload?.[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+/** Link para a tarefa, quando a entrega tem evento e tarefa. */
+function taskUrl(context: DeliveryContext): string | undefined {
+  const taskId = payloadString(context, 'taskId');
+  return context.eventId && taskId ? links.task(context.eventId, taskId) : undefined;
+}
+
+/** Link para a equipa, quando a entrega tem evento e equipa. */
+function teamUrl(context: DeliveryContext): string | undefined {
+  const teamId = payloadString(context, 'teamId');
+  return context.eventId && teamId ? links.team(context.eventId, teamId) : undefined;
 }
 
 /** Variáveis comuns a todas as mensagens de evento. */
@@ -417,6 +450,107 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         vars: eventVars(context, event, {
           nome: context.guestName ?? undefined,
           convidado: context.guestName ?? undefined,
+        }),
+      };
+    }
+
+    case 'team_invite': {
+      const event = requireEventSummary(context);
+
+      return {
+        to: context.recipientEmail,
+        code: 'equipa_convite',
+        vars: eventVars(context, event, {
+          nome: payloadString(context, 'recipientName'),
+          anfitriao: payloadString(context, 'actorName') ?? context.hostName ?? undefined,
+          equipa: payloadString(context, 'teamName'),
+          url: links.teamInvite(hostToken(context)),
+          denunciarUrl: links.teamInviteReport(hostToken(context)),
+          expiraEm: payloadString(context, 'expiryLabel'),
+        }),
+      };
+    }
+
+    case 'team_added': {
+      const event = requireEventSummary(context);
+
+      return {
+        to: context.recipientEmail,
+        code: 'equipa_adicionado',
+        vars: eventVars(context, event, {
+          nome: payloadString(context, 'recipientName'),
+          equipa: payloadString(context, 'teamName'),
+          autor: payloadString(context, 'actorName'),
+          url: teamUrl(context),
+        }),
+      };
+    }
+
+    case 'team_role_changed': {
+      const event = requireEventSummary(context);
+
+      return {
+        to: context.recipientEmail,
+        code: 'equipa_papel_alterado',
+        vars: eventVars(context, event, {
+          nome: payloadString(context, 'recipientName'),
+          equipa: payloadString(context, 'teamName'),
+          autor: payloadString(context, 'actorName'),
+          papel: payloadString(context, 'role'),
+          url: teamUrl(context),
+        }),
+      };
+    }
+
+    case 'task_assigned': {
+      const event = requireEventSummary(context);
+
+      return {
+        to: context.recipientEmail,
+        code: 'tarefa_atribuida',
+        vars: eventVars(context, event, {
+          nome: payloadString(context, 'recipientName'),
+          equipa: payloadString(context, 'teamName'),
+          tarefa: payloadString(context, 'taskTitle'),
+          autor: payloadString(context, 'actorName'),
+          prazo: payloadString(context, 'dueDate'),
+          url: taskUrl(context),
+        }),
+      };
+    }
+
+    case 'task_completed': {
+      const event = requireEventSummary(context);
+
+      return {
+        to: context.recipientEmail,
+        code: 'tarefa_concluida',
+        vars: eventVars(context, event, {
+          nome: payloadString(context, 'recipientName'),
+          equipa: payloadString(context, 'teamName'),
+          tarefa: payloadString(context, 'taskTitle'),
+          responsavel: payloadString(context, 'assigneeName'),
+          url: taskUrl(context),
+        }),
+      };
+    }
+
+    case 'task_reassigned': {
+      const event = requireEventSummary(context);
+
+      return {
+        to: context.recipientEmail,
+        code: 'tarefa_reatribuida',
+        vars: eventVars(context, event, {
+          nome: payloadString(context, 'recipientName'),
+          equipa: payloadString(context, 'teamName'),
+          tarefa: payloadString(context, 'taskTitle'),
+          responsavel: payloadString(context, 'assigneeName'),
+          anterior: payloadString(context, 'previousAssigneeName'),
+          autor: payloadString(context, 'actorName'),
+          variante:
+            payloadString(context, 'variant') === 'anterior' ? 'anterior' : 'novo',
+          url: taskUrl(context),
         }),
       };
     }

@@ -7,7 +7,12 @@ import {
 } from '../utils/pagination.util';
 import { ageInYears, isValidCalendarDate, isValidTimeZone } from '../utils/date.util';
 import { EVENT_STATUSES } from '../types/event.types';
-import { HOST_LOCALES } from '../types/host.types';
+import { HOST_LOCALES, NOTIFICATION_KINDS } from '../types/host.types';
+import {
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+  TASK_STATUS_FILTERS,
+} from '../types/team.types';
 import { RSVP_STATUSES, SEND_STATUSES } from '../types/invitation.types';
 
 /**
@@ -77,6 +82,12 @@ const hostEventsQuerySchema = z.object({
 
 const hostGuestsQuerySchema = z.object({
   event_id: z.uuid('Identificador de evento inválido.').optional(),
+  /**
+   * Lista de candidatos para uma equipa concreta. Quando presente, a
+   * origem são apenas os eventos em que a conta é anfitriã (mais o
+   * evento da equipa), deduplicados por email.
+   */
+  for_team: z.uuid('Identificador de equipa inválido.').optional(),
   rsvp_status: z.enum(RSVP_STATUSES).optional(),
   send_status: z.enum(SEND_STATUSES).optional(),
   q: z.string().trim().max(150).optional(),
@@ -159,36 +170,117 @@ const eventExportQuerySchema = z.object({
   invitation_id: z.uuid('Identificador de convite inválido.').optional(),
 });
 
+const booleanQuery = z
+  .union([z.boolean(), z.enum(['true', 'false', '1', '0'])])
+  .transform((value) => value === true || value === 'true' || value === '1')
+  .optional();
+
 const tasksQuerySchema = z.object({
   event_id: z.uuid('Identificador de evento inválido.').optional(),
-  status: z.enum(['all', 'pending', 'done']).default('all'),
-  assignee: z.enum(['all', 'host', 'manager']).default('all'),
+  team_id: z.uuid('Identificador de equipa inválido.').optional(),
+  status: z.enum(TASK_STATUS_FILTERS).default('all'),
+  assignee: z.enum(['all', 'host', 'manager', 'member']).default('all'),
   manager_id: z.uuid('Identificador de gestor inválido.').optional(),
+  assignee_member_id: z.uuid('Identificador de membro inválido.').optional(),
+  priority: z.enum(TASK_PRIORITIES).optional(),
+  /** `true` mostra apenas as tarefas antigas sem equipa. */
+  personal: booleanQuery,
   q: z.string().trim().max(150).optional(),
   ...paginationQueryFields,
 });
 
 const createTaskSchema = z
   .object({
-    label: z.string().trim().min(1, 'A tarefa precisa de uma descrição.').max(200),
+    label: z.string().trim().min(1, 'A tarefa precisa de uma descrição.').max(200).optional(),
+    title: z.string().trim().min(1, 'A tarefa precisa de uma descrição.').max(200).optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    due_date: z
+      .string()
+      .trim()
+      .refine(isValidCalendarDate, 'Indique uma data válida no formato AAAA-MM-DD.')
+      .nullable()
+      .optional(),
+    priority: z.enum(TASK_PRIORITIES).default('normal'),
+    status: z.enum(TASK_STATUSES).optional(),
+    done: z.boolean().optional(),
     event_id: z.uuid('Identificador de evento inválido.').nullable().optional(),
+    team_id: z.uuid('Identificador de equipa inválido.').nullable().optional(),
+    assignee_member_id: z.uuid('Identificador de membro inválido.').nullable().optional(),
     manager_id: z.uuid('Identificador de gestor inválido.').nullable().optional(),
   })
   .strict()
+  .refine((value) => value.label !== undefined || value.title !== undefined, {
+    message: 'A tarefa precisa de uma descrição.',
+    path: ['title'],
+  })
+  .refine(
+    (value) =>
+      value.label === undefined ||
+      value.title === undefined ||
+      value.label === value.title,
+    {
+      message: '`label` e `title` não podem ser diferentes.',
+      path: ['title'],
+    }
+  )
   .refine((value) => value.manager_id == null || value.event_id != null, {
     message: 'Uma tarefa atribuída a um gestor exige um evento.',
     path: ['event_id'],
+  })
+  .refine(
+    (value) =>
+      value.status === undefined ||
+      value.done === undefined ||
+      value.done === (value.status === 'concluida'),
+    {
+      message: 'O estado e `done` não podem estar em contradição.',
+      path: ['done'],
+    }
+  )
+  .refine((value) => value.assignee_member_id == null || value.team_id != null, {
+    message: 'Um responsável exige uma equipa.',
+    path: ['team_id'],
   });
 
 const updateTaskSchema = z
   .object({
     label: z.string().trim().min(1, 'A tarefa precisa de uma descrição.').max(200).optional(),
+    title: z.string().trim().min(1, 'A tarefa precisa de uma descrição.').max(200).optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    due_date: z
+      .string()
+      .trim()
+      .refine(isValidCalendarDate, 'Indique uma data válida no formato AAAA-MM-DD.')
+      .nullable()
+      .optional(),
+    priority: z.enum(TASK_PRIORITIES).optional(),
+    status: z.enum(TASK_STATUSES).optional(),
     done: z.boolean().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
     message: 'Indique pelo menos um campo para atualizar.',
-  });
+  })
+  .refine(
+    (value) =>
+      value.label === undefined ||
+      value.title === undefined ||
+      value.label === value.title,
+    {
+      message: '`label` e `title` não podem ser diferentes.',
+      path: ['title'],
+    }
+  )
+  .refine(
+    (value) =>
+      value.status === undefined ||
+      value.done === undefined ||
+      value.done === (value.status === 'concluida'),
+    {
+      message: 'O estado e `done` não podem estar em contradição.',
+      path: ['done'],
+    }
+  );
 
 const taskIdParamsSchema = z.object({
   taskId: z.uuid('Identificador de tarefa inválido.'),
@@ -196,19 +288,7 @@ const taskIdParamsSchema = z.object({
 
 const notificationsQuerySchema = z.object({
   status: z.enum(['all', 'unread', 'read']).default('all'),
-  kind: z
-    .enum([
-      'rsvp_accepted',
-      'rsvp_declined',
-      'guest_added',
-      'reminder_sent',
-      'event_created',
-      'event_upcoming',
-      'rsvp_deadline',
-      'task_assigned',
-      'task_completed',
-    ])
-    .optional(),
+  kind: z.enum(NOTIFICATION_KINDS).optional(),
   event_id: z.uuid('Identificador de evento inválido.').optional(),
   q: z.string().trim().max(150).optional(),
   ...paginationQueryFields,

@@ -10,6 +10,17 @@ import { logger } from './logger';
  * qual o problema — em vez de falhar mais tarde, na primeira
  * requisição que dependa dela.
  */
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
+
+/** `true` quando a URL aponta para a própria máquina. */
+function isLocalUrl(value: string): boolean {
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(value).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
@@ -41,6 +52,16 @@ const envSchema = z.object({
 
   PUBLIC_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
   PUBLIC_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(60),
+
+  /**
+   * Limite por IP e por acção nas rotas públicas de convites de equipa
+   * (`preview`, `accept` e `report`).
+   *
+   * É aplicado além do limite público de tokens para travar a
+   * enumeração de convites e a repetição de denúncias.
+   */
+  TEAM_INVITE_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
+  TEAM_INVITE_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
 
   HOST_SESSION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   HOST_SESSION_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
@@ -167,6 +188,17 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().min(1).default('Conto Contigo <convites@apupu.local>'),
+  /**
+   * Contacto de ajuda mostrado no rodapé dos emails.
+   *
+   * É independente de `EMAIL_FROM` (que identifica o remetente). Se
+   * não estiver definido, usa-se o endereço de `EMAIL_FROM` para não
+   * quebrar ambientes de desenvolvimento.
+   */
+  SUPPORT_EMAIL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().email('SUPPORT_EMAIL deve ser um email válido').optional()
+  ),
   BREVO_SMTP_HOST: z.string().trim().min(1).default('smtp-relay.brevo.com'),
   BREVO_SMTP_PORT: z.coerce.number().int().positive().default(587),
   BREVO_SMTP_LOGIN: z.string().trim().optional(),
@@ -237,7 +269,35 @@ const envSchema = z.object({
   OUTBOX_SCAN_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
 
   MAX_INVITATIONS_PER_EVENT: z.coerce.number().int().positive().default(1000),
+
+  /** Validade do link de convite de equipa, em dias. */
+  TEAM_INVITE_TTL_DAYS: z.coerce.number().int().positive().default(7),
+  /** Intervalo mínimo entre reenvios do mesmo convite, em minutos. */
+  TEAM_INVITE_RESEND_COOLDOWN_MINUTES: z.coerce.number().int().positive().default(10),
+  /** Máximo de envios (inicial + reenvios) por convite. */
+  TEAM_INVITE_MAX_SENDS: z.coerce.number().int().positive().default(5),
+  /** Máximo de convites criados para o mesmo email em 24 horas. */
+  TEAM_INVITE_MAX_PER_EMAIL_PER_DAY: z.coerce.number().int().positive().default(3),
+  /** Máximo de convites criados por anfitrião numa hora. */
+  TEAM_INVITE_MAX_PER_HOST_PER_HOUR: z.coerce.number().int().positive().default(30),
+  /** Máximo de convites criados por anfitrião em 24 horas. */
+  TEAM_INVITE_MAX_PER_HOST_PER_DAY: z.coerce.number().int().positive().default(100),
 }).superRefine((values, context) => {
+  // Em produção os links enviados por email não podem apontar para a
+  // máquina local: isso tornaria convites e emails de gestão inúteis e
+  // revelaria que o ambiente foi copiado de desenvolvimento.
+  if (values.NODE_ENV === 'production') {
+    for (const field of ['APP_BASE_URL', 'API_BASE_URL'] as const) {
+      if (isLocalUrl(values[field])) {
+        context.addIssue({
+          code: 'custom',
+          path: [field],
+          message: `${field} não pode apontar para localhost em produção.`,
+        });
+      }
+    }
+  }
+
   if (values.EMAIL_TRANSPORT !== 'brevo') return;
 
   const requiredBrevoFields = [

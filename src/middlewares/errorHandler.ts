@@ -48,7 +48,7 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   const requestId = req.id ?? 'unknown';
-  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Request-Id', requestId);
 
   const send = (status: number, body: ErrorEnvelope): void => {
@@ -70,12 +70,13 @@ export function errorHandler(
 
   // Erro operacional previsto pela aplicação.
   if (err instanceof AppError) {
-    const error: ErrorEnvelope['error'] = {
+    const error: ErrorEnvelope['error'] & { details?: unknown } = {
       code: err.code,
       message: err.message,
       request_id: requestId,
     };
     if (err.fields) error.fields = err.fields;
+    if (err.details !== undefined) error.details = err.details;
 
     // Erros 5xx operacionais são registados; 4xx são ruído normal.
     if (err.statusCode >= 500) {

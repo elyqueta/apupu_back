@@ -26,6 +26,14 @@ export const EMAIL_TEMPLATE_CODES = [
   'profile_reminder',
   'decline_notification',
   'invitation_removed',
+  // Fase 3 — equipas e tarefas.
+  // Nomes do catálogo em português, tal como o pedido.
+  'equipa_convite',
+  'equipa_adicionado',
+  'equipa_papel_alterado',
+  'tarefa_atribuida',
+  'tarefa_concluida',
+  'tarefa_reatribuida',
 ] as const;
 
 export type EmailTemplateCode = (typeof EMAIL_TEMPLATE_CODES)[number];
@@ -69,6 +77,27 @@ export interface EmailVars {
   contribuicao?: boolean;
   /** Informação adicional curta (ex.: e-mail do convidado). */
   detalhe?: string;
+  /** Nome da equipa (Fase 3). */
+  equipa?: string;
+  /** Título da tarefa (Fase 3). */
+  tarefa?: string;
+  /** Nome do responsável actual (Fase 3). */
+  responsavel?: string;
+  /** Nome do responsável anterior, em reatribuições (Fase 3). */
+  anterior?: string;
+  /** Nome de quem executou a acção (Fase 3). */
+  autor?: string;
+  /** Papel na equipa: "gestor" ou "membro" (Fase 3). */
+  papel?: string;
+  /** Prazo já formatado, ex.: "31 jan 2030" (Fase 3). */
+  prazo?: string;
+  /**
+   * Variante da reatribuição: `novo` para o novo responsável e
+   * `anterior` para quem deixou de o ser (Fase 3).
+   */
+  variante?: 'novo' | 'anterior';
+  /** Página de confirmação de "Não conheço este convite" (Fase 3). */
+  denunciarUrl?: string;
 }
 
 export type EmailTone = 'default' | 'danger';
@@ -79,6 +108,26 @@ export interface EmailDetails {
   date?: string;
   time?: string;
   location?: string;
+}
+
+/** Ligação adicional no rodapé. */
+export interface EmailFooterLink {
+  label: string;
+  url: string;
+}
+
+/**
+ * Configuração do rodapé.
+ *
+ * As mensagens de equipas/tarefas não têm modelo de preferências, por
+ * isso desligam `preferences`. O convite de equipa acrescenta a
+ * ligação de denúncia.
+ */
+export interface EmailFooter {
+  /** Mostra "Preferências de notificação" e "Deixar de receber". */
+  preferences?: boolean;
+  /** Ligações extra, apresentadas depois de "Ajuda". */
+  links?: EmailFooterLink[];
 }
 
 /** Conteúdo de um e-mail, independente do canal de entrega. */
@@ -96,6 +145,8 @@ export interface EmailContent {
   /** Completa a frase "Recebeste este e-mail porque ...". */
   reason: string;
   tone?: EmailTone;
+  /** Rodapé específico; por omissão mostra as preferências. */
+  footer?: EmailFooter;
 }
 
 /** Mensagem curta para in-app/push. */

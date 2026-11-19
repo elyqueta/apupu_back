@@ -1,5 +1,5 @@
 import { rateLimit } from 'express-rate-limit';
-import { Request, Response } from 'express';
+import { Request, RequestHandler, Response } from 'express';
 import { env } from '../config/env';
 
 /**
@@ -41,6 +41,30 @@ export const publicTokenLimiter = rateLimit({
   legacyHeaders: false,
   handler: limitHandler,
 });
+
+/**
+ * Limite por IP e por acção nas rotas públicas de convites de equipa.
+ *
+ * Cada acção (`preview`, `accept`, `report`) tem o seu próprio balde:
+ * abrir a página de confirmação de denúncia não consome o limite da
+ * aceitação, e vice-versa. O limite é aplicado antes da validação do
+ * token, para que pedidos inválidos também contem.
+ */
+function teamInviteLimiter(action: 'preview' | 'accept' | 'report'): RequestHandler {
+  return rateLimit({
+    windowMs: env.TEAM_INVITE_RATE_LIMIT_WINDOW_MS,
+    limit: env.TEAM_INVITE_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request) =>
+      `team-invite:${action}:${req.ip ?? 'unknown'}`,
+    handler: limitHandler,
+  });
+}
+
+export const teamInvitePreviewLimiter = teamInviteLimiter('preview');
+export const teamInviteAcceptLimiter = teamInviteLimiter('accept');
+export const teamInviteReportLimiter = teamInviteLimiter('report');
 
 /**
  * Limite para a troca do segredo de gestão por sessão.

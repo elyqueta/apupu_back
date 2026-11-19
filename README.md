@@ -154,6 +154,12 @@ A especificação autoritária do produto está em [`backend/`](backend/).
 - **Rate limiting** cobre autenticação, escritas de gestão
   (`WRITE_RATE_LIMIT_*`) e RSVP público por IP + token
   (`RSVP_RATE_LIMIT_*`). O excesso devolve `429 rate_limited`.
+- **IP real atrás de proxy**: `TRUST_PROXY` indica quantos proxies
+  confiar à frente da API (`0` sem proxy, `1` para um reverse proxy ou
+  balanceador, `2` para dois, etc.). Com o valor certo, `req.ip` usa o
+  `X-Forwarded-For` do cliente e os limites por IP não ficam todos no
+  IP do proxy. Um valor a mais permite falsificar o IP; um valor a
+  menos faz todos os clientes partilharem o contador.
 - **Auditoria** de eventos críticos em `host_audit_log`, com actor,
   evento, IP, `request_id` e resultado; nunca guarda senhas, tokens ou
   `birth_date`.
@@ -168,8 +174,11 @@ A especificação autoritária do produto está em [`backend/`](backend/).
   nem um dispositivo físico.
 - Todas as leituras e mutações de eventos são limitadas por
   `events.host_id`; uma conta sem posse recebe `404`, não `403`.
-- Respostas da API têm `Cache-Control: private, no-store`.
-- Tokens e dados pessoais nunca são escritos em logs.
+- Respostas da API têm `Cache-Control: no-store`; as rotas públicas de
+  convites acrescentam `Referrer-Policy: no-referrer` para não enviar o
+  token no cabeçalho `Referer`.
+- Tokens e dados pessoais nunca são escritos em logs; os URLs são
+  redigidos por poderem conter o token em claro.
 
 ## Lembretes e outbox
 
@@ -248,9 +257,30 @@ Recomendado em cron diário, por exemplo `0 3 * * *`.
 ao email dono da conta. Para enviar a outros destinatários é preciso
 verificar um domínio no Resend e trocar `EMAIL_FROM`.
 
+### E-mail em produção
+
+- Usa um remetente num domínio próprio (`EMAIL_FROM`) com **SPF, DKIM
+  e DMARC** configurados no DNS. Sem os três, muitos fornecedores
+  marcam as mensagens como spam ou rejeitam-nas.
+- `EMAIL_FROM`, `SUPPORT_EMAIL`, `APP_BASE_URL` e `API_BASE_URL` são
+  obrigatórios. O arranque falha em produção se `APP_BASE_URL` ou
+  `API_BASE_URL` apontarem para localhost.
+- Corre o worker num processo separado (`npm run worker:start`) e
+  define `OUTBOX_IN_API=false` na API. Assim os envios e os retries não
+  competem com os pedidos HTTP.
+
 A outbox tem retries com backoff exponencial (`EMAIL_MAX_ATTEMPTS`,
 `EMAIL_RETRY_BASE_MS`) e chaves idempotentes que impedem envios
-duplicados.
+duplicados. Os convites de equipa têm limites anti-spam configuráveis
+(`TEAM_INVITE_TTL_DAYS`, `TEAM_INVITE_RESEND_COOLDOWN_MINUTES`,
+`TEAM_INVITE_MAX_SENDS`, `TEAM_INVITE_MAX_PER_EMAIL_PER_DAY`,
+`TEAM_INVITE_MAX_PER_HOST_PER_HOUR`,
+`TEAM_INVITE_MAX_PER_HOST_PER_DAY`).
+
+Fora de produção (`NODE_ENV !== 'production'`) o transporte é sempre
+`json`: as mensagens são escritas em `EMAIL_JSON_DIR` e nunca seguem
+para endereços reais, mesmo que `EMAIL_TRANSPORT` esteja configurado
+com `brevo`, `smtp` ou `resend`.
 
 Os templates com a identidade Conto Contigo vivem em `src/emails/`: o
 catálogo é a única fonte de copy para e-mail, texto simples, push e SMS.
@@ -286,10 +316,33 @@ npm run typecheck
 npm run lint
 npm test
 npm run test:coverage
+npm run test:teams
 ```
 
 Os testes unitários não precisam de base de dados. O smoke test precisa
 da API a correr.
+
+### Equipas e tarefas (integração)
+
+`npm run test:teams` sobe o Postgres do `docker-compose` (porta 5433),
+recria duas bases efémeras e valida:
+
+- `tests/teamsPhase3Unit.test.ts`, `tests/teamsApi.test.ts`,
+  `tests/teamsApiPhase2Corrections.test.ts` e `tests/teamsPhase3.test.ts`
+  contra `apupu_teams_api`, com o schema completo aplicado por
+  `node-pg-migrate up`;
+- `tests/teamsMigration.test.ts` contra `apupu_teams_migration`: corre
+  as migrations até à `1739900000010`, carrega
+  `tests/fixtures/teams-migration.sql`, aplica `1739900000011`,
+  `1739900000012` e `1739900000013`, valida o estado `up` e depois
+  `down 3`.
+
+Nunca toca na base de desenvolvimento (5432). As bases criadas pelo
+script são recriadas em cada execução. Não existe configuração de CI no
+repositório; se for adicionada, deve invocar `npm run test:teams` (ou
+definir `TEAMS_API_TEST_URL`/`TEAMS_MIGRATION_TEST_URL`). Os dois
+ficheiros de teste falham explicitamente quando `CI` está definido e a
+URL correspondente falta — não são ignorados em silêncio.
 
 ## Estrutura
 

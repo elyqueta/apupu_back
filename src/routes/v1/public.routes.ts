@@ -2,7 +2,10 @@ import { Router } from 'express';
 import { publicController } from '../../controllers/public.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { guestAuth } from '../../middlewares/guestAuth';
-import { publicTokenLimiter, rsvpLimiter } from '../../middlewares/rateLimiter';
+import {
+  publicTokenLimiter,
+  rsvpLimiter,
+} from '../../middlewares/rateLimiter';
 import { requireGuestCsrf } from '../../middlewares/requireGuestCsrf';
 import { validate } from '../../middlewares/validate';
 import { inviteTokenParamsSchema, rsvpSchema } from '../../schemas/invitation.schemas';

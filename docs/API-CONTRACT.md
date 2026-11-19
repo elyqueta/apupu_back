@@ -53,12 +53,15 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | HTTP | `code` | Significado |
 |---|---|---|
 | `400` | `invalid_json` | Corpo não é JSON válido |
+| `400` | `too_many_emails` | Mais de 50 emails no mesmo pedido de adição a uma equipa |
 | `401` | `host_session_invalid` | Sessão de gestão ou de conta ausente, expirada ou de outro evento |
 | `401` | `invalid_credentials` | Email ou senha inválidos no login |
 | `403` | `csrf_invalid` | Falta ou não coincide o `X-CSRF-Token` |
 | `403` | `forbidden` | Origem não permitida pelo CORS |
 | `403` | `email_not_verified` | A conta ainda não confirmou o email; escrita de eventos bloqueada |
 | `403` | `host_action_forbidden` | A ação está reservada ao anfitrião (proprietário); um gestor tentou executá-la |
+| `403` | `task_complete_forbidden` | A conta não é o responsável pela tarefa e tentou concluir, reabrir ou mudar o estado |
+| `403` | `task_edit_forbidden`, `task_reassign_forbidden`, `task_move_forbidden`, `task_delete_forbidden`, `team_action_forbidden` | Ação não permitida pelo papel na equipa/evento |
 | `404` | `invitation_not_found` | Token inválido, convite revogado ou reclamado por outro navegador (resposta sempre igual) |
 | `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
 | `404` | `event_not_found` / `invitation_not_found` / `task_not_found` / `manager_not_found` / `notification_not_found` / `activity_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
@@ -72,6 +75,9 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `422` | `otp_invalid` | Código OTP inválido ou expirado |
 | `422` | `otp_attempts_exceeded` | Limite de tentativas do código atingido; pedir novo código |
 | `423` | `account_locked` | Demasiadas falhas de login; bloqueio temporário |
+| `404` | `invite_not_found` | Convite de equipa inexistente, expirado ou já usado (resposta pública indistinguível) |
+| `409` | `invite_expired`, `invite_revoked`, `invite_already_accepted`, `invite_send_limit`, `invite_not_possible`, `member_already_active`, `member_without_email` | Convite de equipa inválido, esgotado ou bloqueado |
+| `429` | `invite_cooldown`, `invite_email_rate_limited`, `invite_host_rate_limited` | Anti-spam de convites de equipa |
 | `429` | `rate_limited` | Limite de pedidos excedido (activo em todos os ambientes) |
 | `429` | `otp_resend_too_soon` | Pedido de novo código antes do intervalo mínimo |
 | `500` | `internal_error` | Erro inesperado; sem stack trace |
@@ -373,11 +379,11 @@ foi adicionado como gestor pelo anfitrião. As mutações estruturais
 (criar, apagar, reenviar o link do anfitrião e gerir gestores) continuam
 reservadas ao proprietário.
 
-As tarefas pertencem sempre ao anfitrião (`host_id`), mas podem ser
-atribuídas a um gestor de um evento (`manager_id`). O anfitrião vê e
-gere todas as suas tarefas; um gestor vê apenas as que lhe foram
-atribuídas e só pode marcar `done`. A listagem global pagina, filtra e
-pesquisa.
+As tarefas vivem em equipas de um evento. O anfitrião e os gestores
+activos vêem e gerem todas as tarefas dos eventos em que têm esse
+papel; um membro vê apenas as tarefas das equipas em que está activo.
+O responsável pela tarefa — e só ele — conclui, reabre ou muda o
+estado. A listagem global pagina, filtra e pesquisa.
 
 | Método | Rota | Efeito |
 |---|---|---|
@@ -410,10 +416,23 @@ pesquisa.
 | `DELETE` | `/api/v1/host/notifications/{notificationId}` | Remove uma notificação |
 | `POST` | `/api/v1/host/notifications/read-all` | Marca todas como lidas |
 | `DELETE` | `/api/v1/host/notifications` | Limpa todas as notificações |
-| `GET` | `/api/v1/host/tasks` | Tarefas da conta/gestor (paginadas, com filtros e pesquisa) |
-| `POST` | `/api/v1/host/tasks` | Cria tarefa (só o anfitrião) |
-| `PATCH` | `/api/v1/host/tasks/{taskId}` | Actualiza descrição/estado |
-| `DELETE` | `/api/v1/host/tasks/{taskId}` | Remove tarefa (só o anfitrião) |
+| `GET` | `/api/v1/host/tasks` | Tarefas visíveis (paginadas, com filtros e pesquisa) |
+| `POST` | `/api/v1/host/tasks` | Cria tarefa numa equipa, num evento (equipa "Geral") ou pessoal legada |
+| `PATCH` | `/api/v1/host/tasks/{taskId}` | Actualiza campos da tarefa (anfitrião/gestor ou autor membro; o estado só pelo responsável) |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/status` | Conclui, reabre ou passa a `em_curso` (só o responsável) |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/assignee` | Reatribui a tarefa; só anfitrião ou gestor |
+| `POST` | `/api/v1/host/tasks/{taskId}/move` | Move a tarefa para outra equipa (inclui "Mover para uma equipa") |
+| `DELETE` | `/api/v1/host/tasks/{taskId}` | Remove tarefa (anfitrião/gestor ou autor membro) |
+| `GET` | `/api/v1/host/teams` | Lista equipas visíveis (paginadas, com filtros e pesquisa) |
+| `POST` | `/api/v1/host/teams` | Cria equipa e materializa anfitrião/gestores como membros |
+| `GET` | `/api/v1/host/teams/{teamId}` | Detalhe da equipa |
+| `PATCH` | `/api/v1/host/teams/{teamId}` | Actualiza nome, categoria ou descrição |
+| `DELETE` | `/api/v1/host/teams/{teamId}` | Remove logicamente a equipa, com reatribuição ou arquivo |
+| `GET` | `/api/v1/host/teams/{teamId}/members` | Lista membros da equipa |
+| `POST` | `/api/v1/host/teams/{teamId}/members` | Adiciona membros por email (máx. 50 por pedido; acima devolve `400`) |
+| `PATCH` | `/api/v1/host/teams/{teamId}/members/{memberId}` | Promove ou despromove um membro; só o anfitrião |
+| `DELETE` | `/api/v1/host/teams/{teamId}/members/{memberId}` | Remove logicamente um membro, com reatribuição opcional |
+| `POST` | `/api/v1/host/teams/{teamId}/members/{memberId}/invite/resend` | Reenvia o convite de equipa com anti-spam e rotação do token |
 
 Parâmetros de lista:
 
@@ -430,10 +449,21 @@ Parâmetros de lista:
 - Exportação por evento: `document` no caminho (`guests` \| `summary` \|
   `attendance` \| `ticket`), `format` (`pdf` \| `csv`, omissão `pdf`) e
   `invitation_id` (obrigatório apenas em `ticket`).
-- Tarefas: `event_id`, `status` (`all` \| `pending` \| `done`, omissão
-  `all`), `assignee` (`all` \| `host` \| `manager`, omissão `all`),
-  `manager_id`, `q`, `page`, `page_size`. A resposta é
-  `{ data, pagination }`.
+- Tarefas: `event_id`, `team_id`, `status` (`all` \| `por_fazer` \|
+  `em_curso` \| `concluida`, omissão `all`; `pending`/`done` continuam
+  aceites como aliases), `assignee` (`all` \| `host` \| `manager` \|
+  `member`, omissão `all`), `assignee_member_id`, `manager_id`,
+  `priority`, `personal` (só tarefas legadas sem equipa), `q`, `page`,
+  `page_size`. A resposta é `{ data, pagination }`.
+- Equipas: `event_id`, `category` (`logistica` \| `decoracao` \|
+  `musica` \| `catering` \| `rececao` \| `outra`), `q`, `page`,
+  `page_size`.
+- Membros de equipa: `role` (`gestor` \| `membro`), `status` (`ativo` \|
+  `convite_pendente`), `q`, `page`, `page_size`.
+- Candidatos a membro: `GET /api/v1/host/guests?for_team={teamId}`
+  devolve convidados dos eventos em que a conta é **anfitriã** mais os
+  do evento dessa equipa, deduplicados por email, com `is_member` e
+  `has_email`.
 - Notificações: `status` (`all` \| `unread` \| `read`), `kind`,
   `event_id`, `q`, `page`, `page_size`. A resposta é
   `{ data, pagination, unread_count }`.
@@ -928,11 +958,25 @@ Regras de "Meus convites":
       "id": "0f0e5f6a-9b1c-4d3e-8a2b-7c6d5e4f3a21",
       "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
       "event_title": "Casamento da Ana e do Paulo",
-      "manager_id": "b2d5f4a1-3c47-4a3e-9c2d-1f2a3b4c5d6e",
-      "manager_email": "paulo@exemplo.ao",
+      "team_id": "4c1f0d2e-8a3b-4c5d-9e6f-7a8b9c0d1e2f",
+      "team_name": "Cozinha",
+      "assignee_member_id": "8d2c4b6a-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
+      "assignee_email": "paulo@exemplo.ao",
+      "assignee_display_name": "Paulo",
+      "assignee_has_access": true,
+      "title": "Confirmar menu",
+      "description": null,
+      "due_date": "2026-12-15",
+      "priority": "normal",
+      "status": "por_fazer",
+      "created_by_host_id": "3a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "completed_by_member_id": null,
+      "completed_at": null,
+      "archived_at": null,
       "label": "Confirmar menu",
       "done": false,
-      "completed_at": null,
+      "manager_id": null,
+      "manager_email": null,
       "created_at": "2026-11-16T01:00:00.000Z",
       "updated_at": "2026-11-16T01:00:00.000Z"
     }
@@ -941,21 +985,227 @@ Regras de "Meus convites":
 }
 ```
 
-- `event_id` é `null` para tarefas globais da conta.
-- `manager_id`/`manager_email` são `null` nas tarefas do próprio
-  anfitrião; quando preenchidos, a tarefa foi atribuída a esse gestor.
-- Só o anfitrião cria tarefas. `POST /api/v1/host/tasks`
-  (`{ "label": "...", "event_id": null, "manager_id": null }`) devolve
-  `201 { "data": Task }`. Atribuir a um gestor exige `event_id` e um
-  gestor activo desse evento; caso contrário `422 validation_failed`.
-- `PATCH /api/v1/host/tasks/{taskId}` aceita `label` e/ou `done` e
-  devolve `200 { "data": Task }`. Um gestor só pode alternar `done` nas
-  tarefas que lhe foram atribuídas; tentar alterar `label` devolve
-  `403 host_action_forbidden`.
-- `DELETE /api/v1/host/tasks/{taskId}` devolve `204` e está reservado ao
-  anfitrião.
-- Ao atribuir uma tarefa, o gestor recebe a notificação `task_assigned`;
-  ao concluí-la, o anfitrião recebe `task_completed`.
+- `label` e `done` continuam na resposta e no corpo, **obsoletos**
+  (`deprecated` no OpenAPI), como aliases de `title` e de
+  `status === 'concluida'`. A fonte de verdade é `title`/`status`.
+- `event_id` é `null` nas tarefas pessoais legadas (`team_id = null`),
+  visíveis apenas a quem as criou. A UI mostra-as em "Pessoais
+  (legado)" com a acção "Mover para uma equipa".
+- `assignee_has_access: false` indica "Responsável sem acesso" (gestor
+  revogado ou membro removido). Só o anfitrião ou um gestor reatribui.
+- `POST /api/v1/host/tasks` aceita `{ "title" | "label", "team_id"?,
+  "event_id"?, "assignee_member_id"?, "manager_id"?, "description"?,
+  "due_date"?, "priority"?, "status"?, "done"? }`. Sem `team_id` mas
+  com `event_id`, usa ou cria a equipa "Geral" do evento (o staff é
+  materializado na mesma transação); o responsável por omissão é o
+  anfitrião, salvo `manager_id`, que escolhe esse gestor. Sem evento
+  nem equipa, cria uma tarefa pessoal legada (`team_id = null`),
+  visível apenas a quem a criou. Qualquer membro activo cria tarefas
+  na sua equipa.
+- Criar já concluída (`status: "concluida"` ou `done: true`) segue a
+  mesma regra de qualquer conclusão: só o responsável. O serviço
+  define `completed_by_member_id`; o trigger apenas sincroniza colunas
+  e nunca infere o autor.
+- `PATCH /api/v1/host/tasks/{taskId}` aceita `title`/`label`,
+  `description`, `due_date`, `priority`, `status` e `done` (alias). O
+  anfitrião e os gestores editam qualquer tarefa do evento; um membro
+  só as que criou (`403 task_edit_forbidden`). O responsável que não
+  criou a tarefa pode alterar apenas o estado.
+- Qualquer mudança de `status`/`done` — no `PATCH`, no `/status`, ao
+  criar já concluída ou ao reabrir/passar a `em_curso` — passa pela
+  mesma regra: **só o responsável**. Qualquer outra conta recebe
+  `403 task_complete_forbidden` com
+  `"Só {nome} pode concluir esta tarefa."` (ou
+  `"...pode alterar o estado desta tarefa."` quando não é uma
+  conclusão). A conclusão é um `UPDATE` condicional: pedidos
+  concorrentes não sobrescrevem `completed_at` nem geram notificações
+  duplicadas. Reabrir limpa `completed_at` e
+  `completed_by_member_id`.
+- `PATCH /api/v1/host/tasks/{taskId}/assignee` reatribui
+  (`{ "assignee_member_id": uuid }`); exclusivo do anfitrião/gestor
+  (`403 task_reassign_forbidden`).
+- `POST /api/v1/host/tasks/{taskId}/move` move para outra equipa
+  (`{ "team_id": uuid, "assignee_member_id"?: uuid }`), mantendo o
+  responsável quando o mesmo email existe na equipa de destino. Não
+  aceita `status`/`done`: mover não altera a conclusão.
+- `DELETE /api/v1/host/tasks/{taskId}` devolve `204`; o anfitrião/gestor
+  apaga qualquer tarefa do evento, um membro só as que criou.
+- Recursos de eventos/equipas sem acesso devolvem sempre `404`, nunca
+  `403`: `task_not_found` nas rotas de tarefa e `team_not_found` nas
+  rotas de equipa. A pesquisa `q` e os filtros aplicam a mesma condição
+  de acesso na consulta.
+
+#### Equipas e membros
+
+`GET /api/v1/host/teams` — `200`, paginado, com contagens:
+
+```json
+{
+  "data": [
+    {
+      "id": "4c1f0d2e-8a3b-4c5d-9e6f-7a8b9c0d1e2f",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "event_title": "Casamento da Ana e do Paulo",
+      "event_status": "agendado",
+      "my_role": "anfitriao",
+      "name": "Cozinha",
+      "category": "catering",
+      "description": null,
+      "member_count": 3,
+      "task_count": 7,
+      "completed_task_count": 5,
+      "open_task_count": 2,
+      "members_preview": [
+        {
+          "id": "9f8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+          "display_name": "Ana Costa",
+          "avatar_url": null
+        }
+      ],
+      "created_at": "2026-11-16T01:00:00.000Z",
+      "updated_at": "2026-11-16T01:00:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+}
+```
+
+- O anfitrião e os gestores vêem todas as equipas do evento; um membro
+  só aquelas em que está activo. Criar, editar e apagar equipas é
+  exclusivo do anfitrião/gestor (`403 team_action_forbidden`). Um
+  `team_id` de outro evento devolve `404 team_not_found`, nunca `403`.
+- Cada equipa devolve `my_role` — o papel da conta **na equipa**
+  (`anfitriao`, `gestor` ou `membro`) — e `event_status`, derivado de
+  `events.status` e das datas: `rascunho` (`draft`), `cancelado`
+  (`cancelled`), `concluido` (`completed` ou `ends_at` no passado),
+  `agendado` (`starts_at` no futuro) ou `em_curso` (já começou e ainda
+  não terminou). O anfitrião é sempre `anfitriao`, mesmo que a linha
+  materializada em `team_members` tenha `role=gestor`.
+- Sem `ends_at`, o evento passa a `concluido` às **06:00 do dia
+  seguinte** ao de `starts_at` em **Africa/Luanda**: só a partir dessa
+  hora deixa de estar `em_curso`. A regra é aplicada no `event_status` e
+  na supressão de notificações da outbox, para que um evento terminado
+  não continue a enviar convites, lembretes ou avisos de tarefas. Um
+  `ends_at` igual ou anterior a `starts_at` é rejeitado com `422` pela
+  validação da API e pela constraint `events_dates_check`, pelo que a
+  combinação nunca chega a produzir `event_status`.
+- Filtros do `GET /host/teams`: `event_id`, `category`, `role`
+  (`anfitriao|gestor|membro`), `event_status`
+  (`agendado|em_curso|concluido|cancelado|rascunho`), `mine` e `q`.
+  `mine=true` devolve as equipas em que a conta foi adicionada como
+  membro ou gestor, ou onde tem tarefas por concluir atribuídas a si.
+  A presença implícita do anfitrião (linha `is_host=true`) não conta;
+  as tarefas abertas do anfitrião contam. Os filtros são aplicados no
+  servidor, antes da paginação, pelo que `pagination.total` reflecte
+  sempre o conjunto filtrado.
+- `POST /api/v1/host/teams` (`{ event_id, name, category?, description? }`)
+  devolve `201 { data: Team }` e chama
+  `team_materialize_event_staff` na mesma transação: o anfitrião e os
+  gestores activos passam a ser membros.
+- `DELETE /api/v1/host/teams/{teamId}` faz sempre soft delete. Com
+  tarefas abertas devolve `409 team_has_open_tasks` e a lista em
+  `error.details.tasks`. Repetir com `confirm=true` e
+  `reassign_to_team_id={uuid}` ou `archive=true` conclui na mesma
+  transação.
+- `GET /api/v1/host/teams/{teamId}/members` — `200`, paginado.
+- `POST /api/v1/host/teams/{teamId}/members` (`{ emails: string[] }`)
+  normaliza (trim + minúsculas), deduplica, não permite adicionar a
+  própria conta e devolve `201`:
+  `{ "added": [...], "pending": [...], "skipped": [...] }`, com
+  `reason` por linha (`already_member`, `duplicate_in_request`, `self`,
+  `invite_not_possible`). Acima de 50 emails devolve `400
+  too_many_emails` (depois de validar o acesso). Emails com conta
+  activa **e email verificado** ficam `ativo` e recebem notificação
+  in-app + email (`team_added`); os restantes ficam `convite_pendente`
+  e recebem apenas o convite por email (`team_invite`). Uma conta
+  registada com email por verificar **não adere** a equipas pendentes:
+  continua pendente até aceitar o convite com o email verificado.
+  A resposta distingue `ativo` de `convite_pendente`, o que permite a
+  quem conhece um email inferir se essa pessoa já tem conta verificada.
+  É um compromisso aceite: a UI precisa de mostrar o estado real do
+  convite. O risco é atenuado pelos limites por anfitrião
+  (`TEAM_INVITE_MAX_PER_HOST_PER_HOUR`/`_DAY`) e pelo cooldown de
+  reenvio, que tornam a enumeração em massa lenta e detectável. Não
+  existe um modo "convite cego": mudá-lo exigiria repensar a resposta
+  de `POST .../members`.
+- `PATCH /api/v1/host/teams/{teamId}/members/{memberId}`
+  (`{ role: 'gestor' | 'membro' }`): promover **e** despromover são
+  exclusivos do anfitrião (`403 host_action_forbidden` para gestores).
+  Promover cria/reactiva `event_managers` na mesma transação;
+  despromover só altera o papel na equipa e não revoga o acesso ao
+  evento. A alteração gera notificação in-app e email
+  (`team_role_changed`) para o membro, excepto quando é o próprio autor.
+  O anfitrião nunca é despromovido nem removido
+  (`409 host_member_immutable`).
+- `DELETE /api/v1/host/teams/{teamId}/members/{memberId}` remove
+  logicamente. Com tarefas abertas devolve `409 member_has_open_tasks`
+  e a lista em `error.details.tasks`; repetir com
+  `reassign_to_member_id={uuid}` reatribui tudo e remove na mesma
+  transação. Os convites activos do membro são revogados e os emails
+  pendentes cancelados. **Quem é removido não recebe qualquer
+  mensagem**; só os novos responsáveis das tarefas reatribuídas são
+  avisados.
+- `POST /api/v1/host/teams/{teamId}/members/{memberId}/invite/resend`
+  reenvia o convite de um membro `convite_pendente`. Cada reenvio
+  rotaciona o token (o link anterior fica inválido) e devolve
+  `200 { "data": { "send_count", "last_sent_at", "expires_at" } }`.
+  Anti-spam, configurável por ambiente:
+  `TEAM_INVITE_RESEND_COOLDOWN_MINUTES` entre envios
+  (`429 invite_cooldown`), `TEAM_INVITE_MAX_SENDS` por convite
+  (`409 invite_send_limit`), `TEAM_INVITE_MAX_PER_EMAIL_PER_DAY`
+  (3 por omissão) por destinatário em 24 horas
+  (`429 invite_email_rate_limited`) e `TEAM_INVITE_MAX_PER_HOST_PER_HOUR`
+  (30) / `TEAM_INVITE_MAX_PER_HOST_PER_DAY` (100) por anfitrião
+  (`429 invite_host_rate_limited`). Os limites por email e por
+  anfitrião são partilhados por todos os eventos e equipas.
+
+##### Convites, notificações e emails
+
+O convite de equipa é criado quando um email sem conta activa
+verificada é adicionado (`POST .../members`) ou reenviado. A base de
+dados guarda apenas o HMAC do token (`team_invites.token_hash`); o token
+em claro existe só no link do email enfileirado na outbox e nunca é
+devolvido pela API. O token tem 32 bytes aleatórios, uso único, expira
+ao fim de `TEAM_INVITE_TTL_DAYS` dias e cada reenvio invalida o
+anterior. A comparação do hash é feita em tempo constante. Como o
+convite é um portador **com estado** (linha em `team_invites`), o uso
+único e a revogação são reais; um HMAC sem estado não conseguiria
+garantir nenhum dos dois.
+
+As notificações in-app e os emails das equipas/tarefas seguem o
+catálogo de mensagens:
+
+| Evento | Notificação (`kind`) | Email (`message_type`) | Destinatários |
+|---|---|---|---|
+| Convite para quem não tem conta verificada | — (só email) | `team_invite` | Email convidado |
+| Membro com conta verificada adicionado | `team_added` | `team_added` | Membro adicionado (excepto o autor) |
+| Tarefa atribuída | `task_assigned` | `task_assigned` | Novo responsável (excepto o autor) |
+| Tarefa concluída | `task_completed` | `task_completed` | Criador da tarefa e anfitrião do evento (excepto o responsável; sem duplicar quando coincidem) |
+| Tarefa reatribuída | `task_reassigned` | `task_reassigned` | Novo responsável (variante `novo`) e responsável anterior (variante `anterior`) |
+| Papel alterado | `role_changed` | `team_role_changed` | Membro cujo papel mudou (excepto o autor) |
+
+A conclusão deixou de notificar todos os gestores: só quem criou a
+tarefa e o anfitrião do evento são avisados, uma única vez por conta.
+A reatribuição tem duas variantes com assunto próprio — quem recebe a
+tarefa lê "Passaram-te a tarefa…" e quem deixa de ser responsável lê
+"Já não és responsável…". A alteração de papel também distingue
+promoção (passa a gestor **do evento**, com acesso a todas as equipas
+e tarefas) de despromoção (volta a membro da equipa).
+
+Não existe mensagem de remoção: quem é removido deixa de ter acesso e
+não recebe email nem notificação. A revogação de um convite pendente
+também não notifica ninguém.
+
+Os emails entram sempre na outbox (`email_deliveries`) e só são
+entregues pelo worker; nenhum serviço envia directamente. O worker
+suprime mensagens que deixaram de fazer sentido: convite já aceite,
+revogado ou expirado; tarefa arquivada; evento em `draft`, `cancelled`
+ou `completed`.
+
+Fora de produção (`NODE_ENV !== 'production'`) o transporte é sempre
+`json`: as mensagens são escritas em `EMAIL_JSON_DIR` e nunca seguem
+para endereços reais, mesmo que `EMAIL_TRANSPORT=brevo|smtp|resend`.
+Em produção, o transporte configurado é usado.
 
 #### Capa do evento
 
@@ -1021,7 +1271,10 @@ altera `event_activity`.
 
 - `kind`: `rsvp_accepted`, `rsvp_declined`, `guest_added`,
   `reminder_sent`, `event_created`, `event_upcoming`, `rsvp_deadline`,
-  `task_assigned`, `task_completed`.
+  `task_assigned`, `task_completed`, `task_reassigned`, `team_added`,
+  `role_changed`. As cinco últimas vêm da Fase 3 (equipas e tarefas) e
+  têm email transaccional na outbox. O convite para quem não tem conta
+  verificada é só email e não gera notificação in-app.
 - `GET /api/v1/host/notifications/unread-count` — `200`
   `{ "data": { "unread_count": 3 } }`.
 - `PATCH /api/v1/host/notifications/{notificationId}` — corpo
@@ -1310,6 +1563,71 @@ convidado e `email_has_account` para o frontend sugerir conta.
 - Voltar de `declined` para `accepted` reagenda os lembretes futuros.
 - `409` se o evento estiver cancelado/terminado ou o prazo tiver
   passado.
+
+### Convite de equipa
+
+`GET /api/v1/public/team-invites/{token}` valida o token e devolve o
+resumo para a página de aceitação. A página pública mostra **apenas**
+o nome da equipa e quem convida: não revela o email convidado, o
+evento, a validade nem o estado do convite.
+
+```json
+{
+  "data": {
+    "team_name": "Cozinha",
+    "invited_by": "Pedro Silva"
+  }
+}
+```
+
+- `404 invite_not_found` para um token inexistente.
+- `409` com código estável para um convite expirado
+  (`invite_expired`), revogado (`invite_revoked`) ou já aceite
+  (`invite_already_accepted`).
+
+`POST /api/v1/public/team-invites/{token}/report` implementa o botão
+"Não conheço este convite". Revoga o convite, cancela os emails
+pendentes e bloqueia o **remetente original** para aquele email
+(`team_invite_blocks`, par anfitrião + email). O mesmo email pode
+continuar a receber convites de outros anfitriões. A resposta é sempre
+`204`, mesmo para um token inválido, para não permitir enumerar
+convites. A partir daí, o anfitrião bloqueado vê apenas
+`409 invite_not_possible` / `invite_not_possible` na adição ou
+reenvio, sem saber que houve uma denúncia.
+
+`GET /api/v1/public/team-invites/{token}/report` existe apenas para a
+página de confirmação: responde `405` com `Allow: POST` e **nunca**
+revoga o convite. Scanners de email que seguem ligações não conseguem
+accionar a denúncia; a revogação só acontece no `POST` explícito do
+botão.
+
+As rotas públicas de convites de equipa (`GET`, `accept` e `report`)
+têm um limite adicional de 20 pedidos por minuto por IP e por acção
+(`TEAM_INVITE_RATE_LIMIT_*`). A pré-visualização, a aceitação e a
+denúncia usam baldes separados, para que abrir a confirmação de
+denúncia não consuma o limite da aceitação.
+
+`POST /api/v1/public/team-invites/{token}/accept` exige sessão de conta
+(`apupu_auth`) e `X-CSRF-Token`. O email verificado da conta tem de
+coincidir com o email convidado; caso contrário devolve
+`403 invite_email_mismatch` (ou `403 email_not_verified`). A aceitação
+é atómica: o membro passa a `ativo` com `host_id`, o convite fica com
+`accepted_at` e os emails pendentes do convite são cancelados. Pedidos
+concorrentes produzem uma única aceitação; repetir devolve
+`409 invite_already_accepted`.
+
+```json
+{
+  "data": {
+    "member_id": "…",
+    "team_id": "…",
+    "team_name": "Cozinha",
+    "event_id": "…",
+    "event_title": "Casamento da Ana e do Paulo",
+    "role": "membro"
+  }
+}
+```
 
 ## Modelos de resposta
 
@@ -1639,6 +1957,33 @@ Inclui apenas os dados do próprio convidado. Nunca inclui
 `email_has_account` permite ao frontend sugerir entrar ou criar conta
 para abrir o convite em qualquer navegador.
 
+### `TeamInvitePreview` e `TeamInviteAccept`
+
+```json
+{
+  "team_name": "Cozinha",
+  "event_title": "Casamento da Ana e do Paulo",
+  "invited_email": "a********@exemplo.pt",
+  "expires_at": "2026-11-26T10:00:00.000Z",
+  "status": "active"
+}
+```
+
+```json
+{
+  "member_id": "0f0e5f6a-9b1c-4d3e-8a2b-7c6d5e4f3a21",
+  "team_id": "4c1f0d2e-8a3b-4c5d-9e6f-7a8b9c0d1e2f",
+  "team_name": "Cozinha",
+  "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+  "event_title": "Casamento da Ana e do Paulo",
+  "role": "membro"
+}
+```
+
+`invited_email` vem sempre mascarado no preview público. O token do
+convite nunca é devolvido em claro pela API; só existe no link do email
+enfileirado na outbox.
+
 ### `ReportSummary` e `DailyReport`
 
 ```json
@@ -1805,7 +2150,35 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `GET` | `/api/v1/host/tasks` | `200` | `{ "data": Task[], "pagination": Pagination }` |
 | `POST` | `/api/v1/host/tasks` | `201` | `{ "data": Task }` |
 | `PATCH` | `/api/v1/host/tasks/{taskId}` | `200` | `{ "data": Task }` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/status` | `200` | `{ "data": Task }` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/assignee` | `200` | `{ "data": Task }` |
+| `POST` | `/api/v1/host/tasks/{taskId}/move` | `200` | `{ "data": Task }` |
 | `DELETE` | `/api/v1/host/tasks/{taskId}` | `204` | — |
+| `GET` | `/api/v1/host/teams` | `200` | `{ "data": Team[], "pagination": Pagination }` |
+| `POST` | `/api/v1/host/teams` | `201` | `{ "data": Team }` |
+| `GET` | `/api/v1/host/teams/{teamId}` | `200` | `{ "data": Team }` |
+| `PATCH` | `/api/v1/host/teams/{teamId}` | `200` | `{ "data": Team }` |
+| `DELETE` | `/api/v1/host/teams/{teamId}` | `200` | `{ "data": { "deleted": true, "reassigned_to_team_id": uuid \| null, "reassigned_tasks": integer, "archived_tasks": integer } }` |
+| `GET` | `/api/v1/host/teams/{teamId}/members` | `200` | `{ "data": TeamMember[], "pagination": Pagination }` |
+| `POST` | `/api/v1/host/teams/{teamId}/members` | `201` | `{ "added": MemberRow[], "pending": MemberRow[], "skipped": MemberRow[] }` |
+| `PATCH` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `200` | `{ "data": { "member": TeamMember, "event_manager_id": uuid \| null } }` |
+| `DELETE` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `200` | `{ "data": { "removed": true, "reassigned_tasks": integer } }` |
+| `POST` | `/api/v1/host/teams/{teamId}/members/{memberId}/invite/resend` | `200` | `{ "data": { "send_count": integer, "last_sent_at": string, "expires_at": string } }` |
+
+`Team` = `{ id, event_id, event_title, event_status, my_role, name, category,
+description, member_count, task_count, completed_task_count, open_task_count,
+members_preview, created_at, updated_at }`.
+
+`members_preview` contém até 4 entradas `{ id, display_name, avatar_url }`,
+por ordem de entrada na equipa, sem emails. As contagens e a pré-visualização
+são calculadas na mesma consulta da equipa (sem N+1); `task_count` e
+`completed_task_count` ignoram tarefas arquivadas.
+
+`TeamMember` = `{ id, team_id, email, display_name, role, status,
+origin, is_host, open_task_count, has_event_access, joined_at,
+created_at }`.
+
+`MemberRow` = `{ email, member_id, status, reason? }`.
 
 `Totals` = `{ events, drafts, scheduled, cancelled, completed,
 total_invitations, accepted, declined, pending }`, todos inteiros.
@@ -1836,6 +2209,10 @@ created_at, updated_at }`.
 | `POST` | `/api/v1/public/invitations/{token}/claim` | `200` | `{ "data": PublicInvitation }` |
 | `GET` | `/api/v1/public/invitations/{token}` | `200` | `{ "data": PublicInvitation }` |
 | `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `200` | `{ "data": PublicInvitation }` |
+| `GET` | `/api/v1/public/team-invites/{token}` | `200` | `{ "data": TeamInvitePreview }` |
+| `POST` | `/api/v1/public/team-invites/{token}/accept` | `200` | `{ "data": TeamInviteAccept }` |
+| `POST` | `/api/v1/public/team-invites/{token}/report` | `204` | — |
+| `GET` | `/api/v1/public/team-invites/{token}/report` | `405` | `{ "error": { "code": "method_not_allowed", … } }` com `Allow: POST` |
 | `GET` | `/api/v1/templates` | `200` | `{ "data": Template[] }` |
 
 ## Respostas de erro por endpoint
@@ -2111,10 +2488,22 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `GET` | `/api/v1/host/events/{eventId}/exports/{document}` | `400 bad_request`; `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed` |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}/reports/export` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed` |
-| `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
-| `POST` | `/api/v1/host/tasks` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
-| `PATCH` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
-| `DELETE` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 task_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `404 event_not_found`/`team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/tasks` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`/`team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_edit_forbidden`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/status` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_complete_forbidden`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/assignee` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_reassign_forbidden`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/tasks/{taskId}/move` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_move_forbidden`; `404 task_not_found`/`team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_delete_forbidden`; `404 task_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/teams` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/teams` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 event_not_found`; `409 team_name_taken`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/teams/{teamId}` | `401 host_session_invalid`; `404 team_not_found`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/teams/{teamId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 team_not_found`; `409 team_name_taken`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/teams/{teamId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 team_not_found`; `409 team_has_open_tasks`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/teams/{teamId}/members` | `401 host_session_invalid`; `404 team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/teams/{teamId}/members` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 team_not_found`/`team_member_not_found`; `409 host_member_immutable`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 team_not_found`/`team_member_not_found`; `409 host_member_immutable`/`member_has_open_tasks`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/public/invitations/{token}/claim` | `404 invitation_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/public/invitations/{token}` | `404 invitation_not_found`; `429 rate_limited` |
 | `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `403 csrf_invalid`; `404 invitation_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |

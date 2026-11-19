@@ -205,6 +205,37 @@ export const eventManagerRepository = {
     return row ? toManager(row) : null;
   },
 
+  /**
+   * Garante que o email tem acesso activo ao evento.
+   *
+   * Usado quando um membro de equipa é promovido a gestor: cria a linha
+   * em `event_managers` ou reactiva a existente, na mesma transação da
+   * alteração de papel. O token fica nulo porque o acesso é pela conta
+   * autenticada (comparação de email), não por link.
+   */
+  async ensureActiveForEmail(
+    eventId: string,
+    email: string,
+    client?: PoolClient
+  ): Promise<EventManager> {
+    const runner = client ?? pool;
+    const result = await runner.query<EventManagerRow>(
+      `WITH upserted AS (
+         INSERT INTO event_managers (event_id, email)
+         VALUES ($1, $2)
+         ON CONFLICT (event_id, email)
+         DO UPDATE SET revoked_at = NULL, updated_at = now()
+         RETURNING *
+       )
+       SELECT ${SELECT_WITH_ACCOUNT} FROM upserted m`,
+      [eventId, email]
+    );
+
+    const row = result.rows[0];
+    if (!row) throw new Error('Falha ao garantir o acesso do gestor.');
+    return toManager(row);
+  },
+
   async rotateToken(
     id: string,
     data: { tokenHash: string; tokenExpiresAt: Date },

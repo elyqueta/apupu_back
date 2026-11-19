@@ -122,7 +122,7 @@ describe('app', () => {
 
   it('impede caching das respostas da API', async () => {
     const response = await request(app).get('/api/v1/rota-inexistente');
-    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 
   it('propaga o X-Request-Id para a resposta e para o erro', async () => {

@@ -8,8 +8,9 @@ import {
 } from '../repositories/emailDelivery.repository';
 import { activityRepository } from '../repositories/activity.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
-import { isHostMessage } from '../types/emailDelivery.types';
-import { reminderScheduledFor } from '../utils/date.util';
+import { isHostMessage, MessageType } from '../types/emailDelivery.types';
+import { TEAM_EVENT_END_HOUR, TEAM_EVENT_TIMEZONE } from '../types/team.types';
+import { nextDayAt, reminderScheduledFor } from '../utils/date.util';
 import { renderDelivery, sendMail } from './email.service';
 
 /**
@@ -34,6 +35,44 @@ export interface OutboxResult {
 
 type Verdict = { ok: true } | { ok: false; reason: string };
 
+/** Mensagens de equipas/tarefas que não dependem de um convite de evento. */
+const TEAM_MESSAGE_TYPES: readonly MessageType[] = [
+  'team_invite',
+  'team_added',
+  'team_role_changed',
+  'task_assigned',
+  'task_completed',
+  'task_reassigned',
+];
+
+/**
+ * O evento já terminou pelas datas, mesmo que o estado persistido ainda
+ * seja `scheduled`.
+ *
+ * Usa `ends_at` quando existe; sem `ends_at`, o evento termina às 06:00
+ * do dia seguinte ao de `starts_at`, em Africa/Luanda — a mesma regra
+ * de `event_status` na lista de equipas. Eventos em `draft` não são
+ * considerados terminados: o estado explícito manda.
+ */
+function eventEndedByDate(context: DeliveryContext, now: Date): boolean {
+  if (context.eventStatus === 'draft') {
+    return false;
+  }
+
+  if (!context.eventStartsAt) {
+    return false;
+  }
+
+  if (context.eventEndsAt) {
+    return now.getTime() >= context.eventEndsAt.getTime();
+  }
+
+  return (
+    now.getTime() >=
+    nextDayAt(context.eventStartsAt, TEAM_EVENT_TIMEZONE, TEAM_EVENT_END_HOUR).getTime()
+  );
+}
+
 /**
  * Decide se uma entrega ainda é aplicável.
  *
@@ -41,7 +80,7 @@ type Verdict = { ok: true } | { ok: false; reason: string };
  * impedem lembretes após uma recusa, emails de eventos cancelados e
  * marcos obsoletos depois de uma alteração de data.
  */
-export function evaluateApplicability(context: DeliveryContext): Verdict {
+export function evaluateApplicability(context: DeliveryContext, now: Date = new Date()): Verdict {
   if (context.messageType === 'manage_link' || context.messageType === 'manager_invite') {
     // Os links de gestão (do anfitrião e dos gestores) são
     // independentes do estado do evento: continuam a ser úteis para
@@ -60,6 +99,63 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
     return { ok: true };
   }
 
+  // Mensagens de equipas e tarefas (Fase 3). Não têm `invitation_id`:
+  // a aplicabilidade é decidida pelo estado do evento, do convite de
+  // equipa e da tarefa.
+  if (TEAM_MESSAGE_TYPES.includes(context.messageType)) {
+    if (context.messageType === 'team_invite') {
+      if (!context.eventId) {
+        return { ok: false, reason: 'missing_event' };
+      }
+
+      if (context.eventStatus === 'draft') {
+        return { ok: false, reason: 'event_draft' };
+      }
+
+      if (context.eventStatus === 'cancelled' || context.eventStatus === 'completed') {
+        return { ok: false, reason: `event_${context.eventStatus}` };
+      }
+
+      if (eventEndedByDate(context, now)) {
+        return { ok: false, reason: 'event_completed' };
+      }
+
+      if (!context.teamInviteExpiresAt) {
+        return { ok: false, reason: 'invite_missing' };
+      }
+
+      if (context.teamInviteAcceptedAt) {
+        return { ok: false, reason: 'invite_accepted' };
+      }
+
+      if (context.teamInviteRevokedAt) {
+        return { ok: false, reason: 'invite_revoked' };
+      }
+
+      if (context.teamInviteExpiresAt.getTime() <= now.getTime()) {
+        return { ok: false, reason: 'invite_expired' };
+      }
+
+      return { ok: true };
+    }
+
+    // Tarefas: um email sobre uma tarefa apagada ou de um evento
+    // cancelado deixa de fazer sentido.
+    if (context.taskArchivedAt) {
+      return { ok: false, reason: 'task_archived' };
+    }
+
+    if (context.eventStatus === 'cancelled' || context.eventStatus === 'completed') {
+      return { ok: false, reason: `event_${context.eventStatus}` };
+    }
+
+    if (eventEndedByDate(context, now)) {
+      return { ok: false, reason: 'event_completed' };
+    }
+
+    return { ok: true };
+  }
+
   // Enquanto o evento estiver em `draft` não está pronto: convites e
   // lembretes não podem sair. Avisos operacionais (recusa) continuam a
   // ser entregues ao anfitrião.
@@ -75,6 +171,10 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
     (context.eventStatus === 'cancelled' || context.eventStatus === 'completed')
   ) {
     return { ok: false, reason: `event_${context.eventStatus}` };
+  }
+
+  if (context.messageType !== 'event_cancelled' && eventEndedByDate(context, now)) {
+    return { ok: false, reason: 'event_completed' };
   }
 
   if (context.messageType === 'event_cancelled') {

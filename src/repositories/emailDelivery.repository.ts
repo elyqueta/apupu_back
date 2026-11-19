@@ -18,6 +18,7 @@ interface DeliveryRow {
   last_error: string | null;
   idempotency_key: string;
   token_encrypted: string | null;
+  payload: Record<string, unknown>;
   sent_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -40,6 +41,7 @@ function toDelivery(row: DeliveryRow): EmailDelivery {
     lastError: row.last_error,
     idempotencyKey: row.idempotency_key,
     tokenEncrypted: row.token_encrypted,
+    payload: row.payload ?? {},
     sentAt: row.sent_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -49,7 +51,7 @@ function toDelivery(row: DeliveryRow): EmailDelivery {
 const SELECT_COLUMNS = `
   id, event_id, invitation_id, host_id, message_type, reminder_kind, recipient_email,
   scheduled_for, status, attempts, next_attempt_at, provider_message_id,
-  last_error, idempotency_key, token_encrypted, sent_at, created_at, updated_at
+  last_error, idempotency_key, token_encrypted, payload, sent_at, created_at, updated_at
 `;
 
 const CONTEXT_COLUMNS = `
@@ -72,7 +74,11 @@ const CONTEXT_COLUMNS = `
   i.guest_email,
   i.token_encrypted             AS invitation_token_encrypted,
   i.rsvp_status,
-  i.claim_revoked_at
+  i.claim_revoked_at,
+  ti.accepted_at                AS team_invite_accepted_at,
+  ti.revoked_at                 AS team_invite_revoked_at,
+  ti.expires_at                 AS team_invite_expires_at,
+  ht.archived_at                AS task_archived_at
 `;
 
 export interface InsertDeliveryData {
@@ -86,6 +92,8 @@ export interface InsertDeliveryData {
   idempotencyKey: string;
   /** Token cifrado para mensagens de conta. Nunca em claro. */
   tokenEncrypted?: string | null;
+  /** Variáveis específicas da mensagem (equipa, tarefa, autor...). */
+  payload?: Record<string, unknown>;
 }
 
 /**
@@ -115,6 +123,10 @@ export interface DeliveryContext extends EmailDelivery {
   invitationTokenEncrypted: string | null;
   rsvpStatus: string | null;
   claimRevokedAt: Date | null;
+  teamInviteAcceptedAt: Date | null;
+  teamInviteRevokedAt: Date | null;
+  teamInviteExpiresAt: Date | null;
+  taskArchivedAt: Date | null;
 }
 
 interface DeliveryContextRow extends DeliveryRow {
@@ -137,6 +149,10 @@ interface DeliveryContextRow extends DeliveryRow {
   invitation_token_encrypted: string | null;
   rsvp_status: string | null;
   claim_revoked_at: Date | null;
+  team_invite_accepted_at: Date | null;
+  team_invite_revoked_at: Date | null;
+  team_invite_expires_at: Date | null;
+  task_archived_at: Date | null;
 }
 
 function toContext(row: DeliveryContextRow): DeliveryContext {
@@ -161,6 +177,10 @@ function toContext(row: DeliveryContextRow): DeliveryContext {
     invitationTokenEncrypted: row.invitation_token_encrypted,
     rsvpStatus: row.rsvp_status,
     claimRevokedAt: row.claim_revoked_at,
+    teamInviteAcceptedAt: row.team_invite_accepted_at,
+    teamInviteRevokedAt: row.team_invite_revoked_at,
+    teamInviteExpiresAt: row.team_invite_expires_at,
+    taskArchivedAt: row.task_archived_at,
   };
 }
 
@@ -174,9 +194,9 @@ export const emailDeliveryRepository = {
     const result = await runner.query<DeliveryRow>(
       `INSERT INTO email_deliveries (
          event_id, invitation_id, host_id, message_type, reminder_kind,
-         recipient_email, scheduled_for, idempotency_key, token_encrypted
+         recipient_email, scheduled_for, idempotency_key, token_encrypted, payload
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
        ON CONFLICT (idempotency_key) DO NOTHING
        RETURNING ${SELECT_COLUMNS}`,
       [
@@ -189,6 +209,7 @@ export const emailDeliveryRepository = {
         data.scheduledFor,
         data.idempotencyKey,
         data.tokenEncrypted ?? null,
+        JSON.stringify(data.payload ?? {}),
       ]
     );
 
@@ -245,6 +266,10 @@ export const emailDeliveryRepository = {
          FROM email_deliveries d
          LEFT JOIN events e ON e.id = d.event_id
          LEFT JOIN invitations i ON i.id = d.invitation_id
+         LEFT JOIN team_invites ti
+           ON ti.id = NULLIF(d.payload->>'inviteId', '')::uuid
+         LEFT JOIN host_tasks ht
+           ON ht.id = NULLIF(d.payload->>'taskId', '')::uuid
         WHERE d.id = ANY($1::uuid[])`,
       [ids]
     );
@@ -259,6 +284,10 @@ export const emailDeliveryRepository = {
          FROM email_deliveries d
          LEFT JOIN events e ON e.id = d.event_id
          LEFT JOIN invitations i ON i.id = d.invitation_id
+         LEFT JOIN team_invites ti
+           ON ti.id = NULLIF(d.payload->>'inviteId', '')::uuid
+         LEFT JOIN host_tasks ht
+           ON ht.id = NULLIF(d.payload->>'taskId', '')::uuid
         WHERE d.id = $1`,
       [id]
     );
@@ -382,6 +411,76 @@ export const emailDeliveryRepository = {
         WHERE invitation_id = $1 AND status = 'pending'`,
       [invitationId, recipientEmail]
     );
+  },
+
+  /** Conta envios recentes para o mesmo destinatário e tipo (anti-spam). */
+  async countRecentByRecipient(
+    recipientEmail: string,
+    messageType: MessageType,
+    since: Date,
+    client?: PoolClient
+  ): Promise<number> {
+    const runner = client ?? pool;
+    const result = await runner.query<{ total: string }>(
+      `SELECT count(*)::text AS total
+         FROM email_deliveries
+        WHERE recipient_email = $1
+          AND message_type = $2
+          AND created_at >= $3`,
+      [recipientEmail, messageType, since]
+    );
+
+    return Number(result.rows[0]?.total ?? '0');
+  },
+
+  /**
+   * Cancela entregas pendentes identificadas por uma chave do payload.
+   *
+   * Usado quando um convite de equipa é aceite ou revogado: o email
+   * deixa de fazer sentido mesmo que ainda esteja na fila.
+   */
+  async cancelPendingByPayload(
+    messageType: MessageType,
+    payloadKey: string,
+    payloadValue: string,
+    client?: PoolClient
+  ): Promise<number> {
+    const runner = client ?? pool;
+    const result = await runner.query(
+      `UPDATE email_deliveries
+          SET status = 'cancelled', updated_at = now()
+        WHERE status = 'pending'
+          AND message_type = $1
+          AND payload->>$2 = $3`,
+      [messageType, payloadKey, payloadValue]
+    );
+
+    return result.rowCount ?? 0;
+  },
+
+  /**
+   * Cancela convites de equipa ainda pendentes de um membro.
+   *
+   * Usado na remoção e na denúncia "não conheço este convite": o email
+   * deixa de fazer sentido e não deve sair depois da revogação.
+   */
+  async cancelPendingTeamInvitesForMember(
+    memberId: string,
+    client?: PoolClient
+  ): Promise<number> {
+    const runner = client ?? pool;
+    const result = await runner.query(
+      `UPDATE email_deliveries
+          SET status = 'cancelled', updated_at = now()
+        WHERE status = 'pending'
+          AND message_type = 'team_invite'
+          AND payload->>'inviteId' IN (
+            SELECT id::text FROM team_invites WHERE member_id = $1
+          )`,
+      [memberId]
+    );
+
+    return result.rowCount ?? 0;
   },
 
   async findById(id: string, client?: PoolClient): Promise<EmailDelivery | null> {

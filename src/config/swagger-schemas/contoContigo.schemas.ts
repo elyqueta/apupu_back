@@ -526,13 +526,238 @@ export const contoContigoSchemas = {
       id: { type: 'string', format: 'uuid' },
       event_id: { type: 'string', format: 'uuid', nullable: true },
       event_title: { type: 'string', nullable: true },
-      manager_id: { type: 'string', format: 'uuid', nullable: true },
-      manager_email: { type: 'string', format: 'email', nullable: true },
-      label: { type: 'string' },
-      done: { type: 'boolean' },
+      team_id: { type: 'string', format: 'uuid', nullable: true },
+      team_name: { type: 'string', nullable: true },
+      assignee_member_id: { type: 'string', format: 'uuid', nullable: true },
+      assignee_email: { type: 'string', format: 'email', nullable: true },
+      assignee_display_name: { type: 'string', nullable: true },
+      assignee_has_access: {
+        type: 'boolean',
+        nullable: true,
+        description:
+          '`false` quando o responsável perdeu o acesso ao evento. O ' +
+          'frontend mostra "Responsável sem acesso" e só o anfitrião ou ' +
+          'um gestor pode reatribuir.',
+      },
+      title: { type: 'string' },
+      description: { type: 'string', nullable: true },
+      due_date: { type: 'string', format: 'date', nullable: true },
+      priority: { type: 'string', enum: ['baixa', 'normal', 'alta'] },
+      status: { type: 'string', enum: ['por_fazer', 'em_curso', 'concluida'] },
+      created_by_host_id: { type: 'string', format: 'uuid', nullable: true },
+      completed_by_member_id: { type: 'string', format: 'uuid', nullable: true },
       completed_at: { type: 'string', format: 'date-time', nullable: true },
+      archived_at: { type: 'string', format: 'date-time', nullable: true },
+      label: {
+        type: 'string',
+        deprecated: true,
+        description: 'Alias de `title`, mantido durante a transição.',
+      },
+      done: {
+        type: 'boolean',
+        deprecated: true,
+        description: "Alias de `status === 'concluida'`, mantido durante a transição.",
+      },
+      manager_id: {
+        type: 'string',
+        format: 'uuid',
+        nullable: true,
+        deprecated: true,
+      },
+      manager_email: {
+        type: 'string',
+        format: 'email',
+        nullable: true,
+        deprecated: true,
+      },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  TeamMemberPreview: {
+    type: 'object',
+    description: 'Membro da pré-visualização do cartão; sem email.',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      display_name: { type: 'string', nullable: true },
+      avatar_url: { type: 'string', format: 'uri', nullable: true },
+    },
+  },
+
+  Team: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      event_id: { type: 'string', format: 'uuid' },
+      event_title: { type: 'string' },
+      event_status: {
+        type: 'string',
+        enum: ['agendado', 'em_curso', 'concluido', 'cancelado', 'rascunho'],
+      },
+      my_role: {
+        type: 'string',
+        enum: ['anfitriao', 'gestor', 'membro'],
+        description: 'Papel da conta autenticada na equipa.',
+      },
+      name: { type: 'string' },
+      category: {
+        type: 'string',
+        enum: ['logistica', 'decoracao', 'musica', 'catering', 'rececao', 'outra'],
+      },
+      description: { type: 'string', nullable: true },
+      member_count: { type: 'integer' },
+      task_count: { type: 'integer' },
+      completed_task_count: { type: 'integer' },
+      open_task_count: { type: 'integer' },
+      members_preview: {
+        type: 'array',
+        description: 'Até 4 membros, por ordem de entrada, sem emails.',
+        items: { $ref: '#/components/schemas/TeamMemberPreview' },
+      },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  TeamList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/Team' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  TeamEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/Team' },
+    },
+  },
+
+  TeamMember: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      team_id: { type: 'string', format: 'uuid' },
+      email: { type: 'string', format: 'email' },
+      display_name: { type: 'string', nullable: true },
+      role: { type: 'string', enum: ['gestor', 'membro'] },
+      status: { type: 'string', enum: ['ativo', 'convite_pendente'] },
+      origin: { type: 'string', enum: ['convidado', 'email'] },
+      is_host: { type: 'boolean' },
+      open_task_count: { type: 'integer' },
+      has_event_access: {
+        type: 'boolean',
+        description:
+          '`false` quando um gestor perdeu o acesso ao evento; o membro ' +
+          'aparece como "Responsável sem acesso".',
+      },
+      joined_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  TeamMemberList: {
+    type: 'object',
+    properties: {
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/TeamMember' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  TeamGuestCandidate: {
+    type: 'object',
+    properties: {
+      invitation_id: { type: 'string', format: 'uuid' },
+      event_id: { type: 'string', format: 'uuid' },
+      event_title: { type: 'string' },
+      event_starts_at: { type: 'string', format: 'date-time', nullable: true },
+      event_status: { type: 'string' },
+      guest_name: { type: 'string' },
+      guest_email: { type: 'string' },
+      has_email: {
+        type: 'boolean',
+        description: '`false` quando o convidado não tem email.',
+      },
+      is_member: {
+        type: 'boolean',
+        description: '`true` quando o email já pertence à equipa.',
+      },
+      member_id: { type: 'string', format: 'uuid', nullable: true },
+    },
+  },
+
+  TeamGuestList: {
+    type: 'object',
+    properties: {
+      team_id: { type: 'string', format: 'uuid' },
+      data: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/TeamGuestCandidate' },
+      },
+      pagination: { $ref: '#/components/schemas/PaginationMeta' },
+    },
+  },
+
+  TeamInvitePreview: {
+    type: 'object',
+    properties: {
+      team_name: { type: 'string' },
+      invited_by: {
+        type: 'string',
+        description: 'Nome de quem convida (ou email do anfitrião, sem outros dados).',
+        example: 'Pedro Silva',
+      },
+    },
+    required: ['team_name', 'invited_by'],
+  },
+
+  TeamInvitePreviewEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/TeamInvitePreview' },
+    },
+  },
+
+  TeamInviteAccept: {
+    type: 'object',
+    properties: {
+      member_id: { type: 'string', format: 'uuid' },
+      team_id: { type: 'string', format: 'uuid' },
+      team_name: { type: 'string' },
+      event_id: { type: 'string', format: 'uuid' },
+      event_title: { type: 'string' },
+      role: { type: 'string', enum: ['gestor', 'membro'] },
+    },
+  },
+
+  TeamInviteAcceptEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/TeamInviteAccept' },
+    },
+  },
+
+  TeamInviteResend: {
+    type: 'object',
+    properties: {
+      send_count: { type: 'integer', minimum: 1 },
+      last_sent_at: { type: 'string', format: 'date-time' },
+      expires_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  TeamInviteResendEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/TeamInviteResend' },
     },
   },
 
@@ -555,6 +780,9 @@ export const contoContigoSchemas = {
           'rsvp_deadline',
           'task_assigned',
           'task_completed',
+          'task_reassigned',
+          'team_added',
+          'role_changed',
         ],
       },
       title: { type: 'string' },
