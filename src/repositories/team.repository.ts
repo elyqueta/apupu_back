@@ -4,10 +4,18 @@ import {
   Team,
   TeamCategory,
   TeamEventStatus,
+  TeamMemberPreview,
   TeamMyRole,
   TeamWithStats,
+  TEAM_EVENT_END_HOUR,
   TEAM_EVENT_TIMEZONE,
 } from '../types/team.types';
+
+interface TeamMemberPreviewRow {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+}
 
 interface TeamRow {
   id: string;
@@ -22,7 +30,10 @@ interface TeamRow {
   event_title: string;
   event_status: TeamEventStatus;
   member_count: number;
+  task_count: number;
+  completed_task_count: number;
   open_task_count: number;
+  members_preview: TeamMemberPreviewRow[];
   my_role?: TeamMyRole;
 }
 
@@ -41,7 +52,18 @@ function toTeam(row: TeamRow): TeamWithStats {
     eventStatus: row.event_status,
     memberCount: row.member_count,
     openTaskCount: row.open_task_count,
+    taskCount: row.task_count,
+    completedTaskCount: row.completed_task_count,
+    membersPreview: (row.members_preview ?? []).map(toMemberPreview),
     myRole: row.my_role,
+  };
+}
+
+function toMemberPreview(row: TeamMemberPreviewRow): TeamMemberPreview {
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
   };
 }
 
@@ -49,9 +71,9 @@ function toTeam(row: TeamRow): TeamWithStats {
  * Estado observável do evento. `draft`/`cancelled`/`completed` vêm do
  * estado explícito; um evento agendado é classificado pelas datas.
  *
- * Sem `ends_at`, o evento passa a `concluido` no fim do dia local de
- * `starts_at` (00:00 do dia seguinte em Africa/Luanda), em vez de ficar
- * `em_curso` indefinidamente.
+ * Sem `ends_at`, o evento passa a `concluido` às 06:00 do dia seguinte
+ * ao de `starts_at`, em Africa/Luanda, em vez de ficar `em_curso`
+ * indefinidamente.
  */
 const EVENT_STATUS_SQL = `
   CASE
@@ -62,7 +84,8 @@ const EVENT_STATUS_SQL = `
     WHEN e.ends_at IS NOT NULL AND now() >= e.ends_at THEN 'concluido'
     WHEN e.ends_at IS NULL
       AND now() >= (
-        (date_trunc('day', e.starts_at AT TIME ZONE '${TEAM_EVENT_TIMEZONE}') + interval '1 day')
+        (date_trunc('day', e.starts_at AT TIME ZONE '${TEAM_EVENT_TIMEZONE}')
+         + interval '1 day ${TEAM_EVENT_END_HOUR} hours')
         AT TIME ZONE '${TEAM_EVENT_TIMEZONE}'
       )
       THEN 'concluido'
@@ -91,31 +114,99 @@ const MY_ROLE_SQL = `
   END
 `;
 
+/** Alias da equipa usado nas agregações (tabela ou CTE da página). */
+type TeamAlias = 't' | 'p';
+
+/**
+ * Contagens e pré-visualização na mesma consulta da equipa: a lista
+ * nunca faz N+1, mesmo com centenas de equipas por página.
+ *
+ * `members_preview` não expõe emails — apenas id, nome e avatar — e
+ * respeita a ordem de entrada (`created_at`, `id`).
+ */
+function teamAggregates(alias: TeamAlias): string {
+  return `
+  LEFT JOIN LATERAL (
+    SELECT count(*)::int AS member_count
+      FROM team_members m
+     WHERE m.team_id = ${alias}.id
+       AND m.removed_at IS NULL
+  ) members ON true
+  LEFT JOIN LATERAL (
+    SELECT count(*)::int AS task_count,
+           count(*) FILTER (WHERE ht.status = 'concluida')::int AS completed_task_count,
+           count(*) FILTER (WHERE ht.status <> 'concluida')::int AS open_task_count
+      FROM host_tasks ht
+     WHERE ht.team_id = ${alias}.id
+       AND ht.archived_at IS NULL
+  ) tasks ON true
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+             jsonb_build_object(
+               'id', first.id,
+               'display_name', first.display_name,
+               'avatar_url', first.avatar_url
+             )
+             ORDER BY first.created_at ASC, first.id ASC
+           ) AS members
+      FROM (
+        SELECT m.id, m.display_name, prof.avatar_url, m.created_at
+          FROM team_members m
+          LEFT JOIN host_profiles prof ON prof.host_id = m.host_id
+         WHERE m.team_id = ${alias}.id
+           AND m.removed_at IS NULL
+         ORDER BY m.created_at ASC, m.id ASC
+         LIMIT 4
+      ) first
+  ) preview ON true
+`;
+}
+
+function teamAggregateColumns(): string {
+  return `
+  COALESCE(members.member_count, 0)::int AS member_count,
+  COALESCE(tasks.task_count, 0)::int AS task_count,
+  COALESCE(tasks.completed_task_count, 0)::int AS completed_task_count,
+  COALESCE(tasks.open_task_count, 0)::int AS open_task_count,
+  COALESCE(preview.members, '[]'::jsonb) AS members_preview
+`;
+}
+
 const SELECT_TEAM = `
   t.id, t.event_id, t.name, t.category, t.description,
   t.created_by_host_id, t.deleted_at, t.created_at, t.updated_at,
   e.title AS event_title,
   ${EVENT_STATUS_SQL} AS event_status,
-  COALESCE(members.member_count, 0)::int AS member_count,
-  COALESCE(tasks.open_task_count, 0)::int AS open_task_count
+  ${teamAggregateColumns()}
+`;
+
+const FROM_TEAM_BASE = `
+  FROM teams t
+  JOIN events e ON e.id = t.event_id
 `;
 
 const FROM_TEAM = `
-  FROM teams t
-  JOIN events e ON e.id = t.event_id
-  LEFT JOIN LATERAL (
-    SELECT count(*)::int AS member_count
-      FROM team_members m
-     WHERE m.team_id = t.id
-       AND m.removed_at IS NULL
-  ) members ON true
-  LEFT JOIN LATERAL (
-    SELECT count(*)::int AS open_task_count
-      FROM host_tasks ht
-     WHERE ht.team_id = t.id
-       AND ht.status <> 'concluida'
-       AND ht.archived_at IS NULL
-  ) tasks ON true
+  ${FROM_TEAM_BASE}
+  ${teamAggregates('t')}
+`;
+
+/**
+ * A lista aplica a paginação antes das agregações: sem isto, o
+ * planeador calcula contagens e pré-visualizações para todas as equipas
+ * visíveis e só depois ordena e limita (761 ms com 2 000 equipas e
+ * 30 000 tarefas). Com o CTE, apenas as 20 equipas da página são
+ * agregadas, mantendo o resultado idêntico e sem N+1.
+ */
+const SELECT_TEAM_PAGE = `
+  p.id, p.event_id, p.name, p.category, p.description,
+  p.created_by_host_id, p.deleted_at, p.created_at, p.updated_at,
+  p.event_title, p.event_status,
+  ${teamAggregateColumns()}
+`;
+
+const FROM_TEAM_PAGE = `
+  FROM team_page p
+  ${teamAggregates('p')}
 `;
 
 export interface TeamListFilters {
@@ -175,6 +266,110 @@ const MINE_SQL = `
   )
 `;
 
+/**
+ * Constrói as duas consultas da lista de equipas.
+ *
+ * Exportado para o diagnóstico de performance (EXPLAIN ANALYZE) usar
+ * exactamente o SQL de produção.
+ */
+export function buildTeamListQuery(filters: TeamListFilters): {
+  count: { text: string; values: unknown[] };
+  list: { text: string; values: unknown[] };
+} {
+  // $1 = host da sessão, $2 = email efectivo (usado por my_role/mine).
+  const values: unknown[] = [filters.hostId, filters.actorEmail];
+  const conditions = ['t.deleted_at IS NULL'];
+
+  const access = ['e.host_id = $1'];
+
+  if (filters.managerEmail) {
+    values.push(filters.managerEmail);
+    const emailParam = values.length;
+    access.push(
+      `EXISTS (
+         SELECT 1 FROM event_managers em
+          WHERE em.event_id = e.id
+            AND em.email = $${emailParam}::citext
+            AND em.revoked_at IS NULL
+       )`
+    );
+    access.push(
+      `EXISTS (
+         SELECT 1 FROM team_members self
+          WHERE self.team_id = t.id
+            AND self.email = $${emailParam}::citext
+            AND self.removed_at IS NULL
+       )`
+    );
+  }
+
+  conditions.push(`(${access.join(' OR ')})`);
+
+  if (filters.eventId) {
+    values.push(filters.eventId);
+    conditions.push(`t.event_id = $${values.length}`);
+  }
+
+  if (filters.category) {
+    values.push(filters.category);
+    conditions.push(`t.category = $${values.length}`);
+  }
+
+  if (filters.role) {
+    values.push(filters.role);
+    conditions.push(`${MY_ROLE_SQL} = $${values.length}`);
+  }
+
+  if (filters.eventStatus) {
+    values.push(filters.eventStatus);
+    conditions.push(`${EVENT_STATUS_SQL} = $${values.length}`);
+  }
+
+  if (filters.mine) {
+    conditions.push(MINE_SQL);
+  }
+
+  if (filters.q) {
+    values.push(`%${filters.q}%`);
+    conditions.push(`t.name ILIKE $${values.length}`);
+  }
+
+  const where = conditions.join(' AND ');
+  const listValues = [...values, filters.limit, filters.offset];
+
+  return {
+    count: {
+      text: `SELECT count(*)::text AS total
+               FROM teams t
+               JOIN events e ON e.id = t.event_id
+               ${SELF_MEMBER_SQL}
+              WHERE ${where}`,
+      values,
+    },
+    list: {
+      // A paginação vive dentro do CTE: só as equipas da página é que
+      // pagam as agregações (ver comentário de SELECT_TEAM_PAGE).
+      text: `WITH team_page AS (
+               SELECT t.id, t.event_id, t.name, t.category, t.description,
+                      t.created_by_host_id, t.deleted_at, t.created_at, t.updated_at,
+                      e.starts_at,
+                      e.title AS event_title,
+                      ${EVENT_STATUS_SQL} AS event_status,
+                      ${MY_ROLE_SQL} AS my_role
+                 ${FROM_TEAM_BASE}
+                 ${SELF_MEMBER_SQL}
+                WHERE ${where}
+                ORDER BY e.starts_at ASC, t.name ASC, t.id ASC
+                LIMIT $${listValues.length - 1} OFFSET $${listValues.length}
+             )
+             SELECT ${SELECT_TEAM_PAGE}, p.my_role
+             ${FROM_TEAM_PAGE}
+             ORDER BY p.starts_at ASC, p.name ASC, p.id ASC`,
+      values: listValues,
+    },
+  };
+}
+
 export interface CreateTeamData {
   eventId: string;
   name: string;
@@ -227,86 +422,11 @@ export const teamRepository = {
   async listForAccess(
     filters: TeamListFilters
   ): Promise<{ items: TeamWithStats[]; total: number }> {
-    // $1 = host da sessão, $2 = email efectivo (usado por my_role/mine).
-    const values: unknown[] = [filters.hostId, filters.actorEmail];
-    const conditions = ['t.deleted_at IS NULL'];
-
-    const access = ['e.host_id = $1'];
-
-    if (filters.managerEmail) {
-      values.push(filters.managerEmail);
-      const emailParam = values.length;
-      access.push(
-        `EXISTS (
-           SELECT 1 FROM event_managers em
-            WHERE em.event_id = e.id
-              AND em.email = $${emailParam}::citext
-              AND em.revoked_at IS NULL
-         )`
-      );
-      access.push(
-        `EXISTS (
-           SELECT 1 FROM team_members self
-            WHERE self.team_id = t.id
-              AND self.email = $${emailParam}::citext
-              AND self.removed_at IS NULL
-         )`
-      );
-    }
-
-    conditions.push(`(${access.join(' OR ')})`);
-
-    if (filters.eventId) {
-      values.push(filters.eventId);
-      conditions.push(`t.event_id = $${values.length}`);
-    }
-
-    if (filters.category) {
-      values.push(filters.category);
-      conditions.push(`t.category = $${values.length}`);
-    }
-
-    if (filters.role) {
-      values.push(filters.role);
-      conditions.push(`${MY_ROLE_SQL} = $${values.length}`);
-    }
-
-    if (filters.eventStatus) {
-      values.push(filters.eventStatus);
-      conditions.push(`${EVENT_STATUS_SQL} = $${values.length}`);
-    }
-
-    if (filters.mine) {
-      conditions.push(MINE_SQL);
-    }
-
-    if (filters.q) {
-      values.push(`%${filters.q}%`);
-      conditions.push(`t.name ILIKE $${values.length}`);
-    }
-
-    const where = conditions.join(' AND ');
-
-    const countResult = await query<{ total: string }>(
-      `SELECT count(*)::text AS total
-         FROM teams t
-         JOIN events e ON e.id = t.event_id
-         ${SELF_MEMBER_SQL}
-        WHERE ${where}`,
-      values
-    );
-
-    const listValues = [...values, filters.limit, filters.offset];
-    const result = await query<TeamRow>(
-      `SELECT ${SELECT_TEAM},
-              ${MY_ROLE_SQL} AS my_role
-       ${FROM_TEAM}
-       ${SELF_MEMBER_SQL}
-        WHERE ${where}
-        ORDER BY e.starts_at ASC, t.name ASC, t.id ASC
-        LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,
-      listValues
-    );
+    const built = buildTeamListQuery(filters);
+    const [countResult, result] = await Promise.all([
+      query<{ total: string }>(built.count.text, built.count.values),
+      query<TeamRow>(built.list.text, built.list.values),
+    ]);
 
     return {
       items: result.rows.map(toTeam),

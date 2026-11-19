@@ -171,7 +171,7 @@ describe.skipIf(!connectionString)('equipas, membros e tarefas (integração)', 
     expect(rows[1]).toMatchObject({ email: EMAIL_MANAGER, is_host: false, role: 'gestor' });
   });
 
-  it('um membro só vê as suas equipas e não pode gerir equipas', async () => {
+  it('um membro só vê os membros das suas equipas e não pode gerir equipas', async () => {
     const added = await teamMemberService.add(scopeA, teamCozinha, {
       emails: ['guest1@exemplo.pt', EMAIL_OUTSIDER],
     });
@@ -190,6 +190,21 @@ describe.skipIf(!connectionString)('equipas, membros e tarefas (integração)', 
 
     const list = await teamService.list(scopeOutsider, { page: 1, page_size: 20 });
     expect(list.items.map((team) => team.id)).toEqual([teamCozinha]);
+
+    // O membro vê os membros da sua equipa, mas não os de outra equipa
+    // do mesmo evento nem os de qualquer outro evento.
+    const members = await teamMemberService.list(scopeOutsider, teamCozinha, {
+      page: 1,
+      page_size: 20,
+    });
+    expect(members.items.map((member) => member.id)).toContain(outsiderMemberId);
+    await expect(teamService.get(scopeOutsider, teamSala)).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'team_not_found',
+    });
+    await expect(
+      teamMemberService.list(scopeOutsider, teamSala, { page: 1, page_size: 20 })
+    ).rejects.toMatchObject({ statusCode: 404, code: 'team_not_found' });
 
     await expect(
       teamService.create(scopeOutsider, {

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { toTeamDto } from '../src/dto/team.dto';
 
 /**
  * Passo 0 da Fase 4: campos derivados e filtros da lista de equipas.
@@ -23,6 +24,7 @@ const HOST_OWNER = 'e1111111-1111-4111-8111-111111111111';
 const HOST_OTHER = 'e2222222-2222-4222-8222-222222222222';
 const HOST_MANAGER = 'e3333333-3333-4333-8333-333333333333';
 const HOST_MEMBER = 'e4444444-4444-4444-8444-444444444444';
+const HOST_OTHER_MANAGER = 'e5555555-5555-4555-8555-555555555555';
 
 const EVENT_FUTURE = 'f1111111-1111-4111-8111-111111111111';
 const EVENT_LIVE = 'f2222222-2222-4222-8222-222222222222';
@@ -34,13 +36,15 @@ const EVENT_NO_END_DONE = 'f7777777-7777-4777-8777-777777777777';
 const EVENT_NO_END_LIVE = 'f8888888-8888-4888-8888-888888888888';
 
 const MANAGER_ID = 'c1111111-1111-4111-8111-111111111111';
+const MANAGER_OTHER_ID = 'c2222222-2222-4222-8222-222222222222';
 
 const EMAIL_OWNER = 'filters-owner@exemplo.pt';
 const EMAIL_OTHER = 'filters-other@exemplo.pt';
 const EMAIL_MANAGER = 'filters-manager@exemplo.pt';
 const EMAIL_MEMBER = 'filters-member@exemplo.pt';
+const EMAIL_OTHER_MANAGER = 'filters-other-manager@exemplo.pt';
 
-const HOST_IDS = [HOST_OWNER, HOST_OTHER, HOST_MANAGER, HOST_MEMBER];
+const HOST_IDS = [HOST_OWNER, HOST_OTHER, HOST_MANAGER, HOST_MEMBER, HOST_OTHER_MANAGER];
 const EVENT_IDS = [
   EVENT_FUTURE,
   EVENT_LIVE,
@@ -61,6 +65,10 @@ const scopeOwner: Scope = { hostId: HOST_OWNER, managerEmail: EMAIL_OWNER };
 const scopeOther: Scope = { hostId: HOST_OTHER, managerEmail: EMAIL_OTHER };
 const scopeManager: Scope = { hostId: HOST_MANAGER, managerEmail: EMAIL_MANAGER };
 const scopeMember: Scope = { hostId: HOST_MEMBER, managerEmail: EMAIL_MEMBER };
+const scopeOtherManager: Scope = {
+  hostId: HOST_OTHER_MANAGER,
+  managerEmail: EMAIL_OTHER_MANAGER,
+};
 
 type TeamService = typeof import('../src/services/team.service').teamService;
 type TeamMemberService = typeof import('../src/services/teamMember.service').teamMemberService;
@@ -89,6 +97,27 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integra�
   let teamNoEndLive: string;
 
   let managerMemberCozinha: string;
+
+  async function memberOrder(teamId: string): Promise<string[]> {
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM team_members
+        WHERE team_id = $1 AND removed_at IS NULL
+        ORDER BY created_at ASC, id ASC`,
+      [teamId]
+    );
+    return rows.map((row) => row.id);
+  }
+
+  function expectPreviewSemEmails(
+    preview: Array<{ id: string; display_name: string | null; avatar_url: string | null }>
+  ): void {
+    for (const member of preview) {
+      expect(Object.keys(member).sort()).toEqual(['avatar_url', 'display_name', 'id']);
+      expect(member.id).toBeTruthy();
+    }
+    // Nenhum email (de membro, anfitrião ou convidado) pode vazar no DTO.
+    expect(JSON.stringify(preview)).not.toContain('@');
+  }
 
   async function createTeam(
     scope: Scope,
@@ -135,7 +164,8 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integra�
          ($1, $2, 'x', now(), 'active'),
          ($3, $4, 'x', now(), 'active'),
          ($5, $6, 'x', now(), 'active'),
-         ($7, $8, 'x', now(), 'active')`,
+         ($7, $8, 'x', now(), 'active'),
+         ($9, $10, 'x', now(), 'active')`,
       [
         HOST_OWNER,
         EMAIL_OWNER,
@@ -145,14 +175,17 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integra�
         EMAIL_MANAGER,
         HOST_MEMBER,
         EMAIL_MEMBER,
+        HOST_OTHER_MANAGER,
+        EMAIL_OTHER_MANAGER,
       ]
     );
 
     await pool.query(
       `INSERT INTO host_profiles (host_id, display_name) VALUES
          ($1, 'Anfitriã Principal'), ($2, 'Anfitrião Externo'),
-         ($3, 'Gestor da Equipa'), ($4, 'Membro Convidado')`,
-      [HOST_OWNER, HOST_OTHER, HOST_MANAGER, HOST_MEMBER]
+         ($3, 'Gestor da Equipa'), ($4, 'Membro Convidado'),
+         ($5, 'Gestor de Outro Evento')`,
+      [HOST_OWNER, HOST_OTHER, HOST_MANAGER, HOST_MEMBER, HOST_OTHER_MANAGER]
     );
 
     await pool.query(
@@ -200,11 +233,18 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integra�
       ]
     );
 
-    await pool.query(`INSERT INTO event_managers (id, event_id, email) VALUES ($1, $2, $3)`, [
-      MANAGER_ID,
-      EVENT_FUTURE,
-      EMAIL_MANAGER,
-    ]);
+    await pool.query(
+      `INSERT INTO event_managers (id, event_id, email) VALUES
+         ($1, $2, $3), ($4, $5, $6)`,
+      [
+        MANAGER_ID,
+        EVENT_FUTURE,
+        EMAIL_MANAGER,
+        MANAGER_OTHER_ID,
+        EVENT_OTHER,
+        EMAIL_OTHER_MANAGER,
+      ]
+    );
 
     teamCozinha = await createTeam(scopeOwner, EVENT_FUTURE, 'Cozinha', 'catering');
     teamSala = await createTeam(scopeOwner, EVENT_FUTURE, 'Sala', 'decoracao');
@@ -478,5 +518,312 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integra�
     await expect(
       teamService.list(scopeOwner, { event_id: EVENT_OTHER, page: 1, page_size: 100 })
     ).rejects.toMatchObject({ statusCode: 404, code: 'event_not_found' });
+  });
+
+  it('filtra a lista de equipas por event_id antes da paginação', async () => {
+    const allFuture = await teamService.list(scopeOwner, {
+      event_id: EVENT_FUTURE,
+      page: 1,
+      page_size: 100,
+    });
+    const futureIds = allFuture.items.map((team) => team.id);
+    expect(futureIds).toEqual(
+      expect.arrayContaining([teamCozinha, teamSala, teamMusica, teamLogistica])
+    );
+    expect(futureIds).not.toContain(teamLive);
+    expect(allFuture.items.every((team) => team.eventId === EVENT_FUTURE)).toBe(true);
+
+    const first = await teamService.list(scopeOwner, {
+      event_id: EVENT_FUTURE,
+      page: 1,
+      page_size: 2,
+    });
+    const second = await teamService.list(scopeOwner, {
+      event_id: EVENT_FUTURE,
+      page: 2,
+      page_size: 2,
+    });
+
+    expect(first.pagination).toMatchObject({
+      page: 1,
+      page_size: 2,
+      total: allFuture.pagination.total,
+      total_pages: Math.ceil(allFuture.pagination.total / 2),
+    });
+    expect(first.items.every((team) => team.eventId === EVENT_FUTURE)).toBe(true);
+    expect(second.items.every((team) => team.eventId === EVENT_FUTURE)).toBe(true);
+    expect([...first.items, ...second.items].map((team) => team.id).sort()).toEqual(
+      [...futureIds].sort()
+    );
+
+    // O filtro de categoria é aplicado no servidor, dentro do evento,
+    // antes de paginar — nunca se pagina a lista global e depois filtra.
+    const catering = await teamService.list(scopeOwner, {
+      event_id: EVENT_FUTURE,
+      category: 'catering',
+      page: 1,
+      page_size: 1,
+    });
+    expect(catering.pagination).toMatchObject({ total: 1, total_pages: 1 });
+    expect(catering.items.map((team) => team.id)).toEqual([teamCozinha]);
+  });
+
+  it('devolve 404 ao filtrar por event_id de outro evento', async () => {
+    for (const scope of [scopeOther, scopeOtherManager]) {
+      await expect(
+        teamService.list(scope, { event_id: EVENT_FUTURE, page: 1, page_size: 10 })
+      ).rejects.toMatchObject({ statusCode: 404, code: 'event_not_found' });
+    }
+
+    const own = await teamService.list(scopeOther, {
+      event_id: EVENT_OTHER,
+      page: 1,
+      page_size: 10,
+    });
+    expect(own.items.map((team) => team.id)).toEqual([teamOther]);
+  });
+
+  it('expõe task_count, completed_task_count e members_preview sem emails na lista e no detalhe', async () => {
+    const list = await teamService.list(scopeOwner, {
+      event_id: EVENT_FUTURE,
+      q: 'Sala',
+      page: 1,
+      page_size: 10,
+    });
+    const fromList = list.items.find((team) => team.id === teamSala);
+    expect(fromList).toBeDefined();
+    expect(fromList).toMatchObject({
+      taskCount: 1,
+      completedTaskCount: 0,
+      openTaskCount: 1,
+      memberCount: 3,
+    });
+    expect(fromList!.membersPreview.map((member) => member.id)).toEqual(
+      await memberOrder(teamSala)
+    );
+
+    const listDto = toTeamDto(fromList!);
+    expect(listDto).toMatchObject({
+      task_count: 1,
+      completed_task_count: 0,
+      open_task_count: 1,
+      member_count: 3,
+    });
+    expect(listDto.members_preview).toHaveLength(3);
+    expectPreviewSemEmails(listDto.members_preview);
+
+    const detail = await teamService.get(scopeOwner, teamSala);
+    expect(detail).toMatchObject({
+      taskCount: 1,
+      completedTaskCount: 0,
+      openTaskCount: 1,
+      memberCount: 3,
+    });
+    expect(detail.membersPreview.map((member) => member.id)).toEqual(
+      await memberOrder(teamSala)
+    );
+
+    const detailDto = toTeamDto(detail);
+    expect(detailDto.members_preview).toEqual(listDto.members_preview);
+    expectPreviewSemEmails(detailDto.members_preview);
+  });
+
+  it('exclui tarefas arquivadas das contagens e limita members_preview a quatro membros por ordem de entrada', async () => {
+    const team = await teamService.create(scopeOwner, {
+      event_id: EVENT_FUTURE,
+      name: 'Estatísticas da lista',
+      category: 'rececao',
+      description: null,
+    });
+
+    try {
+      const added = await teamMemberService.add(scopeOwner, team.id, {
+        emails: [
+          'preview-um@exemplo.pt',
+          'preview-dois@exemplo.pt',
+          'preview-tres@exemplo.pt',
+          'preview-quatro@exemplo.pt',
+        ],
+      });
+      // Sem conta activa ficam `convite_pendente`, mas continuam a ser
+      // membros da equipa e a aparecer na pré-visualização.
+      expect(added.pending).toHaveLength(4);
+
+      const ids = await memberOrder(team.id);
+      expect(ids).toHaveLength(6); // anfitrião + gestor + 4 convidados
+      // Datas de entrada explícitas, numa ordem diferente da inserção,
+      // para provar que a pré-visualização segue `created_at, id`.
+      const expectedOrder = [...ids].reverse();
+      for (const [index, id] of expectedOrder.entries()) {
+        await pool.query('UPDATE team_members SET created_at = $2 WHERE id = $1', [
+          id,
+          new Date(Date.UTC(2030, 0, 1, 0, 0, index)),
+        ]);
+      }
+
+      const open = await taskService.create(scopeOwner, {
+        team_id: team.id,
+        title: 'Tarefa aberta',
+        priority: 'normal',
+        status: 'por_fazer',
+      });
+      const completed = await taskService.create(scopeOwner, {
+        team_id: team.id,
+        title: 'Tarefa concluída',
+        priority: 'normal',
+        status: 'concluida',
+      });
+      const archivedOpen = await taskService.create(scopeOwner, {
+        team_id: team.id,
+        title: 'Tarefa aberta arquivada',
+        priority: 'normal',
+        status: 'por_fazer',
+      });
+      const archivedCompleted = await taskService.create(scopeOwner, {
+        team_id: team.id,
+        title: 'Tarefa concluída arquivada',
+        priority: 'normal',
+        status: 'concluida',
+      });
+      await pool.query('UPDATE host_tasks SET archived_at = now() WHERE id = ANY($1::uuid[])', [
+        [archivedOpen.id, archivedCompleted.id],
+      ]);
+
+      const detail = await teamService.get(scopeOwner, team.id);
+      expect(detail).toMatchObject({
+        taskCount: 2,
+        completedTaskCount: 1,
+        openTaskCount: 1,
+        memberCount: 6,
+      });
+      expect(detail.membersPreview.map((member) => member.id)).toEqual(
+        expectedOrder.slice(0, 4)
+      );
+
+      const dto = toTeamDto(detail);
+      expect(dto).toMatchObject({
+        task_count: 2,
+        completed_task_count: 1,
+        open_task_count: 1,
+        member_count: 6,
+      });
+      expect(dto.members_preview.map((member) => member.id)).toEqual(
+        expectedOrder.slice(0, 4)
+      );
+      expect(dto.members_preview).toHaveLength(4);
+      expectPreviewSemEmails(dto.members_preview);
+      // Garante que as quatro tarefas criadas existem: só as duas não
+      // arquivadas podem entrar nas contagens acima.
+      expect(new Set([open.id, completed.id, archivedOpen.id, archivedCompleted.id]).size).toBe(4);
+      const archivedIds = [archivedOpen.id, archivedCompleted.id];
+      const { rows } = await pool.query<{ id: string }>(
+        'SELECT id FROM host_tasks WHERE archived_at IS NOT NULL AND id = ANY($1::uuid[])',
+        [archivedIds]
+      );
+      expect(rows.map((row) => row.id).sort()).toEqual([...archivedIds].sort());
+    } finally {
+      await teamService.remove(scopeOwner, team.id, { confirm: true, archive: true });
+    }
+  });
+
+  it('devolve contagens e members_preview atualizados ao criar e editar uma equipa', async () => {
+    const created = await teamService.create(scopeOwner, {
+      event_id: EVENT_FUTURE,
+      name: 'Respostas de criação',
+      category: 'rececao',
+      description: null,
+    });
+
+    try {
+      expect(created).toMatchObject({
+        taskCount: 0,
+        completedTaskCount: 0,
+        openTaskCount: 0,
+      });
+      expect(created.membersPreview.map((member) => member.id)).toEqual(
+        await memberOrder(created.id)
+      );
+      const createdDto = toTeamDto(created);
+      expect(createdDto).toMatchObject({
+        task_count: 0,
+        completed_task_count: 0,
+        open_task_count: 0,
+      });
+      expect(createdDto.members_preview.length).toBeGreaterThanOrEqual(2);
+      expectPreviewSemEmails(createdDto.members_preview);
+
+      await taskService.create(scopeOwner, {
+        team_id: created.id,
+        title: 'Aberta da edição',
+        priority: 'normal',
+        status: 'por_fazer',
+      });
+      await taskService.create(scopeOwner, {
+        team_id: created.id,
+        title: 'Concluída da edição',
+        priority: 'normal',
+        status: 'concluida',
+      });
+
+      const updated = await teamService.update(scopeOwner, created.id, {
+        name: 'Respostas de edição',
+        description: 'Contagens actualizadas',
+      });
+      expect(updated.name).toBe('Respostas de edição');
+      expect(updated).toMatchObject({
+        taskCount: 2,
+        completedTaskCount: 1,
+        openTaskCount: 1,
+      });
+      expect(updated.membersPreview.map((member) => member.id)).toEqual(
+        await memberOrder(created.id)
+      );
+      const updatedDto = toTeamDto(updated);
+      expect(updatedDto).toMatchObject({
+        task_count: 2,
+        completed_task_count: 1,
+        open_task_count: 1,
+      });
+      expectPreviewSemEmails(updatedDto.members_preview);
+    } finally {
+      await teamService.remove(scopeOwner, created.id, { confirm: true, archive: true });
+    }
+  });
+
+  it('um membro só vê as equipas e os membros das suas equipas', async () => {
+    const list = await teamService.list(scopeMember, { page: 1, page_size: 100 });
+    expect(list.items.map((team) => team.id)).toEqual([teamSala]);
+
+    const own = await teamService.get(scopeMember, teamSala);
+    expect(own.id).toBe(teamSala);
+    const { rows } = await pool.query<{ email: string }>(
+      `SELECT email FROM team_members
+        WHERE team_id = $1 AND removed_at IS NULL`,
+      [teamSala]
+    );
+    expect(rows.map((row) => row.email)).toContain(EMAIL_MEMBER);
+    expectPreviewSemEmails(toTeamDto(own).members_preview);
+
+    await expect(teamService.get(scopeMember, teamCozinha)).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'team_not_found',
+    });
+  });
+
+  it('anfitrião e gestor de outro evento não veem equipas deste evento', async () => {
+    for (const scope of [scopeOther, scopeOtherManager]) {
+      const list = await teamService.list(scope, { page: 1, page_size: 100 });
+      expect(list.items.map((team) => team.id)).toEqual([teamOther]);
+      expect(list.items.map((team) => team.id)).not.toContain(teamCozinha);
+      expect(list.items.map((team) => team.id)).not.toContain(teamSala);
+
+      await expect(teamService.get(scope, teamCozinha)).rejects.toMatchObject({
+        statusCode: 404,
+        code: 'team_not_found',
+      });
+      await expect(
+        teamService.list(scope, { event_id: EVENT_FUTURE, page: 1, page_size: 10 })
+      ).rejects.toMatchObject({ statusCode: 404, code: 'event_not_found' });
+    }
   });
 });

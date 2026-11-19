@@ -31,6 +31,12 @@ const TOKEN = 'token-de-convite-de-equipa-1234567890';
 const EVENT_START = new Date('2030-01-31T18:00:00Z');
 const TIMEZONE = 'Africa/Luanda';
 
+// `EVENT_START` é 31/01/2030 às 19:00 em Africa/Luanda. Sem `ends_at`, o
+// evento encerra às 06:00 de 01/02/2030, ou seja às 05:00Z.
+const NEXT_DAY_0559 = new Date('2030-02-01T04:59:00.000Z');
+const NEXT_DAY_0600 = new Date('2030-02-01T05:00:00.000Z');
+const INVITE_EXPIRES_FUTURE = new Date('2031-01-01T00:00:00.000Z');
+
 function deliveryContext(overrides: Partial<DeliveryContext> = {}): DeliveryContext {
   return {
     id: '00000000-0000-4000-8000-000000000001',
@@ -619,15 +625,87 @@ describe('evaluateApplicability das mensagens de equipa', () => {
   });
 
   it('suprime mensagens quando o evento terminou sem ends_at', () => {
-    // O dia local de `starts_at` já terminou em Africa/Luanda.
-    const finishedStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    // Muito depois das 06:00 do dia seguinte ao de EVENT_START em Luanda.
+    const now = new Date('2030-02-02T12:00:00.000Z');
+    const context = (overrides: Partial<DeliveryContext> = {}) =>
+      deliveryContext({
+        eventStartsAt: EVENT_START,
+        teamInviteExpiresAt: INVITE_EXPIRES_FUTURE,
+        ...overrides,
+      });
+
+    expect(evaluateApplicability(context({ messageType: 'team_invite' }), now)).toEqual({
+      ok: false,
+      reason: 'event_completed',
+    });
+
+    for (const messageType of [
+      'task_assigned',
+      'task_completed',
+      'task_reassigned',
+    ] as const) {
+      expect(evaluateApplicability(context({ messageType }), now)).toEqual({
+        ok: false,
+        reason: 'event_completed',
+      });
+    }
 
     expect(
       evaluateApplicability(
-        deliveryContext({ messageType: 'team_invite', eventStartsAt: finishedStart })
+        context({ messageType: 'invitation', invitationId: INVITE_ID }),
+        now
       )
     ).toEqual({ ok: false, reason: 'event_completed' });
 
+    // O aviso de cancelamento continua a sair mesmo depois do fim.
+    expect(evaluateApplicability(context({ messageType: 'event_cancelled' }), now)).toEqual({
+      ok: true,
+    });
+  });
+
+  it('mantém mensagens no próprio dia sem ends_at', () => {
+    // 20:00Z = 21:00 locais de 31/01/2030: o evento ainda está em curso.
+    expect(
+      evaluateApplicability(
+        deliveryContext({
+          messageType: 'team_invite',
+          eventStartsAt: EVENT_START,
+          teamInviteExpiresAt: INVITE_EXPIRES_FUTURE,
+        }),
+        new Date('2030-01-31T20:00:00.000Z')
+      )
+    ).toEqual({ ok: true });
+  });
+
+  it('mantém o convite de equipa aplicável às 05:59 do dia seguinte em Africa/Luanda', () => {
+    // 04:59Z = 05:59 locais de 01/02/2030: ainda não passou o limite das 06:00.
+    expect(
+      evaluateApplicability(
+        deliveryContext({
+          messageType: 'team_invite',
+          eventStartsAt: EVENT_START,
+          teamInviteExpiresAt: INVITE_EXPIRES_FUTURE,
+        }),
+        NEXT_DAY_0559
+      )
+    ).toEqual({ ok: true });
+  });
+
+  it('suprime o convite de equipa às 06:00 do dia seguinte em Africa/Luanda', () => {
+    // 05:00Z = 06:00 locais de 01/02/2030: o limite foi atingido.
+    expect(
+      evaluateApplicability(
+        deliveryContext({
+          messageType: 'team_invite',
+          eventStartsAt: EVENT_START,
+          teamInviteExpiresAt: INVITE_EXPIRES_FUTURE,
+        }),
+        NEXT_DAY_0600
+      )
+    ).toEqual({ ok: false, reason: 'event_completed' });
+  });
+
+  it('mantém os avisos de tarefa aplicáveis às 05:59 do dia seguinte em Africa/Luanda', () => {
     for (const messageType of [
       'task_assigned',
       'task_completed',
@@ -635,57 +713,52 @@ describe('evaluateApplicability das mensagens de equipa', () => {
     ] as const) {
       expect(
         evaluateApplicability(
-          deliveryContext({ messageType, eventStartsAt: finishedStart })
+          deliveryContext({ messageType, eventStartsAt: EVENT_START }),
+          NEXT_DAY_0559
+        )
+      ).toEqual({ ok: true });
+    }
+  });
+
+  it('suprime os avisos de tarefa às 06:00 do dia seguinte em Africa/Luanda', () => {
+    for (const messageType of [
+      'task_assigned',
+      'task_completed',
+      'task_reassigned',
+    ] as const) {
+      expect(
+        evaluateApplicability(
+          deliveryContext({ messageType, eventStartsAt: EVENT_START }),
+          NEXT_DAY_0600
         )
       ).toEqual({ ok: false, reason: 'event_completed' });
     }
-
-    expect(
-      evaluateApplicability(
-        deliveryContext({
-          messageType: 'invitation',
-          invitationId: INVITE_ID,
-          eventStartsAt: finishedStart,
-        })
-      )
-    ).toEqual({ ok: false, reason: 'event_completed' });
-
-    // O aviso de cancelamento continua a sair mesmo depois do fim.
-    expect(
-      evaluateApplicability(
-        deliveryContext({ messageType: 'event_cancelled', eventStartsAt: finishedStart })
-      )
-    ).toEqual({ ok: true });
   });
 
-  it('mantém mensagens no próprio dia sem ends_at', () => {
-    expect(
-      evaluateApplicability(deliveryContext({ messageType: 'team_invite', eventStartsAt: new Date() }))
-    ).toEqual({ ok: true });
-  });
-
-  it('usa ends_at quando existe, ignorando o fim do dia de starts_at', () => {
-    const finishedStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-    const futureEnd = new Date(Date.now() + 60 * 60 * 1000);
-    const pastEnd = new Date(Date.now() - 60 * 1000);
+  it('usa ends_at quando existe, ignorando o limite das 06:00 de starts_at', () => {
+    const laterEnd = new Date('2030-02-01T10:00:00.000Z');
+    const earlierEnd = new Date('2030-02-01T03:00:00.000Z');
 
     expect(
       evaluateApplicability(
         deliveryContext({
           messageType: 'team_invite',
-          eventStartsAt: finishedStart,
-          eventEndsAt: futureEnd,
-        })
+          eventStartsAt: EVENT_START,
+          eventEndsAt: laterEnd,
+          teamInviteExpiresAt: INVITE_EXPIRES_FUTURE,
+        }),
+        NEXT_DAY_0600
       )
     ).toEqual({ ok: true });
 
     expect(
       evaluateApplicability(
         deliveryContext({
-          messageType: 'team_invite',
-          eventStartsAt: finishedStart,
-          eventEndsAt: pastEnd,
-        })
+          messageType: 'task_assigned',
+          eventStartsAt: EVENT_START,
+          eventEndsAt: earlierEnd,
+        }),
+        new Date('2030-02-01T04:00:00.000Z')
       )
     ).toEqual({ ok: false, reason: 'event_completed' });
   });

@@ -41,18 +41,19 @@ export type TeamMyRole = (typeof TEAM_MY_ROLES)[number];
  * Fuso usado para encerrar eventos sem `ends_at`.
  *
  * A regra é de produto (mercado angolano), não do fuso configurado no
- * evento: sem fim explícito, o evento termina no fim do dia local de
- * `starts_at` em Africa/Luanda.
+ * evento: sem fim explícito, o evento termina às 06:00 do dia seguinte
+ * ao de `starts_at`, em Africa/Luanda.
  */
 export const TEAM_EVENT_TIMEZONE = 'Africa/Luanda';
+export const TEAM_EVENT_END_HOUR = 6;
 
 /**
  * Estado observável do evento para os filtros da lista de equipas.
  *
  * É derivado de `events.status` e das datas: um evento `scheduled`
  * ainda por começar está `agendado`; a decorrer, `em_curso`; com
- * `ends_at` no passado, `concluido`. Sem `ends_at`, termina no fim do
- * dia local de `starts_at` em Africa/Luanda (00:00 do dia seguinte).
+ * `ends_at` no passado, `concluido`. Sem `ends_at`, termina às 06:00
+ * do dia seguinte ao de `starts_at` em Africa/Luanda.
  */
 export const TEAM_EVENT_STATUSES = [
   'agendado',
@@ -92,12 +93,25 @@ export interface Team {
   updatedAt: Date;
 }
 
+/** Membro devolvido na pré-visualização do cartão da equipa. */
+export interface TeamMemberPreview {
+  id: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
 export interface TeamWithStats extends Team {
   eventTitle: string;
   /** Estado observável do evento, derivado de `status` e das datas. */
   eventStatus: TeamEventStatus;
   memberCount: number;
   openTaskCount: number;
+  /** Total de tarefas não arquivadas. */
+  taskCount: number;
+  /** Tarefas concluídas entre as não arquivadas. */
+  completedTaskCount: number;
+  /** Até 4 membros, por ordem de entrada, sem emails. */
+  membersPreview: TeamMemberPreview[];
   /**
    * Papel da conta autenticada na equipa. Preenchido pelas respostas da
    * API (`GET /host/teams` e detalhe); ausente em leituras internas.

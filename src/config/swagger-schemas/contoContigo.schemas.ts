@@ -575,6 +575,16 @@ export const contoContigoSchemas = {
     },
   },
 
+  TeamMemberPreview: {
+    type: 'object',
+    description: 'Membro da pré-visualização do cartão; sem email.',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      display_name: { type: 'string', nullable: true },
+      avatar_url: { type: 'string', format: 'uri', nullable: true },
+    },
+  },
+
   Team: {
     type: 'object',
     properties: {
@@ -597,7 +607,14 @@ export const contoContigoSchemas = {
       },
       description: { type: 'string', nullable: true },
       member_count: { type: 'integer' },
+      task_count: { type: 'integer' },
+      completed_task_count: { type: 'integer' },
       open_task_count: { type: 'integer' },
+      members_preview: {
+        type: 'array',
+        description: 'Até 4 membros, por ordem de entrada, sem emails.',
+        items: { $ref: '#/components/schemas/TeamMemberPreview' },
+      },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
     },

@@ -116,7 +116,13 @@ export const teamService = {
         );
 
         await teamRepository.materializeEventStaff(created.id, client);
-        return created;
+        // A materialização insere os membros do evento na mesma transação: reler
+        // para devolver contagens e `members_preview` já actualizados.
+        const materialized = await teamRepository.findById(created.id, client);
+        if (!materialized) {
+          throw new Error('Falha ao ler a equipa criada.');
+        }
+        return materialized;
       });
 
       return {

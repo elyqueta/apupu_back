@@ -9,8 +9,8 @@ import {
 import { activityRepository } from '../repositories/activity.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { isHostMessage, MessageType } from '../types/emailDelivery.types';
-import { TEAM_EVENT_TIMEZONE } from '../types/team.types';
-import { reminderScheduledFor, startOfNextDay } from '../utils/date.util';
+import { TEAM_EVENT_END_HOUR, TEAM_EVENT_TIMEZONE } from '../types/team.types';
+import { nextDayAt, reminderScheduledFor } from '../utils/date.util';
 import { renderDelivery, sendMail } from './email.service';
 
 /**
@@ -49,12 +49,12 @@ const TEAM_MESSAGE_TYPES: readonly MessageType[] = [
  * O evento já terminou pelas datas, mesmo que o estado persistido ainda
  * seja `scheduled`.
  *
- * Usa `ends_at` quando existe; sem `ends_at`, o evento termina no fim
- * do dia local de `starts_at` em Africa/Luanda — a mesma regra de
- * `event_status` na lista de equipas. Eventos em `draft` não são
+ * Usa `ends_at` quando existe; sem `ends_at`, o evento termina às 06:00
+ * do dia seguinte ao de `starts_at`, em Africa/Luanda — a mesma regra
+ * de `event_status` na lista de equipas. Eventos em `draft` não são
  * considerados terminados: o estado explícito manda.
  */
-function eventEndedByDate(context: DeliveryContext, now: Date = new Date()): boolean {
+function eventEndedByDate(context: DeliveryContext, now: Date): boolean {
   if (context.eventStatus === 'draft') {
     return false;
   }
@@ -67,7 +67,10 @@ function eventEndedByDate(context: DeliveryContext, now: Date = new Date()): boo
     return now.getTime() >= context.eventEndsAt.getTime();
   }
 
-  return now.getTime() >= startOfNextDay(context.eventStartsAt, TEAM_EVENT_TIMEZONE).getTime();
+  return (
+    now.getTime() >=
+    nextDayAt(context.eventStartsAt, TEAM_EVENT_TIMEZONE, TEAM_EVENT_END_HOUR).getTime()
+  );
 }
 
 /**
@@ -77,7 +80,7 @@ function eventEndedByDate(context: DeliveryContext, now: Date = new Date()): boo
  * impedem lembretes após uma recusa, emails de eventos cancelados e
  * marcos obsoletos depois de uma alteração de data.
  */
-export function evaluateApplicability(context: DeliveryContext): Verdict {
+export function evaluateApplicability(context: DeliveryContext, now: Date = new Date()): Verdict {
   if (context.messageType === 'manage_link' || context.messageType === 'manager_invite') {
     // Os links de gestão (do anfitrião e dos gestores) são
     // independentes do estado do evento: continuam a ser úteis para
@@ -113,7 +116,7 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
         return { ok: false, reason: `event_${context.eventStatus}` };
       }
 
-      if (eventEndedByDate(context)) {
+      if (eventEndedByDate(context, now)) {
         return { ok: false, reason: 'event_completed' };
       }
 
@@ -129,7 +132,7 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
         return { ok: false, reason: 'invite_revoked' };
       }
 
-      if (context.teamInviteExpiresAt.getTime() <= Date.now()) {
+      if (context.teamInviteExpiresAt.getTime() <= now.getTime()) {
         return { ok: false, reason: 'invite_expired' };
       }
 
@@ -146,7 +149,7 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
       return { ok: false, reason: `event_${context.eventStatus}` };
     }
 
-    if (eventEndedByDate(context)) {
+    if (eventEndedByDate(context, now)) {
       return { ok: false, reason: 'event_completed' };
     }
 
@@ -170,7 +173,7 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
     return { ok: false, reason: `event_${context.eventStatus}` };
   }
 
-  if (context.messageType !== 'event_cancelled' && eventEndedByDate(context)) {
+  if (context.messageType !== 'event_cancelled' && eventEndedByDate(context, now)) {
     return { ok: false, reason: 'event_completed' };
   }
 

@@ -1,8 +1,15 @@
 import {
   TeamEventStatus,
+  TeamMemberPreview,
   TeamMyRole,
   TeamWithStats,
 } from '../types/team.types';
+
+export interface TeamMemberPreviewDto {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+}
 
 export interface TeamDto {
   id: string;
@@ -14,9 +21,20 @@ export interface TeamDto {
   category: string;
   description: string | null;
   member_count: number;
+  task_count: number;
+  completed_task_count: number;
   open_task_count: number;
+  members_preview: TeamMemberPreviewDto[];
   created_at: string;
   updated_at: string;
+}
+
+function toMemberPreviewDto(member: TeamMemberPreview): TeamMemberPreviewDto {
+  return {
+    id: member.id,
+    display_name: member.displayName,
+    avatar_url: member.avatarUrl,
+  };
 }
 
 export function toTeamDto(team: TeamWithStats): TeamDto {
@@ -30,7 +48,10 @@ export function toTeamDto(team: TeamWithStats): TeamDto {
     category: team.category,
     description: team.description,
     member_count: team.memberCount,
+    task_count: team.taskCount,
+    completed_task_count: team.completedTaskCount,
     open_task_count: team.openTaskCount,
+    members_preview: team.membersPreview.map(toMemberPreviewDto),
     created_at: team.createdAt.toISOString(),
     updated_at: team.updatedAt.toISOString(),
   };
