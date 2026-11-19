@@ -28,6 +28,7 @@
     "reminders:run": "tsx src/scripts/runReminders.ts",
     "retention:run": "tsx src/scripts/runRetention.ts",
     "test": "vitest run",
+    "test:teams": "bash scripts/test-teams.sh",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },

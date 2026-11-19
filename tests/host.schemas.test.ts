@@ -170,7 +170,20 @@ describe('schemas de tarefas', () => {
 
   it('rejeita descrição vazia e campos desconhecidos', () => {
     expect(createTaskSchema.safeParse({ label: '   ' }).success).toBe(false);
-    expect(createTaskSchema.safeParse({ label: 'X', done: true }).success).toBe(false);
+    expect(createTaskSchema.safeParse({ label: 'X', campo_desconhecido: true }).success).toBe(
+      false
+    );
+  });
+
+  it('aceita os aliases legados e rejeita estado contraditório', () => {
+    expect(createTaskSchema.safeParse({ label: 'X', done: true }).success).toBe(true);
+    expect(createTaskSchema.safeParse({ label: 'X', status: 'concluida' }).success).toBe(true);
+    expect(
+      createTaskSchema.safeParse({ label: 'X', status: 'concluida', done: false }).success
+    ).toBe(false);
+    expect(
+      createTaskSchema.safeParse({ label: 'X', status: 'por_fazer', done: true }).success
+    ).toBe(false);
   });
 
   it('exige pelo menos um campo na actualização', () => {

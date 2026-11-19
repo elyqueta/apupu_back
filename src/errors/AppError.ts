@@ -28,11 +28,19 @@ export abstract class AppError extends Error {
   /** Erros por campo, no formato do contrato: `{ campo: ["mensagem"] }`. */
   public readonly fields?: Record<string, string[]>;
 
+  /**
+   * Contexto adicional seguro para o cliente (por exemplo, a lista de
+   * tarefas abertas que impede remover um membro). Nunca contém dados
+   * internos nem PII além do necessário para a acção.
+   */
+  public readonly details?: unknown;
+
   protected constructor(
     message: string,
     statusCode: number,
     code: string,
-    fields?: Record<string, string[]>
+    fields?: Record<string, string[]>,
+    details?: unknown
   ) {
     super(message);
 
@@ -44,6 +52,7 @@ export abstract class AppError extends Error {
     this.isOperational = true;
     this.code = code;
     this.fields = fields;
+    this.details = details;
 
     // Remove o construtor do stack trace, para o log apontar para o
     // local onde o erro foi lançado.

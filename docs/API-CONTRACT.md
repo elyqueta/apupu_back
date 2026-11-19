@@ -53,12 +53,15 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | HTTP | `code` | Significado |
 |---|---|---|
 | `400` | `invalid_json` | Corpo não é JSON válido |
+| `400` | `too_many_emails` | Mais de 50 emails no mesmo pedido de adição a uma equipa |
 | `401` | `host_session_invalid` | Sessão de gestão ou de conta ausente, expirada ou de outro evento |
 | `401` | `invalid_credentials` | Email ou senha inválidos no login |
 | `403` | `csrf_invalid` | Falta ou não coincide o `X-CSRF-Token` |
 | `403` | `forbidden` | Origem não permitida pelo CORS |
 | `403` | `email_not_verified` | A conta ainda não confirmou o email; escrita de eventos bloqueada |
 | `403` | `host_action_forbidden` | A ação está reservada ao anfitrião (proprietário); um gestor tentou executá-la |
+| `403` | `task_complete_forbidden` | A conta não é o responsável pela tarefa e tentou concluir, reabrir ou mudar o estado |
+| `403` | `task_edit_forbidden`, `task_reassign_forbidden`, `task_move_forbidden`, `task_delete_forbidden`, `team_action_forbidden` | Ação não permitida pelo papel na equipa/evento |
 | `404` | `invitation_not_found` | Token inválido, convite revogado ou reclamado por outro navegador (resposta sempre igual) |
 | `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
 | `404` | `event_not_found` / `invitation_not_found` / `task_not_found` / `manager_not_found` / `notification_not_found` / `activity_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
@@ -373,11 +376,11 @@ foi adicionado como gestor pelo anfitrião. As mutações estruturais
 (criar, apagar, reenviar o link do anfitrião e gerir gestores) continuam
 reservadas ao proprietário.
 
-As tarefas pertencem sempre ao anfitrião (`host_id`), mas podem ser
-atribuídas a um gestor de um evento (`manager_id`). O anfitrião vê e
-gere todas as suas tarefas; um gestor vê apenas as que lhe foram
-atribuídas e só pode marcar `done`. A listagem global pagina, filtra e
-pesquisa.
+As tarefas vivem em equipas de um evento. O anfitrião e os gestores
+activos vêem e gerem todas as tarefas dos eventos em que têm esse
+papel; um membro vê apenas as tarefas das equipas em que está activo.
+O responsável pela tarefa — e só ele — conclui, reabre ou muda o
+estado. A listagem global pagina, filtra e pesquisa.
 
 | Método | Rota | Efeito |
 |---|---|---|
@@ -410,10 +413,22 @@ pesquisa.
 | `DELETE` | `/api/v1/host/notifications/{notificationId}` | Remove uma notificação |
 | `POST` | `/api/v1/host/notifications/read-all` | Marca todas como lidas |
 | `DELETE` | `/api/v1/host/notifications` | Limpa todas as notificações |
-| `GET` | `/api/v1/host/tasks` | Tarefas da conta/gestor (paginadas, com filtros e pesquisa) |
-| `POST` | `/api/v1/host/tasks` | Cria tarefa (só o anfitrião) |
-| `PATCH` | `/api/v1/host/tasks/{taskId}` | Actualiza descrição/estado |
-| `DELETE` | `/api/v1/host/tasks/{taskId}` | Remove tarefa (só o anfitrião) |
+| `GET` | `/api/v1/host/tasks` | Tarefas visíveis (paginadas, com filtros e pesquisa) |
+| `POST` | `/api/v1/host/tasks` | Cria tarefa numa equipa, num evento (equipa "Geral") ou pessoal legada |
+| `PATCH` | `/api/v1/host/tasks/{taskId}` | Actualiza campos da tarefa (anfitrião/gestor ou autor membro; o estado só pelo responsável) |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/status` | Conclui, reabre ou passa a `em_curso` (só o responsável) |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/assignee` | Reatribui a tarefa; só anfitrião ou gestor |
+| `POST` | `/api/v1/host/tasks/{taskId}/move` | Move a tarefa para outra equipa (inclui "Mover para uma equipa") |
+| `DELETE` | `/api/v1/host/tasks/{taskId}` | Remove tarefa (anfitrião/gestor ou autor membro) |
+| `GET` | `/api/v1/host/teams` | Lista equipas visíveis (paginadas, com filtros e pesquisa) |
+| `POST` | `/api/v1/host/teams` | Cria equipa e materializa anfitrião/gestores como membros |
+| `GET` | `/api/v1/host/teams/{teamId}` | Detalhe da equipa |
+| `PATCH` | `/api/v1/host/teams/{teamId}` | Actualiza nome, categoria ou descrição |
+| `DELETE` | `/api/v1/host/teams/{teamId}` | Remove logicamente a equipa, com reatribuição ou arquivo |
+| `GET` | `/api/v1/host/teams/{teamId}/members` | Lista membros da equipa |
+| `POST` | `/api/v1/host/teams/{teamId}/members` | Adiciona membros por email (máx. 50 por pedido; acima devolve `400`) |
+| `PATCH` | `/api/v1/host/teams/{teamId}/members/{memberId}` | Promove ou despromove um membro; só o anfitrião |
+| `DELETE` | `/api/v1/host/teams/{teamId}/members/{memberId}` | Remove logicamente um membro, com reatribuição opcional |
 
 Parâmetros de lista:
 
@@ -430,10 +445,21 @@ Parâmetros de lista:
 - Exportação por evento: `document` no caminho (`guests` \| `summary` \|
   `attendance` \| `ticket`), `format` (`pdf` \| `csv`, omissão `pdf`) e
   `invitation_id` (obrigatório apenas em `ticket`).
-- Tarefas: `event_id`, `status` (`all` \| `pending` \| `done`, omissão
-  `all`), `assignee` (`all` \| `host` \| `manager`, omissão `all`),
-  `manager_id`, `q`, `page`, `page_size`. A resposta é
-  `{ data, pagination }`.
+- Tarefas: `event_id`, `team_id`, `status` (`all` \| `por_fazer` \|
+  `em_curso` \| `concluida`, omissão `all`; `pending`/`done` continuam
+  aceites como aliases), `assignee` (`all` \| `host` \| `manager` \|
+  `member`, omissão `all`), `assignee_member_id`, `manager_id`,
+  `priority`, `personal` (só tarefas legadas sem equipa), `q`, `page`,
+  `page_size`. A resposta é `{ data, pagination }`.
+- Equipas: `event_id`, `category` (`logistica` \| `decoracao` \|
+  `musica` \| `catering` \| `rececao` \| `outra`), `q`, `page`,
+  `page_size`.
+- Membros de equipa: `role` (`gestor` \| `membro`), `status` (`ativo` \|
+  `convite_pendente`), `q`, `page`, `page_size`.
+- Candidatos a membro: `GET /api/v1/host/guests?for_team={teamId}`
+  devolve convidados dos eventos em que a conta é **anfitriã** mais os
+  do evento dessa equipa, deduplicados por email, com `is_member` e
+  `has_email`.
 - Notificações: `status` (`all` \| `unread` \| `read`), `kind`,
   `event_id`, `q`, `page`, `page_size`. A resposta é
   `{ data, pagination, unread_count }`.
@@ -928,11 +954,25 @@ Regras de "Meus convites":
       "id": "0f0e5f6a-9b1c-4d3e-8a2b-7c6d5e4f3a21",
       "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
       "event_title": "Casamento da Ana e do Paulo",
-      "manager_id": "b2d5f4a1-3c47-4a3e-9c2d-1f2a3b4c5d6e",
-      "manager_email": "paulo@exemplo.ao",
+      "team_id": "4c1f0d2e-8a3b-4c5d-9e6f-7a8b9c0d1e2f",
+      "team_name": "Cozinha",
+      "assignee_member_id": "8d2c4b6a-1e3f-4a5b-8c7d-9e0f1a2b3c4d",
+      "assignee_email": "paulo@exemplo.ao",
+      "assignee_display_name": "Paulo",
+      "assignee_has_access": true,
+      "title": "Confirmar menu",
+      "description": null,
+      "due_date": "2026-12-15",
+      "priority": "normal",
+      "status": "por_fazer",
+      "created_by_host_id": "3a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+      "completed_by_member_id": null,
+      "completed_at": null,
+      "archived_at": null,
       "label": "Confirmar menu",
       "done": false,
-      "completed_at": null,
+      "manager_id": null,
+      "manager_email": null,
       "created_at": "2026-11-16T01:00:00.000Z",
       "updated_at": "2026-11-16T01:00:00.000Z"
     }
@@ -941,21 +981,117 @@ Regras de "Meus convites":
 }
 ```
 
-- `event_id` é `null` para tarefas globais da conta.
-- `manager_id`/`manager_email` são `null` nas tarefas do próprio
-  anfitrião; quando preenchidos, a tarefa foi atribuída a esse gestor.
-- Só o anfitrião cria tarefas. `POST /api/v1/host/tasks`
-  (`{ "label": "...", "event_id": null, "manager_id": null }`) devolve
-  `201 { "data": Task }`. Atribuir a um gestor exige `event_id` e um
-  gestor activo desse evento; caso contrário `422 validation_failed`.
-- `PATCH /api/v1/host/tasks/{taskId}` aceita `label` e/ou `done` e
-  devolve `200 { "data": Task }`. Um gestor só pode alternar `done` nas
-  tarefas que lhe foram atribuídas; tentar alterar `label` devolve
-  `403 host_action_forbidden`.
-- `DELETE /api/v1/host/tasks/{taskId}` devolve `204` e está reservado ao
-  anfitrião.
-- Ao atribuir uma tarefa, o gestor recebe a notificação `task_assigned`;
-  ao concluí-la, o anfitrião recebe `task_completed`.
+- `label` e `done` continuam na resposta e no corpo, **obsoletos**
+  (`deprecated` no OpenAPI), como aliases de `title` e de
+  `status === 'concluida'`. A fonte de verdade é `title`/`status`.
+- `event_id` é `null` nas tarefas pessoais legadas (`team_id = null`),
+  visíveis apenas a quem as criou. A UI mostra-as em "Pessoais
+  (legado)" com a acção "Mover para uma equipa".
+- `assignee_has_access: false` indica "Responsável sem acesso" (gestor
+  revogado ou membro removido). Só o anfitrião ou um gestor reatribui.
+- `POST /api/v1/host/tasks` aceita `{ "title" | "label", "team_id"?,
+  "event_id"?, "assignee_member_id"?, "manager_id"?, "description"?,
+  "due_date"?, "priority"?, "status"?, "done"? }`. Sem `team_id` mas
+  com `event_id`, usa ou cria a equipa "Geral" do evento (o staff é
+  materializado na mesma transação); o responsável por omissão é o
+  anfitrião, salvo `manager_id`, que escolhe esse gestor. Sem evento
+  nem equipa, cria uma tarefa pessoal legada (`team_id = null`),
+  visível apenas a quem a criou. Qualquer membro activo cria tarefas
+  na sua equipa.
+- Criar já concluída (`status: "concluida"` ou `done: true`) segue a
+  mesma regra de qualquer conclusão: só o responsável. O serviço
+  define `completed_by_member_id`; o trigger apenas sincroniza colunas
+  e nunca infere o autor.
+- `PATCH /api/v1/host/tasks/{taskId}` aceita `title`/`label`,
+  `description`, `due_date`, `priority`, `status` e `done` (alias). O
+  anfitrião e os gestores editam qualquer tarefa do evento; um membro
+  só as que criou (`403 task_edit_forbidden`). O responsável que não
+  criou a tarefa pode alterar apenas o estado.
+- Qualquer mudança de `status`/`done` — no `PATCH`, no `/status`, ao
+  criar já concluída ou ao reabrir/passar a `em_curso` — passa pela
+  mesma regra: **só o responsável**. Qualquer outra conta recebe
+  `403 task_complete_forbidden` com
+  `"Só {nome} pode concluir esta tarefa."` (ou
+  `"...pode alterar o estado desta tarefa."` quando não é uma
+  conclusão). A conclusão é um `UPDATE` condicional: pedidos
+  concorrentes não sobrescrevem `completed_at` nem geram notificações
+  duplicadas. Reabrir limpa `completed_at` e
+  `completed_by_member_id`.
+- `PATCH /api/v1/host/tasks/{taskId}/assignee` reatribui
+  (`{ "assignee_member_id": uuid }`); exclusivo do anfitrião/gestor
+  (`403 task_reassign_forbidden`).
+- `POST /api/v1/host/tasks/{taskId}/move` move para outra equipa
+  (`{ "team_id": uuid, "assignee_member_id"?: uuid }`), mantendo o
+  responsável quando o mesmo email existe na equipa de destino. Não
+  aceita `status`/`done`: mover não altera a conclusão.
+- `DELETE /api/v1/host/tasks/{taskId}` devolve `204`; o anfitrião/gestor
+  apaga qualquer tarefa do evento, um membro só as que criou.
+- Recursos de eventos/equipas sem acesso devolvem sempre `404`, nunca
+  `403`: `task_not_found` nas rotas de tarefa e `team_not_found` nas
+  rotas de equipa. A pesquisa `q` e os filtros aplicam a mesma condição
+  de acesso na consulta.
+
+#### Equipas e membros
+
+`GET /api/v1/host/teams` — `200`, paginado, com contagens:
+
+```json
+{
+  "data": [
+    {
+      "id": "4c1f0d2e-8a3b-4c5d-9e6f-7a8b9c0d1e2f",
+      "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+      "event_title": "Casamento da Ana e do Paulo",
+      "name": "Cozinha",
+      "category": "catering",
+      "description": null,
+      "member_count": 3,
+      "open_task_count": 2,
+      "created_at": "2026-11-16T01:00:00.000Z",
+      "updated_at": "2026-11-16T01:00:00.000Z"
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total": 1, "total_pages": 1 }
+}
+```
+
+- O anfitrião e os gestores vêem todas as equipas do evento; um membro
+  só aquelas em que está activo. Criar, editar e apagar equipas é
+  exclusivo do anfitrião/gestor (`403 team_action_forbidden`). Um
+  `team_id` de outro evento devolve `404 team_not_found`, nunca `403`.
+- `POST /api/v1/host/teams` (`{ event_id, name, category?, description? }`)
+  devolve `201 { data: Team }` e chama
+  `team_materialize_event_staff` na mesma transação: o anfitrião e os
+  gestores activos passam a ser membros.
+- `DELETE /api/v1/host/teams/{teamId}` faz sempre soft delete. Com
+  tarefas abertas devolve `409 team_has_open_tasks` e a lista em
+  `error.details.tasks`. Repetir com `confirm=true` e
+  `reassign_to_team_id={uuid}` ou `archive=true` conclui na mesma
+  transação.
+- `GET /api/v1/host/teams/{teamId}/members` — `200`, paginado.
+- `POST /api/v1/host/teams/{teamId}/members` (`{ emails: string[] }`)
+  normaliza (trim + minúsculas), deduplica, não permite adicionar a
+  própria conta e devolve `201`:
+  `{ "added": [...], "pending": [...], "skipped": [...] }`, com
+  `reason` por linha (`already_member`, `duplicate_in_request`, `self`).
+  Acima de 50 emails devolve `400 too_many_emails` (depois de validar
+  o acesso). Emails sem conta activa ficam `convite_pendente`; o envio
+  fica para a Fase 3.
+- `PATCH /api/v1/host/teams/{teamId}/members/{memberId}`
+  (`{ role: 'gestor' | 'membro' }`): promover **e** despromover são
+  exclusivos do anfitrião (`403 host_action_forbidden` para gestores).
+  Promover cria/reactiva `event_managers` na mesma transação;
+  despromover só altera o papel na equipa e não revoga o acesso ao
+  evento. O anfitrião nunca é despromovido nem removido
+  (`409 host_member_immutable`).
+- `DELETE /api/v1/host/teams/{teamId}/members/{memberId}` remove
+  logicamente. Com tarefas abertas devolve `409 member_has_open_tasks`
+  e a lista em `error.details.tasks`; repetir com
+  `reassign_to_member_id={uuid}` reatribui tudo e remove na mesma
+  transação.
+
+Nesta fase não há envio de emails nem criação de notificações para
+equipas/tarefas; os pontos de chamada têm `TODO(Fase 3)`.
 
 #### Capa do evento
 
@@ -1805,7 +1941,28 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `GET` | `/api/v1/host/tasks` | `200` | `{ "data": Task[], "pagination": Pagination }` |
 | `POST` | `/api/v1/host/tasks` | `201` | `{ "data": Task }` |
 | `PATCH` | `/api/v1/host/tasks/{taskId}` | `200` | `{ "data": Task }` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/status` | `200` | `{ "data": Task }` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/assignee` | `200` | `{ "data": Task }` |
+| `POST` | `/api/v1/host/tasks/{taskId}/move` | `200` | `{ "data": Task }` |
 | `DELETE` | `/api/v1/host/tasks/{taskId}` | `204` | — |
+| `GET` | `/api/v1/host/teams` | `200` | `{ "data": Team[], "pagination": Pagination }` |
+| `POST` | `/api/v1/host/teams` | `201` | `{ "data": Team }` |
+| `GET` | `/api/v1/host/teams/{teamId}` | `200` | `{ "data": Team }` |
+| `PATCH` | `/api/v1/host/teams/{teamId}` | `200` | `{ "data": Team }` |
+| `DELETE` | `/api/v1/host/teams/{teamId}` | `200` | `{ "data": { "deleted": true, "reassigned_to_team_id": uuid \| null, "reassigned_tasks": integer, "archived_tasks": integer } }` |
+| `GET` | `/api/v1/host/teams/{teamId}/members` | `200` | `{ "data": TeamMember[], "pagination": Pagination }` |
+| `POST` | `/api/v1/host/teams/{teamId}/members` | `201` | `{ "added": MemberRow[], "pending": MemberRow[], "skipped": MemberRow[] }` |
+| `PATCH` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `200` | `{ "data": { "member": TeamMember, "event_manager_id": uuid \| null } }` |
+| `DELETE` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `200` | `{ "data": { "removed": true, "reassigned_tasks": integer } }` |
+
+`Team` = `{ id, event_id, event_title, name, category, description,
+member_count, open_task_count, created_at, updated_at }`.
+
+`TeamMember` = `{ id, team_id, email, display_name, role, status,
+origin, is_host, open_task_count, has_event_access, joined_at,
+created_at }`.
+
+`MemberRow` = `{ email, member_id, status, reason? }`.
 
 `Totals` = `{ events, drafts, scheduled, cancelled, completed,
 total_invitations, accepted, declined, pending }`, todos inteiros.
@@ -2111,10 +2268,22 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `GET` | `/api/v1/host/events/{eventId}/exports/{document}` | `400 bad_request`; `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed` |
 | `GET` | `/api/v1/host/events/{eventId}/reports` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
 | `GET` | `/api/v1/host/events/{eventId}/reports/export` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed` |
-| `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `422 validation_failed`; `429 rate_limited` |
-| `POST` | `/api/v1/host/tasks` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |
-| `PATCH` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
-| `DELETE` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `404 task_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/tasks` | `401 host_session_invalid`; `404 event_not_found`/`team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/tasks` | `401 host_session_invalid`; `403 csrf_invalid`; `404 event_not_found`/`team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_edit_forbidden`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/status` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_complete_forbidden`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/tasks/{taskId}/assignee` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_reassign_forbidden`; `404 task_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/tasks/{taskId}/move` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_move_forbidden`; `404 task_not_found`/`team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/tasks/{taskId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 task_delete_forbidden`; `404 task_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/host/teams` | `401 host_session_invalid`; `404 event_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/teams` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 event_not_found`; `409 team_name_taken`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/teams/{teamId}` | `401 host_session_invalid`; `404 team_not_found`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/teams/{teamId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 team_not_found`; `409 team_name_taken`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/teams/{teamId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 team_not_found`; `409 team_has_open_tasks`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/host/teams/{teamId}/members` | `401 host_session_invalid`; `404 team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/host/teams/{teamId}/members` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 team_not_found`; `422 validation_failed`; `429 rate_limited` |
+| `PATCH` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 team_not_found`/`team_member_not_found`; `409 host_member_immutable`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 team_action_forbidden`; `404 team_not_found`/`team_member_not_found`; `409 host_member_immutable`/`member_has_open_tasks`; `422 validation_failed`; `429 rate_limited` |
 | `POST` | `/api/v1/public/invitations/{token}/claim` | `404 invitation_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/public/invitations/{token}` | `404 invitation_not_found`; `429 rate_limited` |
 | `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `403 csrf_invalid`; `404 invitation_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |

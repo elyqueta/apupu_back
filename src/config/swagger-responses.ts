@@ -138,6 +138,66 @@ export const errorResponses = {
     'task_not_found',
     'Tarefa não encontrada.'
   ),
+  TaskCompleteForbidden: errorResponse(
+    'A conclusão está reservada ao responsável pela tarefa.',
+    'task_complete_forbidden',
+    'Só o responsável pode concluir esta tarefa.'
+  ),
+  TaskEditForbidden: errorResponse(
+    'Um membro só pode editar as tarefas que criou.',
+    'task_edit_forbidden',
+    'Só pode editar as tarefas que criou.'
+  ),
+  TaskReassignForbidden: errorResponse(
+    'A reatribuição está reservada ao anfitrião e aos gestores.',
+    'task_reassign_forbidden',
+    'Só o anfitrião ou um gestor pode reatribuir tarefas.'
+  ),
+  TaskMoveForbidden: errorResponse(
+    'Um membro só pode mover as tarefas que criou.',
+    'task_move_forbidden',
+    'Só pode mover as tarefas que criou.'
+  ),
+  TaskDeleteForbidden: errorResponse(
+    'Um membro só pode apagar as tarefas que criou.',
+    'task_delete_forbidden',
+    'Só pode apagar as tarefas que criou.'
+  ),
+  TeamNotFound: errorResponse(
+    'Equipa inexistente, apagada ou de um evento sem acesso.',
+    'team_not_found',
+    'Equipa não encontrada.'
+  ),
+  TeamActionForbidden: errorResponse(
+    'A ação está reservada ao anfitrião e aos gestores do evento.',
+    'team_action_forbidden',
+    'Não tem permissão para gerir equipas.'
+  ),
+  TeamNameTaken: errorResponse(
+    'Já existe uma equipa com esse nome no evento.',
+    'team_name_taken',
+    'Já existe uma equipa com esse nome.'
+  ),
+  TeamHasOpenTasks: errorResponse(
+    'A equipa tem tarefas abertas; confirme a reatribuição ou o arquivo.',
+    'team_has_open_tasks',
+    'A equipa tem tarefas abertas.'
+  ),
+  TeamMemberNotFound: errorResponse(
+    'Membro inexistente, removido ou de outra equipa.',
+    'team_member_not_found',
+    'Membro não encontrado.'
+  ),
+  HostMemberImmutable: errorResponse(
+    'O anfitrião não pode ser removido nem despromovido.',
+    'host_member_immutable',
+    'O anfitrião não pode ser removido nem despromovido.'
+  ),
+  MemberHasOpenTasks: errorResponse(
+    'O membro tem tarefas abertas; indique um novo responsável.',
+    'member_has_open_tasks',
+    'Este membro tem tarefas abertas.'
+  ),
   ConflictGeneric: errorResponse(
     'Conflito com o estado atual do recurso.',
     'event_not_scheduled',
@@ -584,6 +644,90 @@ export const operationErrorResponses: Record<
     401: 'HostSessionInvalid',
     403: 'CsrfInvalid',
     404: 'TaskNotFound',
+    429: 'RateLimited',
+  },
+  'patch /api/v1/host/tasks/{taskId}/status': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'TaskNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'patch /api/v1/host/tasks/{taskId}/assignee': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'TaskNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'post /api/v1/host/tasks/{taskId}/move': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'TaskNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'get /api/v1/host/teams': {
+    401: 'HostSessionInvalid',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'post /api/v1/host/teams': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'EventNotFound',
+    409: 'TeamNameTaken',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'get /api/v1/host/teams/{teamId}': {
+    401: 'HostSessionInvalid',
+    404: 'TeamNotFound',
+    429: 'RateLimited',
+  },
+  'patch /api/v1/host/teams/{teamId}': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'TeamNotFound',
+    409: 'TeamNameTaken',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'delete /api/v1/host/teams/{teamId}': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'TeamNotFound',
+    409: 'TeamHasOpenTasks',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'get /api/v1/host/teams/{teamId}/members': {
+    401: 'HostSessionInvalid',
+    404: 'TeamNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'post /api/v1/host/teams/{teamId}/members': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'TeamNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'patch /api/v1/host/teams/{teamId}/members/{memberId}': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'TeamNotFound',
+    409: 'HostMemberImmutable',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'delete /api/v1/host/teams/{teamId}/members/{memberId}': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'TeamNotFound',
+    409: 'MemberHasOpenTasks',
+    422: 'ValidationFailed',
     429: 'RateLimited',
   },
   'post /api/v1/public/invitations/{token}/claim': {

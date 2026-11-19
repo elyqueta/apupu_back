@@ -43,9 +43,10 @@ export class ConflictError extends AppError {
   constructor(
     message = 'Conflito com o estado atual do recurso.',
     code = 'conflict',
-    fields?: Fields
+    fields?: Fields,
+    details?: unknown
   ) {
-    super(message, 409, code, fields);
+    super(message, 409, code, fields, details);
   }
 }
 

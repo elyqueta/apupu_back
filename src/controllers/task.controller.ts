@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { toTaskDto } from '../dto/task.dto';
 import { CreateTaskBody, TasksQuery, UpdateTaskBody } from '../schemas/host.schemas';
+import { MoveTaskBody, TaskAssigneeBody, TaskStatusBody } from '../schemas/team.schemas';
 import { taskService } from '../services/task.service';
 import { EventAccessScope } from '../types/event.types';
 
@@ -27,11 +28,7 @@ export const taskController = {
   },
 
   create: async (req: Request, res: Response): Promise<void> => {
-    const task = await taskService.create(
-      accessScope(req),
-      req.body as CreateTaskBody
-    );
-
+    const task = await taskService.create(accessScope(req), req.body as CreateTaskBody);
     res.status(201).json({ data: toTaskDto(task) });
   },
 
@@ -40,6 +37,36 @@ export const taskController = {
       accessScope(req),
       req.params.taskId ?? '',
       req.body as UpdateTaskBody
+    );
+
+    res.status(200).json({ data: toTaskDto(task) });
+  },
+
+  setStatus: async (req: Request, res: Response): Promise<void> => {
+    const task = await taskService.setStatus(
+      accessScope(req),
+      req.params.taskId ?? '',
+      req.body as TaskStatusBody
+    );
+
+    res.status(200).json({ data: toTaskDto(task) });
+  },
+
+  reassign: async (req: Request, res: Response): Promise<void> => {
+    const task = await taskService.reassign(
+      accessScope(req),
+      req.params.taskId ?? '',
+      req.body as TaskAssigneeBody
+    );
+
+    res.status(200).json({ data: toTaskDto(task) });
+  },
+
+  move: async (req: Request, res: Response): Promise<void> => {
+    const task = await taskService.move(
+      accessScope(req),
+      req.params.taskId ?? '',
+      req.body as MoveTaskBody
     );
 
     res.status(200).json({ data: toTaskDto(task) });

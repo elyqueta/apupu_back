@@ -286,10 +286,31 @@ npm run typecheck
 npm run lint
 npm test
 npm run test:coverage
+npm run test:teams
 ```
 
 Os testes unitários não precisam de base de dados. O smoke test precisa
 da API a correr.
+
+### Equipas e tarefas (integração)
+
+`npm run test:teams` sobe o Postgres do `docker-compose` (porta 5433),
+recria duas bases efémeras e valida:
+
+- `tests/teamsApi.test.ts` e `tests/teamsApiPhase2Corrections.test.ts`
+  contra `apupu_teams_api`, com o schema completo aplicado por
+  `node-pg-migrate up`;
+- `tests/teamsMigration.test.ts` contra `apupu_teams_migration`: corre
+  as migrations até à `1739900000010`, carrega
+  `tests/fixtures/teams-migration.sql`, aplica `1739900000011` e
+  `1739900000012`, valida o estado `up` e depois `down 2`.
+
+Nunca toca na base de desenvolvimento (5432). As bases criadas pelo
+script são recriadas em cada execução. Não existe configuração de CI no
+repositório; se for adicionada, deve invocar `npm run test:teams` (ou
+definir `TEAMS_API_TEST_URL`/`TEAMS_MIGRATION_TEST_URL`). Os dois
+ficheiros de teste falham explicitamente quando `CI` está definido e a
+URL correspondente falta — não são ignorados em silêncio.
 
 ## Estrutura
 
