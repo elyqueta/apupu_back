@@ -618,6 +618,78 @@ describe('evaluateApplicability das mensagens de equipa', () => {
     }
   });
 
+  it('suprime mensagens quando o evento terminou sem ends_at', () => {
+    // O dia local de `starts_at` já terminou em Africa/Luanda.
+    const finishedStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+
+    expect(
+      evaluateApplicability(
+        deliveryContext({ messageType: 'team_invite', eventStartsAt: finishedStart })
+      )
+    ).toEqual({ ok: false, reason: 'event_completed' });
+
+    for (const messageType of [
+      'task_assigned',
+      'task_completed',
+      'task_reassigned',
+    ] as const) {
+      expect(
+        evaluateApplicability(
+          deliveryContext({ messageType, eventStartsAt: finishedStart })
+        )
+      ).toEqual({ ok: false, reason: 'event_completed' });
+    }
+
+    expect(
+      evaluateApplicability(
+        deliveryContext({
+          messageType: 'invitation',
+          invitationId: INVITE_ID,
+          eventStartsAt: finishedStart,
+        })
+      )
+    ).toEqual({ ok: false, reason: 'event_completed' });
+
+    // O aviso de cancelamento continua a sair mesmo depois do fim.
+    expect(
+      evaluateApplicability(
+        deliveryContext({ messageType: 'event_cancelled', eventStartsAt: finishedStart })
+      )
+    ).toEqual({ ok: true });
+  });
+
+  it('mantém mensagens no próprio dia sem ends_at', () => {
+    expect(
+      evaluateApplicability(deliveryContext({ messageType: 'team_invite', eventStartsAt: new Date() }))
+    ).toEqual({ ok: true });
+  });
+
+  it('usa ends_at quando existe, ignorando o fim do dia de starts_at', () => {
+    const finishedStart = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const futureEnd = new Date(Date.now() + 60 * 60 * 1000);
+    const pastEnd = new Date(Date.now() - 60 * 1000);
+
+    expect(
+      evaluateApplicability(
+        deliveryContext({
+          messageType: 'team_invite',
+          eventStartsAt: finishedStart,
+          eventEndsAt: futureEnd,
+        })
+      )
+    ).toEqual({ ok: true });
+
+    expect(
+      evaluateApplicability(
+        deliveryContext({
+          messageType: 'team_invite',
+          eventStartsAt: finishedStart,
+          eventEndsAt: pastEnd,
+        })
+      )
+    ).toEqual({ ok: false, reason: 'event_completed' });
+  });
+
   it('entrega team_added e team_role_changed e suprime eventos cancelados', () => {
     for (const messageType of ['team_added', 'team_role_changed'] as const) {
       expect(evaluateApplicability(deliveryContext({ messageType }))).toEqual({ ok: true });

@@ -6,6 +6,7 @@ import {
   TeamEventStatus,
   TeamMyRole,
   TeamWithStats,
+  TEAM_EVENT_TIMEZONE,
 } from '../types/team.types';
 
 interface TeamRow {
@@ -47,6 +48,10 @@ function toTeam(row: TeamRow): TeamWithStats {
 /**
  * Estado observável do evento. `draft`/`cancelled`/`completed` vêm do
  * estado explícito; um evento agendado é classificado pelas datas.
+ *
+ * Sem `ends_at`, o evento passa a `concluido` no fim do dia local de
+ * `starts_at` (00:00 do dia seguinte em Africa/Luanda), em vez de ficar
+ * `em_curso` indefinidamente.
  */
 const EVENT_STATUS_SQL = `
   CASE
@@ -55,6 +60,12 @@ const EVENT_STATUS_SQL = `
     WHEN e.status = 'completed' THEN 'concluido'
     WHEN now() < e.starts_at THEN 'agendado'
     WHEN e.ends_at IS NOT NULL AND now() >= e.ends_at THEN 'concluido'
+    WHEN e.ends_at IS NULL
+      AND now() >= (
+        (date_trunc('day', e.starts_at AT TIME ZONE '${TEAM_EVENT_TIMEZONE}') + interval '1 day')
+        AT TIME ZONE '${TEAM_EVENT_TIMEZONE}'
+      )
+      THEN 'concluido'
     ELSE 'em_curso'
   END
 `;

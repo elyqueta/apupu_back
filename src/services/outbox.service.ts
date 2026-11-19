@@ -9,7 +9,8 @@ import {
 import { activityRepository } from '../repositories/activity.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { isHostMessage, MessageType } from '../types/emailDelivery.types';
-import { reminderScheduledFor } from '../utils/date.util';
+import { TEAM_EVENT_TIMEZONE } from '../types/team.types';
+import { reminderScheduledFor, startOfNextDay } from '../utils/date.util';
 import { renderDelivery, sendMail } from './email.service';
 
 /**
@@ -43,6 +44,31 @@ const TEAM_MESSAGE_TYPES: readonly MessageType[] = [
   'task_completed',
   'task_reassigned',
 ];
+
+/**
+ * O evento já terminou pelas datas, mesmo que o estado persistido ainda
+ * seja `scheduled`.
+ *
+ * Usa `ends_at` quando existe; sem `ends_at`, o evento termina no fim
+ * do dia local de `starts_at` em Africa/Luanda — a mesma regra de
+ * `event_status` na lista de equipas. Eventos em `draft` não são
+ * considerados terminados: o estado explícito manda.
+ */
+function eventEndedByDate(context: DeliveryContext, now: Date = new Date()): boolean {
+  if (context.eventStatus === 'draft') {
+    return false;
+  }
+
+  if (!context.eventStartsAt) {
+    return false;
+  }
+
+  if (context.eventEndsAt) {
+    return now.getTime() >= context.eventEndsAt.getTime();
+  }
+
+  return now.getTime() >= startOfNextDay(context.eventStartsAt, TEAM_EVENT_TIMEZONE).getTime();
+}
 
 /**
  * Decide se uma entrega ainda é aplicável.
@@ -87,6 +113,10 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
         return { ok: false, reason: `event_${context.eventStatus}` };
       }
 
+      if (eventEndedByDate(context)) {
+        return { ok: false, reason: 'event_completed' };
+      }
+
       if (!context.teamInviteExpiresAt) {
         return { ok: false, reason: 'invite_missing' };
       }
@@ -116,6 +146,10 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
       return { ok: false, reason: `event_${context.eventStatus}` };
     }
 
+    if (eventEndedByDate(context)) {
+      return { ok: false, reason: 'event_completed' };
+    }
+
     return { ok: true };
   }
 
@@ -134,6 +168,10 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
     (context.eventStatus === 'cancelled' || context.eventStatus === 'completed')
   ) {
     return { ok: false, reason: `event_${context.eventStatus}` };
+  }
+
+  if (context.messageType !== 'event_cancelled' && eventEndedByDate(context)) {
+    return { ok: false, reason: 'event_completed' };
   }
 
   if (context.messageType === 'event_cancelled') {

@@ -79,6 +79,19 @@ export function zonedTimeToUtc(
   return new Date(timestamp);
 }
 
+/**
+ * Início do dia seguinte no fuso indicado.
+ *
+ * Serve para encerrar um evento sem `ends_at`: o evento considera-se
+ * concluído quando o dia local de `starts_at` termina, ou seja, às
+ * 00:00 do dia seguinte. Usa o calendário local para não depender da
+ * duração em milissegundos (DST).
+ */
+export function startOfNextDay(date: Date, timeZone: string): Date {
+  const parts = getZonedParts(date, timeZone);
+  return zonedTimeToUtc(parts.year, parts.month, parts.day + 1, 0, 0, timeZone);
+}
+
 /** Formata uma data no fuso horário do evento. */
 export function formatInTimeZone(
   date: Date,

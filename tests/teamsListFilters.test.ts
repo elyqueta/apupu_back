@@ -30,6 +30,8 @@ const EVENT_DONE = 'f3333333-3333-4333-8333-333333333333';
 const EVENT_CANCELLED = 'f4444444-4444-4444-8444-444444444444';
 const EVENT_DRAFT = 'f5555555-5555-4555-8555-555555555555';
 const EVENT_OTHER = 'f6666666-6666-4666-8666-666666666666';
+const EVENT_NO_END_DONE = 'f7777777-7777-4777-8777-777777777777';
+const EVENT_NO_END_LIVE = 'f8888888-8888-4888-8888-888888888888';
 
 const MANAGER_ID = 'c1111111-1111-4111-8111-111111111111';
 
@@ -46,6 +48,8 @@ const EVENT_IDS = [
   EVENT_CANCELLED,
   EVENT_DRAFT,
   EVENT_OTHER,
+  EVENT_NO_END_DONE,
+  EVENT_NO_END_LIVE,
 ];
 
 interface Scope {
@@ -81,6 +85,8 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integraÃ
   let teamCancelled: string;
   let teamDraft: string;
   let teamOther: string;
+  let teamNoEndDone: string;
+  let teamNoEndLive: string;
 
   let managerMemberCozinha: string;
 
@@ -171,7 +177,13 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integraÃ
           'draft', $9, 'venue', 'Quinta Rascunho'),
          ($6, 'filters-other', 'Evento do Outro', 'AnfitriÃ£o Externo', $8,
           now() + interval '30 days', now() + interval '31 days',
-          'scheduled', $10, 'venue', 'Quinta Externa')`,
+          'scheduled', $10, 'venue', 'Quinta Externa'),
+         ($11, 'filters-no-end-done', 'Evento Sem Fim Antigo', 'AnfitriÃ£ Principal', $7,
+          now() - interval '2 days', NULL,
+          'scheduled', $9, 'venue', 'Quinta Sem Fim'),
+         ($12, 'filters-no-end-live', 'Evento Sem Fim Hoje', 'AnfitriÃ£ Principal', $7,
+          now(), NULL,
+          'scheduled', $9, 'venue', 'Quinta Sem Fim')`,
       [
         EVENT_FUTURE,
         EVENT_LIVE,
@@ -183,6 +195,8 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integraÃ
         EMAIL_OTHER,
         HOST_OWNER,
         HOST_OTHER,
+        EVENT_NO_END_DONE,
+        EVENT_NO_END_LIVE,
       ]
     );
 
@@ -206,6 +220,18 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integraÃ
     );
     teamDraft = await createTeam(scopeOwner, EVENT_DRAFT, 'Equipa rascunho', 'outra');
     teamOther = await createTeam(scopeOther, EVENT_OTHER, 'Equipa alheia', 'catering');
+    teamNoEndDone = await createTeam(
+      scopeOwner,
+      EVENT_NO_END_DONE,
+      'Equipa sem fim antiga',
+      'rececao'
+    );
+    teamNoEndLive = await createTeam(
+      scopeOwner,
+      EVENT_NO_END_LIVE,
+      'Equipa sem fim de hoje',
+      'rececao'
+    );
 
     await teamMemberService.add(scopeOwner, teamSala, { emails: [EMAIL_MEMBER] });
 
@@ -256,7 +282,7 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integraÃ
     const list = await teamService.list(scopeOwner, { page: 1, page_size: 100 });
     const byId = new Map(list.items.map((team) => [team.id, team]));
 
-    expect(byId.size).toBe(8);
+    expect(byId.size).toBe(10);
 
     for (const team of list.items) {
       expect(team.myRole).toBe('anfitriao');
@@ -271,6 +297,9 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integraÃ
     expect(byId.get(teamDone)?.eventStatus).toBe('concluido');
     expect(byId.get(teamCancelled)?.eventStatus).toBe('cancelado');
     expect(byId.get(teamDraft)?.eventStatus).toBe('rascunho');
+    // Sem `ends_at`, o evento termina no fim do dia local de `starts_at`.
+    expect(byId.get(teamNoEndDone)?.eventStatus).toBe('concluido');
+    expect(byId.get(teamNoEndLive)?.eventStatus).toBe('em_curso');
   });
 
   it('filtra no servidor por estado do evento, categoria e papel', async () => {
@@ -279,14 +308,18 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integraÃ
       page: 1,
       page_size: 100,
     });
-    expect(live.items.map((team) => team.id)).toEqual([teamLive]);
+    expect(sorted(live.items.map((team) => team.id))).toEqual(
+      sorted([teamLive, teamNoEndLive])
+    );
 
     const done = await teamService.list(scopeOwner, {
       event_status: 'concluido',
       page: 1,
       page_size: 100,
     });
-    expect(done.items.map((team) => team.id)).toEqual([teamDone]);
+    expect(sorted(done.items.map((team) => team.id))).toEqual(
+      sorted([teamDone, teamNoEndDone])
+    );
 
     const cancelled = await teamService.list(scopeOwner, {
       event_status: 'cancelado',
@@ -399,7 +432,7 @@ describe.skipIf(!connectionString)('lista de equipas: campos e filtros (integraÃ
     expect(memberMine.items.map((team) => team.id)).toEqual([teamSala]);
 
     const ownerAll = await teamService.list(scopeOwner, { page: 1, page_size: 100 });
-    expect(ownerAll.items).toHaveLength(8);
+    expect(ownerAll.items).toHaveLength(10);
   });
 
   it('mantÃ©m a paginaÃ§Ã£o coerente com os filtros aplicados', async () => {
