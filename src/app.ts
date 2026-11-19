@@ -11,6 +11,7 @@ import { notFoundHandler } from './middlewares/notFoundHandler';
 import { errorHandler } from './middlewares/errorHandler';
 import { apiLimiter } from './middlewares/rateLimiter';
 import { noStore } from './middlewares/noStore';
+import { publicInviteHeaders } from './middlewares/publicInviteHeaders';
 import { requestId } from './middlewares/requestId';
 import { logger } from './config/logger';
 import v1Routes from './routes/v1';
@@ -35,6 +36,10 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
 // Dados pessoais e links secretos nunca devem ser guardados em caches.
 app.use('/api/v1', noStore);
+
+// Os URLs públicos de convites contêm tokens em claro: não os enviar
+// como referrer nem permitir caching das respostas.
+app.use('/api/v1/public', publicInviteHeaders);
 
 // O limite global aplica-se em todos os ambientes: a superfície de
 // ataque (tokens, criação de eventos) existe mesmo em desenvolvimento

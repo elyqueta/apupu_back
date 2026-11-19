@@ -43,11 +43,14 @@ echo "== 3/6 A aplicar todas as migrations na base da API =="
 DATABASE_URL="$API_URL" npx node-pg-migrate up --verbose=false
 
 echo "== 4/6 Testes da API (equipas, membros, tarefas, convites e notificações) =="
-TEAMS_API_TEST_URL="$API_URL" npx vitest run \
+# Sem paralelismo entre ficheiros: os testes de outbox processam todas as
+# entregas vencidas da base e precisam de isolamento entre ficheiros.
+TEAMS_API_TEST_URL="$API_URL" npx vitest run --no-file-parallelism \
   tests/teamsPhase3Unit.test.ts \
   tests/teamsApi.test.ts \
   tests/teamsApiPhase2Corrections.test.ts \
-  tests/teamsPhase3.test.ts
+  tests/teamsPhase3.test.ts \
+  tests/teamsPhase3Corrections.test.ts
 
 echo "== 5/6 Migração: estado anterior + fixture + up =="
 DATABASE_URL="$MIGRATION_URL" npx node-pg-migrate up 11 --verbose=false

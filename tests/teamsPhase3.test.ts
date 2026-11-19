@@ -705,7 +705,7 @@ describe.skipIf(!connectionString)('convites e notificações de equipa (integra
     expect(selfEmails.rows[0]?.count).toBe('0');
   });
 
-  it('conclui uma vez e notifica anfitrião e gestores sem duplicar', async () => {
+  it('conclui uma vez e notifica apenas o criador e o anfitrião sem duplicar', async () => {
     const task = await taskService.create(scopeOwner, {
       title: 'Tarefa concorrente',
       team_id: teamId,
@@ -727,8 +727,41 @@ describe.skipIf(!connectionString)('convites e notificações de equipa (integra
         ORDER BY recipient_email`,
       [task.id]
     );
+    // A tarefa foi criada pelo anfitrião, que também é o dono do
+    // evento: criador e anfitrião são a mesma conta, pelo que só há um
+    // email. Os gestores deixaram de ser notificados em bloco.
+    expect(emails.rows.map((row) => row.recipient_email)).toEqual([EMAIL_OWNER]);
+
+    const notifications = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM host_notifications
+        WHERE kind = 'task_completed' AND metadata->>'task_id' = $1`,
+      [task.id]
+    );
+    expect(notifications.rows[0]?.count).toBe('1');
+  });
+
+  it('notifica o criador e o anfitrião quando são contas diferentes', async () => {
+    const task = await taskService.create(
+      { hostId: HOST_MANAGER, managerEmail: EMAIL_MANAGER },
+      {
+        title: 'Tarefa criada por gestora',
+        team_id: teamId,
+        assignee_member_id: memberMemberId,
+        priority: 'normal',
+        status: 'por_fazer',
+      }
+    );
+
+    await taskService.setStatus(scopeMember, task.id, { status: 'concluida' });
+
+    const emails = await pool.query<{ recipient_email: string }>(
+      `SELECT recipient_email FROM email_deliveries
+        WHERE message_type = 'task_completed' AND payload->>'taskId' = $1
+        ORDER BY recipient_email`,
+      [task.id]
+    );
     expect(emails.rows.map((row) => row.recipient_email)).toEqual(
-      [EMAIL_OWNER, EMAIL_MANAGER].sort()
+      [EMAIL_MANAGER, EMAIL_OWNER].sort()
     );
 
     const notifications = await pool.query<{ count: string }>(
@@ -753,14 +786,17 @@ describe.skipIf(!connectionString)('convites e notificações de equipa (integra
     });
     expect(updated.assigneeMemberId).toBe(managerMemberId);
 
-    const emails = await pool.query<{ recipient_email: string }>(
-      `SELECT recipient_email FROM email_deliveries
+    const emails = await pool.query<{ recipient_email: string; variant: string }>(
+      `SELECT recipient_email, payload->>'variant' AS variant FROM email_deliveries
         WHERE message_type = 'task_reassigned' AND payload->>'taskId' = $1
         ORDER BY recipient_email`,
       [task.id]
     );
-    expect(emails.rows.map((row) => row.recipient_email)).toEqual(
-      [EMAIL_MANAGER, EMAIL_MEMBER].sort()
+    expect(emails.rows).toEqual(
+      [
+        { recipient_email: EMAIL_MANAGER, variant: 'novo' },
+        { recipient_email: EMAIL_MEMBER, variant: 'anterior' },
+      ].sort((a, b) => a.recipient_email.localeCompare(b.recipient_email))
     );
 
     const notifications = await pool.query<{ count: string }>(

@@ -1,5 +1,103 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`snapshots do texto dos emails da Fase 3 > mantém as duas variantes de alteração de papel 1`] = `
+{
+  "papel": "gestor",
+  "subject": "Passaste a gestor do evento Casamento da Ana e…",
+  "text": "Olá, Ana.
+
+Pedro promoveu-te a gestor do evento Casamento da Ana e do Paulo.
+
+Como gestor do evento, passas a ter acesso a todas as equipas e tarefas, incluindo a equipa Cozinha.
+
+Podes acompanhar e gerir o evento a partir do painel.
+
+Casamento da Ana e do Paulo
+
+Ver a equipa: https://exemplo.test/equipas/convite/token
+
+— Equipa Conto Contigo
+
+Recebeste este e-mail porque o teu papel neste evento mudou.
+Ajuda: mailto:apoio@exemplo.pt
+© 2026 Conto Contigo · Luanda, Angola
+",
+}
+`;
+
+exports[`snapshots do texto dos emails da Fase 3 > mantém as duas variantes de alteração de papel 2`] = `
+{
+  "papel": "membro",
+  "subject": "O teu papel na equipa Cozinha mudou",
+  "text": "Olá, Ana.
+
+Pedro alterou o teu papel para membro da equipa Cozinha do evento Casamento da Ana e do Paulo.
+
+O acesso ao evento é decidido pelo anfitrião.
+
+Continuas a ver e a concluir as tarefas que te forem atribuídas.
+
+Casamento da Ana e do Paulo
+
+Ver a equipa: https://exemplo.test/equipas/convite/token
+
+— Equipa Conto Contigo
+
+Recebeste este e-mail porque o teu papel nesta equipa mudou.
+Ajuda: mailto:apoio@exemplo.pt
+© 2026 Conto Contigo · Luanda, Angola
+",
+}
+`;
+
+exports[`snapshots do texto dos emails da Fase 3 > mantém as duas variantes de reatribuição 1`] = `
+{
+  "subject": "Passaram-te a tarefa: Comprar gelo",
+  "text": "Olá, Ana.
+
+Pedro passou-te a tarefa "Comprar gelo" na equipa Cozinha de Casamento da Ana e do Paulo.
+
+O responsável anterior era Rita.
+
+Podes concluí-la quando estiver pronta.
+
+Casamento da Ana e do Paulo
+
+Ver tarefa: https://exemplo.test/equipas/convite/token
+
+— Equipa Conto Contigo
+
+Recebeste este e-mail porque és responsável por esta tarefa.
+Ajuda: mailto:apoio@exemplo.pt
+© 2026 Conto Contigo · Luanda, Angola
+",
+  "variante": "novo",
+}
+`;
+
+exports[`snapshots do texto dos emails da Fase 3 > mantém as duas variantes de reatribuição 2`] = `
+{
+  "subject": "Já não és responsável: Comprar gelo",
+  "text": "Olá, Ana.
+
+A tarefa "Comprar gelo" passou para Rita; já não és o responsável.
+
+Continuas a poder acompanhá-la na equipa Cozinha de Casamento da Ana e do Paulo.
+
+Casamento da Ana e do Paulo
+
+Ver tarefa: https://exemplo.test/equipas/convite/token
+
+— Equipa Conto Contigo
+
+Recebeste este e-mail porque acompanhas as tarefas deste evento.
+Ajuda: mailto:apoio@exemplo.pt
+© 2026 Conto Contigo · Luanda, Angola
+",
+  "variante": "anterior",
+}
+`;
+
 exports[`snapshots do texto dos emails da Fase 3 > mantém o assunto e o text/plain de equipa_adicionado 1`] = `
 {
   "subject": "Foste adicionado à equipa Cozinha",
@@ -18,9 +116,7 @@ Ver a equipa: https://exemplo.test/equipas/convite/token
 — Equipa Conto Contigo
 
 Recebeste este e-mail porque Pedro adicionou-te a esta equipa.
-Preferências de notificação: https://exemplo.test/definicoes
-Ajuda: mailto:csassapa@gmail.com
-Deixar de receber: https://exemplo.test/definicoes
+Ajuda: mailto:apoio@exemplo.pt
 © 2026 Conto Contigo · Luanda, Angola
 ",
 }
@@ -44,9 +140,8 @@ Aceitar convite: https://exemplo.test/equipas/convite/token
 — Equipa Conto Contigo
 
 Recebeste este e-mail porque O anfitrião adicionou-te a esta equipa.
-Preferências de notificação: https://exemplo.test/definicoes
-Ajuda: mailto:csassapa@gmail.com
-Deixar de receber: https://exemplo.test/definicoes
+Ajuda: mailto:apoio@exemplo.pt
+Não conheço este convite: https://exemplo.test/equipas/convite/token/denunciar
 © 2026 Conto Contigo · Luanda, Angola
 ",
 }
@@ -54,14 +149,14 @@ Deixar de receber: https://exemplo.test/definicoes
 
 exports[`snapshots do texto dos emails da Fase 3 > mantém o assunto e o text/plain de equipa_papel_alterado 1`] = `
 {
-  "subject": "Passaste a gestor da equipa Cozinha",
+  "subject": "Passaste a gestor do evento Casamento da Ana e…",
   "text": "Olá, Ana.
 
-Pedro promoveu-te a gestor da equipa Cozinha do evento Casamento da Ana e do Paulo.
+Pedro promoveu-te a gestor do evento Casamento da Ana e do Paulo.
 
-Como gestor, podes ajudar a organizar a equipa e acompanhar as tarefas.
+Como gestor do evento, passas a ter acesso a todas as equipas e tarefas, incluindo a equipa Cozinha.
 
-As permissões de gestão do evento continuam a ser decididas pelo anfitrião.
+Podes acompanhar e gerir o evento a partir do painel.
 
 Casamento da Ana e do Paulo
 
@@ -69,10 +164,8 @@ Ver a equipa: https://exemplo.test/equipas/convite/token
 
 — Equipa Conto Contigo
 
-Recebeste este e-mail porque o teu papel nesta equipa mudou.
-Preferências de notificação: https://exemplo.test/definicoes
-Ajuda: mailto:csassapa@gmail.com
-Deixar de receber: https://exemplo.test/definicoes
+Recebeste este e-mail porque o teu papel neste evento mudou.
+Ajuda: mailto:apoio@exemplo.pt
 © 2026 Conto Contigo · Luanda, Angola
 ",
 }
@@ -96,9 +189,7 @@ Ver tarefa: https://exemplo.test/equipas/convite/token
 — Equipa Conto Contigo
 
 Recebeste este e-mail porque és responsável por esta tarefa.
-Preferências de notificação: https://exemplo.test/definicoes
-Ajuda: mailto:csassapa@gmail.com
-Deixar de receber: https://exemplo.test/definicoes
+Ajuda: mailto:apoio@exemplo.pt
 © 2026 Conto Contigo · Luanda, Angola
 ",
 }
@@ -109,7 +200,7 @@ exports[`snapshots do texto dos emails da Fase 3 > mantém o assunto e o text/pl
   "subject": "Tarefa concluída: Comprar gelo",
   "text": "Olá, Ana.
 
-O responsável concluiu a tarefa "Comprar gelo" na equipa Cozinha.
+Rita concluiu a tarefa "Comprar gelo" na equipa Cozinha.
 
 A tarefa já não aparece nas pendentes.
 
@@ -119,10 +210,8 @@ Ver tarefa: https://exemplo.test/equipas/convite/token
 
 — Equipa Conto Contigo
 
-Recebeste este e-mail porque acompanhas as tarefas deste evento.
-Preferências de notificação: https://exemplo.test/definicoes
-Ajuda: mailto:csassapa@gmail.com
-Deixar de receber: https://exemplo.test/definicoes
+Recebeste este e-mail porque criaste esta tarefa ou organizas este evento.
+Ajuda: mailto:apoio@exemplo.pt
 © 2026 Conto Contigo · Luanda, Angola
 ",
 }
@@ -130,12 +219,14 @@ Deixar de receber: https://exemplo.test/definicoes
 
 exports[`snapshots do texto dos emails da Fase 3 > mantém o assunto e o text/plain de tarefa_reatribuida 1`] = `
 {
-  "subject": "Tarefa reatribuída: Comprar gelo",
+  "subject": "Passaram-te a tarefa: Comprar gelo",
   "text": "Olá, Ana.
 
-Pedro reatribuiu a tarefa "Comprar gelo" da equipa Cozinha a um novo responsável.
+Pedro passou-te a tarefa "Comprar gelo" na equipa Cozinha de Casamento da Ana e do Paulo.
 
-O novo responsável passa a ser quem pode concluir a tarefa.
+O responsável anterior era Ana.
+
+Podes concluí-la quando estiver pronta.
 
 Casamento da Ana e do Paulo
 
@@ -143,10 +234,8 @@ Ver tarefa: https://exemplo.test/equipas/convite/token
 
 — Equipa Conto Contigo
 
-Recebeste este e-mail porque acompanhas as tarefas deste evento.
-Preferências de notificação: https://exemplo.test/definicoes
-Ajuda: mailto:csassapa@gmail.com
-Deixar de receber: https://exemplo.test/definicoes
+Recebeste este e-mail porque és responsável por esta tarefa.
+Ajuda: mailto:apoio@exemplo.pt
 © 2026 Conto Contigo · Luanda, Angola
 ",
 }

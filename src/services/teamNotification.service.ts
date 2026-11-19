@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { pool } from '../database/pool';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
+import { hostRepository } from '../repositories/host.repository';
 import { notificationRepository } from '../repositories/notification.repository';
 import { MessageType } from '../types/emailDelivery.types';
 import { Task, TeamMemberWithStats, TeamWithStats } from '../types/team.types';
@@ -28,6 +29,8 @@ export interface TaskEventContext {
   dueDate?: string;
   actorName: string;
   actorEmail: string | null;
+  /** Conta que criou a tarefa, quando difere do anfitrião do evento. */
+  createdByHostId: string | null;
 }
 
 interface EventNotificationInfo {
@@ -35,11 +38,6 @@ interface EventNotificationInfo {
   title: string;
   hostName: string | null;
   hostEmail: string | null;
-}
-
-interface ManagerRecipient {
-  id: string;
-  email: string;
 }
 
 /** Formata `YYYY-MM-DD` sem depender do fuso do servidor. */
@@ -81,6 +79,7 @@ export function taskEventContext(
     dueDate: formatDueDate(task.dueDate),
     actorName,
     actorEmail,
+    createdByHostId: task.createdByHostId,
   };
 }
 
@@ -115,22 +114,6 @@ async function readEventInfo(
     hostName: row.host_name,
     hostEmail: row.host_email,
   };
-}
-
-async function readManagers(
-  eventId: string,
-  client?: PoolClient
-): Promise<ManagerRecipient[]> {
-  const runner = client ?? pool;
-  const result = await runner.query<ManagerRecipient>(
-    `SELECT id, email
-       FROM event_managers
-      WHERE event_id = $1
-        AND revoked_at IS NULL`,
-    [eventId]
-  );
-
-  return result.rows;
 }
 
 async function enqueue(
@@ -280,9 +263,13 @@ export async function notifyTaskAssigned(
 }
 
 /**
- * Conclusão de tarefa: notifica o anfitrião e os gestores activos,
- * uma única vez por transição (o chamador só invoca quando
- * `changed === true`).
+ * Conclusão de tarefa.
+ *
+ * Avisa apenas quem criou a tarefa (se não for o responsável) e o
+ * anfitrião do evento (se for diferente do criador e do responsável).
+ * Os gestores deixam de ser notificados em bloco: não são donos da
+ * tarefa e o aviso tornava-se ruído. Uma única notificação por pessoa,
+ * mesmo que criador e anfitrião sejam a mesma conta.
  */
 export async function notifyTaskCompleted(
   data: {
@@ -299,73 +286,69 @@ export async function notifyTaskCompleted(
   const assigneeName = memberDisplayName(assignee);
   const title = `Tarefa concluída: ${event.taskTitle}`;
   const body = `${assigneeName} concluiu uma tarefa na equipa ${event.teamName}.`;
+  const metadata = { task_id: event.taskId, team_name: event.teamName };
 
-  await notifyHost(
-    {
-      hostId: info.hostId,
-      eventId: event.eventId,
-      kind: 'task_completed',
-      title,
-      body,
-      metadata: { task_id: event.taskId, team_name: event.teamName },
-      dedupeKey: `task_completed:${event.taskId}:${info.hostId}`,
-    },
-    data.client
-  );
+  // Criador da tarefa. Pode coincidir com o anfitrião; nesse caso não
+  // há uma segunda leitura.
+  const creator =
+    event.createdByHostId && event.createdByHostId !== info.hostId
+      ? await hostRepository.findById(event.createdByHostId, data.client)
+      : null;
 
-  const managers = await readManagers(event.eventId, data.client);
+  // Notificação in-app: uma por conta, nunca para o responsável.
+  const notifiedHosts = new Set<string>();
 
-  for (const manager of managers) {
-    await notificationRepository.createForManager(
-      manager.id,
-      {
-        eventId: event.eventId,
-        kind: 'task_completed',
-        title,
-        body,
-        metadata: { task_id: event.taskId, team_name: event.teamName },
-      },
-      data.client
-    );
-  }
+  const notifyRecipient = async (
+    hostId: string,
+    email: string | null,
+    name: string | null
+  ): Promise<void> => {
+    if (sameEmail(email, assignee.email)) return;
 
-  const recipients = new Map<string, { email: string; name: string | null; hostId: string | null }>();
-
-  if (info.hostEmail) {
-    recipients.set(info.hostEmail.toLowerCase(), {
-      email: info.hostEmail,
-      name: info.hostName,
-      hostId: info.hostId,
-    });
-  }
-
-  for (const manager of managers) {
-    if (!manager.email) continue;
-    const key = manager.email.toLowerCase();
-    if (!recipients.has(key)) {
-      recipients.set(key, { email: manager.email, name: null, hostId: null });
+    if (!notifiedHosts.has(hostId)) {
+      notifiedHosts.add(hostId);
+      await notifyHost(
+        {
+          hostId,
+          eventId: event.eventId,
+          kind: 'task_completed',
+          title,
+          body,
+          metadata,
+          dedupeKey: `task_completed:${event.taskId}:${hostId}`,
+        },
+        data.client
+      );
     }
-  }
 
-  for (const recipient of recipients.values()) {
-    if (sameEmail(recipient.email, assignee.email)) continue;
+    if (!email) return;
 
     await enqueue(
       {
         messageType: 'task_completed',
-        recipientEmail: recipient.email,
+        recipientEmail: email,
         eventId: event.eventId,
-        hostId: recipient.hostId ?? info.hostId,
-        idempotencyKey: `task_completed:${event.taskId}:${recipient.email.toLowerCase()}`,
+        hostId,
+        idempotencyKey: `task_completed:${event.taskId}:${email.toLowerCase()}`,
         payload: {
           taskId: event.taskId,
           taskTitle: event.taskTitle,
           teamName: event.teamName,
-          recipientName: recipient.name ?? undefined,
+          recipientName: name ?? undefined,
           assigneeName,
         },
       },
       data.client
+    );
+  };
+
+  await notifyRecipient(info.hostId, info.hostEmail, info.hostName);
+
+  if (creator) {
+    await notifyRecipient(
+      creator.id,
+      creator.email,
+      creator.profile.displayName
     );
   }
 }
@@ -389,14 +372,21 @@ export async function notifyTaskReassigned(
   for (const recipient of recipients) {
     if (sameEmail(recipient.email, event.actorEmail)) continue;
 
+    const isNewAssignee = recipient.id === newAssignee.id;
+    const variant = isNewAssignee ? 'novo' : 'anterior';
+
     if (recipient.hostId) {
       await notifyHost(
         {
           hostId: recipient.hostId,
           eventId: event.eventId,
           kind: 'task_reassigned',
-          title: `Tarefa reatribuída: ${event.taskTitle}`,
-          body: `A tarefa passou para ${memberDisplayName(newAssignee)} na equipa ${event.teamName}.`,
+          title: isNewAssignee
+            ? `Passaram-te a tarefa: ${event.taskTitle}`
+            : `Já não és responsável: ${event.taskTitle}`,
+          body: isNewAssignee
+            ? `${event.actorName} passou-te a tarefa na equipa ${event.teamName}.`
+            : `A tarefa passou para ${memberDisplayName(newAssignee)} na equipa ${event.teamName}.`,
           metadata: {
             task_id: event.taskId,
             team_name: event.teamName,
@@ -427,6 +417,7 @@ export async function notifyTaskReassigned(
             ? memberDisplayName(previousAssignee)
             : undefined,
           actorName: event.actorName,
+          variant,
         },
       },
       data.client
@@ -521,9 +512,9 @@ export async function notifyRoleChanged(
       hostId: member.hostId,
       eventId: data.eventId,
       kind: 'role_changed',
-      title: promoted ? 'Passaste a gestor' : 'O teu papel mudou',
+      title: promoted ? 'Passaste a gestor do evento' : 'O teu papel mudou',
       body: promoted
-        ? `${data.actorName} promoveu-te a gestor da equipa ${data.teamName}.`
+        ? `${data.actorName} promoveu-te a gestor do evento (equipa ${data.teamName}).`
         : `${data.actorName} alterou o teu papel na equipa ${data.teamName}.`,
       metadata: { team_name: data.teamName, role: member.role, member_id: member.id },
       dedupeKey,

@@ -41,6 +41,11 @@ export const redactPaths = [
   'csrf_token',
   'cookie',
   'cookies',
+  // URLs podem transportar o token de convite em claro.
+  'url',
+  'originalUrl',
+  'req.url',
+  'req.originalUrl',
   'req.headers.authorization',
   'req.headers.cookie',
   'req.headers["x-csrf-token"]',
@@ -70,6 +75,8 @@ export const redactPaths = [
   '*.invitation_url',
   '*.sessionToken',
   '*.csrfToken',
+  '*.url',
+  '*.originalUrl',
 ];
 
 export const logger = pino({

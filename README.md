@@ -154,6 +154,12 @@ A especificação autoritária do produto está em [`backend/`](backend/).
 - **Rate limiting** cobre autenticação, escritas de gestão
   (`WRITE_RATE_LIMIT_*`) e RSVP público por IP + token
   (`RSVP_RATE_LIMIT_*`). O excesso devolve `429 rate_limited`.
+- **IP real atrás de proxy**: `TRUST_PROXY` indica quantos proxies
+  confiar à frente da API (`0` sem proxy, `1` para um reverse proxy ou
+  balanceador, `2` para dois, etc.). Com o valor certo, `req.ip` usa o
+  `X-Forwarded-For` do cliente e os limites por IP não ficam todos no
+  IP do proxy. Um valor a mais permite falsificar o IP; um valor a
+  menos faz todos os clientes partilharem o contador.
 - **Auditoria** de eventos críticos em `host_audit_log`, com actor,
   evento, IP, `request_id` e resultado; nunca guarda senhas, tokens ou
   `birth_date`.
@@ -168,8 +174,11 @@ A especificação autoritária do produto está em [`backend/`](backend/).
   nem um dispositivo físico.
 - Todas as leituras e mutações de eventos são limitadas por
   `events.host_id`; uma conta sem posse recebe `404`, não `403`.
-- Respostas da API têm `Cache-Control: private, no-store`.
-- Tokens e dados pessoais nunca são escritos em logs.
+- Respostas da API têm `Cache-Control: no-store`; as rotas públicas de
+  convites acrescentam `Referrer-Policy: no-referrer` para não enviar o
+  token no cabeçalho `Referer`.
+- Tokens e dados pessoais nunca são escritos em logs; os URLs são
+  redigidos por poderem conter o token em claro.
 
 ## Lembretes e outbox
 
@@ -247,6 +256,18 @@ Recomendado em cron diário, por exemplo `0 3 * * *`.
 `onboarding@resend.dev` é o remetente de teste do Resend e só entrega
 ao email dono da conta. Para enviar a outros destinatários é preciso
 verificar um domínio no Resend e trocar `EMAIL_FROM`.
+
+### E-mail em produção
+
+- Usa um remetente num domínio próprio (`EMAIL_FROM`) com **SPF, DKIM
+  e DMARC** configurados no DNS. Sem os três, muitos fornecedores
+  marcam as mensagens como spam ou rejeitam-nas.
+- `EMAIL_FROM`, `SUPPORT_EMAIL`, `APP_BASE_URL` e `API_BASE_URL` são
+  obrigatórios. O arranque falha em produção se `APP_BASE_URL` ou
+  `API_BASE_URL` apontarem para localhost.
+- Corre o worker num processo separado (`npm run worker:start`) e
+  define `OUTBOX_IN_API=false` na API. Assim os envios e os retries não
+  competem com os pedidos HTTP.
 
 A outbox tem retries com backoff exponencial (`EMAIL_MAX_ATTEMPTS`,
 `EMAIL_RETRY_BASE_MS`) e chaves idempotentes que impedem envios

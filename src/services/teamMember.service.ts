@@ -7,6 +7,7 @@ import {
 } from '../errors';
 import { eventManagerRepository } from '../repositories/eventManager.repository';
 import { hostRepository } from '../repositories/host.repository';
+import { taskRepository } from '../repositories/task.repository';
 import { teamMemberRepository } from '../repositories/teamMember.repository';
 import {
   AddTeamMembersBody,
@@ -423,6 +424,11 @@ export const teamMemberService = {
         await teamInviteService.revokeForMember(memberId, client);
 
         for (const task of openTasks) {
+          // O contexto da notificação precisa do criador original da
+          // tarefa; `openTasksForMember` devolve só o resumo usado nos
+          // detalhes do erro, por isso lemos a tarefa completa.
+          const fresh = await taskRepository.findById(task.id, client);
+
           await notifyTaskReassigned({
             event: {
               taskId: task.id,
@@ -432,6 +438,7 @@ export const teamMemberService = {
               teamName: access.team.name,
               actorName: actor,
               actorEmail,
+              createdByHostId: fresh?.createdByHostId ?? null,
             },
             newAssignee: target,
             previousAssignee: null,

@@ -21,19 +21,21 @@ describe('publicAppBaseUrl', () => {
     expect(links.manageEvent('abc')).toBe('https://apupu-front.vercel.app/gerir/abc');
   });
 
-  it('ignora localhost e deriva a origem pública de CORS_ORIGIN', () => {
+  it('não deriva de CORS_ORIGIN quando APP_BASE_URL é local', () => {
     env.APP_BASE_URL = 'http://localhost:4200';
     env.CORS_ORIGIN = 'http://localhost:4200,https://apupu-front.vercel.app';
 
-    expect(publicAppBaseUrl()).toBe('https://apupu-front.vercel.app');
-    expect(links.invitation('tok')).toBe('https://apupu-front.vercel.app/convite/tok');
+    // A base dos links é uma decisão explícita: em produção o arranque
+    // falha se APP_BASE_URL estiver ausente ou apontar para localhost.
+    expect(publicAppBaseUrl()).toBe('http://localhost:4200');
+    expect(links.invitation('tok')).toBe('http://localhost:4200/convite/tok');
     expect(links.verifyEmail('tok')).toBe(
-      'https://apupu-front.vercel.app/verificar-email/tok'
+      'http://localhost:4200/verificar-email/tok'
     );
     expect(links.resetPassword('tok')).toBe(
-      'https://apupu-front.vercel.app/redefinir-senha?token=tok'
+      'http://localhost:4200/redefinir-senha?token=tok'
     );
-    expect(links.login()).toBe('https://apupu-front.vercel.app/entrar');
+    expect(links.login()).toBe('http://localhost:4200/entrar');
   });
 
   it('mantém localhost quando não há nenhuma origem pública', () => {

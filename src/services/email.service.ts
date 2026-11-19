@@ -465,6 +465,7 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
           anfitriao: payloadString(context, 'actorName') ?? context.hostName ?? undefined,
           equipa: payloadString(context, 'teamName'),
           url: links.teamInvite(hostToken(context)),
+          denunciarUrl: links.teamInviteReport(hostToken(context)),
           expiraEm: payloadString(context, 'expiryLabel'),
         }),
       };
@@ -547,6 +548,8 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
           responsavel: payloadString(context, 'assigneeName'),
           anterior: payloadString(context, 'previousAssigneeName'),
           autor: payloadString(context, 'actorName'),
+          variante:
+            payloadString(context, 'variant') === 'anterior' ? 'anterior' : 'novo',
           url: taskUrl(context),
         }),
       };

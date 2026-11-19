@@ -28,6 +28,14 @@ function oneLine(value: string): string {
 }
 
 function supportUrl(base: string): string {
+  // O contacto de ajuda é uma decisão de produto e vem de
+  // `SUPPORT_EMAIL`. O fallback para `EMAIL_FROM` existe apenas para
+  // ambientes antigos de desenvolvimento que ainda não definiram a
+  // variável; em produção deve ser sempre explícita.
+  if (env.SUPPORT_EMAIL) {
+    return `mailto:${env.SUPPORT_EMAIL}`;
+  }
+
   const match = /<([^>]+)>/.exec(env.EMAIL_FROM);
   const candidate = match?.[1]?.trim() ?? env.EMAIL_FROM.trim();
   const address = candidate.includes('@') ? candidate : '';
@@ -107,19 +115,41 @@ function htmlSignature(): string {
     </td></tr>`;
 }
 
-function htmlFooter(reason: string, base: string, year: number): string {
+function htmlFooter(content: EmailContent, base: string, year: number): string {
   const settings = `${base}/definicoes`;
   const help = supportUrl(base);
+  const preferences = content.footer?.preferences !== false;
+  const links: string[] = [];
+
+  if (preferences) {
+    links.push(
+      `<a href="${escapeHtml(settings)}" style="color:#185556;">Preferências de notificação</a>`
+    );
+  }
+
+  links.push(`<a href="${escapeHtml(help)}" style="color:#185556;">Ajuda</a>`);
+
+  if (preferences) {
+    links.push(
+      `<a href="${escapeHtml(settings)}" style="color:#185556;">Deixar de receber</a>`
+    );
+  }
+
+  for (const link of content.footer?.links ?? []) {
+    links.push(
+      `<a href="${escapeHtml(link.url)}" style="color:#185556;">${escapeHtml(
+        oneLine(link.label)
+      )}</a>`
+    );
+  }
 
   return `
     <tr><td class="px footer" style="background:#F1F7F6;padding:24px 32px;font-family:'Figtree',Arial,Helvetica,sans-serif;" bgcolor="#F1F7F6">
       <p class="t-muted" style="margin:0 0 8px 0;font-size:12px;line-height:18px;color:#5B6B69;">Recebeste este e-mail porque ${escapeHtml(
-        oneLine(reason)
+        oneLine(content.reason)
       )}.</p>
       <p class="t-muted" style="margin:0;font-size:12px;line-height:18px;color:#5B6B69;">
-        <a href="${escapeHtml(settings)}" style="color:#185556;">Preferências de notificação</a> &nbsp;·&nbsp;
-        <a href="${escapeHtml(help)}" style="color:#185556;">Ajuda</a> &nbsp;·&nbsp;
-        <a href="${escapeHtml(settings)}" style="color:#185556;">Deixar de receber</a><br>
+        ${links.join(' &nbsp;·&nbsp; ')}<br>
         © ${year} Conto Contigo · Luanda, Angola
       </p>
     </td></tr>`;
@@ -202,7 +232,7 @@ export function renderEmailHtml(content: EmailContent, options: RenderOptions = 
     ${code}
     ${cta}
     ${htmlSignature()}
-    ${htmlFooter(content.reason, base, year)}
+    ${htmlFooter(content, base, year)}
   </table>
 
 </td></tr>
@@ -252,9 +282,21 @@ export function renderEmailText(content: EmailContent, options: RenderOptions = 
 
   lines.push('— Equipa Conto Contigo', '');
   lines.push(`Recebeste este e-mail porque ${oneLine(content.reason)}.`);
-  lines.push(`Preferências de notificação: ${settings}`);
+
+  if (content.footer?.preferences !== false) {
+    lines.push(`Preferências de notificação: ${settings}`);
+  }
+
   lines.push(`Ajuda: ${help}`);
-  lines.push(`Deixar de receber: ${settings}`);
+
+  if (content.footer?.preferences !== false) {
+    lines.push(`Deixar de receber: ${settings}`);
+  }
+
+  for (const link of content.footer?.links ?? []) {
+    lines.push(`${oneLine(link.label)}: ${link.url}`);
+  }
+
   lines.push(`© ${year} Conto Contigo · Luanda, Angola`);
 
   return `${lines.join('\n')}\n`;

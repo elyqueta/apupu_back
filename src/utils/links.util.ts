@@ -5,37 +5,16 @@ function trimBase(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
-
-/** `true` quando a URL aponta para a própria máquina. */
-function isLocalUrl(value: string): boolean {
-  try {
-    return LOCAL_HOSTNAMES.has(new URL(value).hostname.toLowerCase());
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Base pública do frontend usada nos links enviados por email.
  *
- * `APP_BASE_URL` é a fonte de verdade. Se estiver configurada com um
- * endereço local (acontece ao copiar o `.env` de desenvolvimento para o
- * Render), usamos o primeiro `CORS_ORIGIN` público. Assim os emails
- * enviados a partir do frontend em produção nunca apontam para
- * `localhost`, mesmo que a variável de ambiente esteja errada.
+ * `APP_BASE_URL` é a única fonte de verdade. Não há fallback para
+ * `CORS_ORIGIN`: em produção o arranque falha se a variável estiver
+ * ausente ou apontar para localhost, pelo que os links nunca são
+ * construídos a partir de uma origem diferente da configurada.
  */
 export function publicAppBaseUrl(): string {
-  const configured = trimBase(env.APP_BASE_URL);
-  if (!isLocalUrl(configured)) {
-    return configured;
-  }
-
-  const publicOrigin = env.CORS_ORIGIN.split(',')
-    .map((origin) => origin.trim())
-    .find((origin) => origin.length > 0 && !isLocalUrl(origin));
-
-  return trimBase(publicOrigin ?? configured);
+  return trimBase(env.APP_BASE_URL);
 }
 
 /**
@@ -58,6 +37,17 @@ export const links = {
   /** Página de aceitação de um convite de equipa. */
   teamInvite(token: string): string {
     return `${publicAppBaseUrl()}/equipas/convite/${token}`;
+  },
+
+  /**
+   * Página pública de confirmação de "Não conheço este convite".
+   *
+   * A abertura da página não revoga nada: só o `POST` explícito do
+   * botão de confirmação chama a API. Scanners de email que seguem
+   * ligações ficam assim sem efeito.
+   */
+  teamInviteReport(token: string): string {
+    return `${publicAppBaseUrl()}/equipas/convite/${token}/denunciar`;
   },
 
   /** Página de uma equipa dentro do evento. */

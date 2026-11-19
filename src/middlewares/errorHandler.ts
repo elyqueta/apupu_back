@@ -48,7 +48,7 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   const requestId = req.id ?? 'unknown';
-  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Request-Id', requestId);
 
   const send = (status: number, body: ErrorEnvelope): void => {

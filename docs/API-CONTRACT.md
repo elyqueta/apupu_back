@@ -1085,6 +1085,14 @@ Regras de "Meus convites":
   e recebem apenas o convite por email (`team_invite`). Uma conta
   registada com email por verificar **não adere** a equipas pendentes:
   continua pendente até aceitar o convite com o email verificado.
+  A resposta distingue `ativo` de `convite_pendente`, o que permite a
+  quem conhece um email inferir se essa pessoa já tem conta verificada.
+  É um compromisso aceite: a UI precisa de mostrar o estado real do
+  convite. O risco é atenuado pelos limites por anfitrião
+  (`TEAM_INVITE_MAX_PER_HOST_PER_HOUR`/`_DAY`) e pelo cooldown de
+  reenvio, que tornam a enumeração em massa lenta e detectável. Não
+  existe um modo "convite cego": mudá-lo exigiria repensar a resposta
+  de `POST .../members`.
 - `PATCH /api/v1/host/teams/{teamId}/members/{memberId}`
   (`{ role: 'gestor' | 'membro' }`): promover **e** despromover são
   exclusivos do anfitrião (`403 host_action_forbidden` para gestores).
@@ -1137,9 +1145,17 @@ catálogo de mensagens:
 | Convite para quem não tem conta verificada | — (só email) | `team_invite` | Email convidado |
 | Membro com conta verificada adicionado | `team_added` | `team_added` | Membro adicionado (excepto o autor) |
 | Tarefa atribuída | `task_assigned` | `task_assigned` | Novo responsável (excepto o autor) |
-| Tarefa concluída | `task_completed` | `task_completed` | Anfitrião e gestores activos (excepto o responsável) |
-| Tarefa reatribuída | `task_reassigned` | `task_reassigned` | Novo responsável e responsável anterior |
+| Tarefa concluída | `task_completed` | `task_completed` | Criador da tarefa e anfitrião do evento (excepto o responsável; sem duplicar quando coincidem) |
+| Tarefa reatribuída | `task_reassigned` | `task_reassigned` | Novo responsável (variante `novo`) e responsável anterior (variante `anterior`) |
 | Papel alterado | `role_changed` | `team_role_changed` | Membro cujo papel mudou (excepto o autor) |
+
+A conclusão deixou de notificar todos os gestores: só quem criou a
+tarefa e o anfitrião do evento são avisados, uma única vez por conta.
+A reatribuição tem duas variantes com assunto próprio — quem recebe a
+tarefa lê "Passaram-te a tarefa…" e quem deixa de ser responsável lê
+"Já não és responsável…". A alteração de papel também distingue
+promoção (passa a gestor **do evento**, com acesso a todas as equipas
+e tarefas) de despromoção (volta a membro da equipa).
 
 Não existe mensagem de remoção: quem é removido deixa de ter acesso e
 não recebe email nem notificação. A revogação de um convite pendente
@@ -1543,6 +1559,18 @@ continuar a receber convites de outros anfitriões. A resposta é sempre
 convites. A partir daí, o anfitrião bloqueado vê apenas
 `409 invite_not_possible` / `invite_not_possible` na adição ou
 reenvio, sem saber que houve uma denúncia.
+
+`GET /api/v1/public/team-invites/{token}/report` existe apenas para a
+página de confirmação: responde `405` com `Allow: POST` e **nunca**
+revoga o convite. Scanners de email que seguem ligações não conseguem
+accionar a denúncia; a revogação só acontece no `POST` explícito do
+botão.
+
+As rotas públicas de convites de equipa (`GET`, `accept` e `report`)
+têm um limite adicional de 20 pedidos por minuto por IP e por acção
+(`TEAM_INVITE_RATE_LIMIT_*`). A pré-visualização, a aceitação e a
+denúncia usam baldes separados, para que abrir a confirmação de
+denúncia não consuma o limite da aceitação.
 
 `POST /api/v1/public/team-invites/{token}/accept` exige sessão de conta
 (`apupu_auth`) e `X-CSRF-Token`. O email verificado da conta tem de
@@ -2143,6 +2171,7 @@ created_at, updated_at }`.
 | `GET` | `/api/v1/public/team-invites/{token}` | `200` | `{ "data": TeamInvitePreview }` |
 | `POST` | `/api/v1/public/team-invites/{token}/accept` | `200` | `{ "data": TeamInviteAccept }` |
 | `POST` | `/api/v1/public/team-invites/{token}/report` | `204` | — |
+| `GET` | `/api/v1/public/team-invites/{token}/report` | `405` | `{ "error": { "code": "method_not_allowed", … } }` com `Allow: POST` |
 | `GET` | `/api/v1/templates` | `200` | `{ "data": Template[] }` |
 
 ## Respostas de erro por endpoint

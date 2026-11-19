@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import { publicController } from '../../controllers/public.controller';
-import { teamInviteController } from '../../controllers/teamInvite.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { guestAuth } from '../../middlewares/guestAuth';
-import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
-import { publicTokenLimiter, rsvpLimiter } from '../../middlewares/rateLimiter';
-import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
+import {
+  publicTokenLimiter,
+  rsvpLimiter,
+} from '../../middlewares/rateLimiter';
 import { requireGuestCsrf } from '../../middlewares/requireGuestCsrf';
 import { validate } from '../../middlewares/validate';
 import { inviteTokenParamsSchema, rsvpSchema } from '../../schemas/invitation.schemas';
-import { teamInviteTokenParamsSchema } from '../../schemas/team.schemas';
 
 const router = Router();
 
@@ -141,137 +140,6 @@ router.put(
   requireGuestCsrf,
   validate({ body: rsvpSchema }),
   asyncHandler(publicController.rsvp)
-);
-
-/**
- * @openapi
- * /api/v1/public/team-invites/{token}:
- *   get:
- *     tags: [Convites públicos]
- *     summary: Valida um convite de equipa
- *     description: >
- *       Devolve apenas o nome da equipa e quem convida quando o token
- *       é válido. Não revela o email convidado, o evento nem a
- *       validade. Um convite inexistente devolve 404; expirado,
- *       revogado ou já aceite devolve 409 com um código estável. O
- *       token em claro nunca é devolvido.
- *     parameters:
- *       - in: path
- *         name: token
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Convite válido.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/TeamInvitePreviewEnvelope' }
- *       404:
- *         description: Convite não encontrado.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/Error' }
- *       409:
- *         description: Convite expirado, revogado ou já aceite.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/Error' }
- */
-router.get(
-  '/team-invites/:token',
-  publicTokenLimiter,
-  validate({ params: teamInviteTokenParamsSchema }),
-  asyncHandler(teamInviteController.preview)
-);
-
-/**
- * @openapi
- * /api/v1/public/team-invites/{token}/report:
- *   post:
- *     tags: [Convites públicos]
- *     summary: Denuncia um convite desconhecido
- *     description: >
- *       Usado pelo botão "Não conheço este convite". Revoga o convite,
- *       cancela os emails pendentes e bloqueia o remetente original
- *       para aquele email. Responde sempre `204`, mesmo para um token
- *       inválido, para não permitir enumerar convites.
- *     parameters:
- *       - in: path
- *         name: token
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       204:
- *         description: Denúncia registada (ou token inexistente).
- *       429:
- *         description: Demasiados pedidos.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/Error' }
- */
-router.post(
-  '/team-invites/:token/report',
-  publicTokenLimiter,
-  validate({ params: teamInviteTokenParamsSchema }),
-  asyncHandler(teamInviteController.reportUnknown)
-);
-
-/**
- * @openapi
- * /api/v1/public/team-invites/{token}/accept:
- *   post:
- *     tags: [Convites públicos]
- *     summary: Aceita um convite de equipa
- *     description: >
- *       Exige sessão de conta com email verificado e coincidente com o
- *       email convidado. A aceitação é atómica: repetir o pedido devolve
- *       `409 invite_not_active` e nunca activa o membro duas vezes.
- *       Cancela os emails pendentes do convite.
- *     security:
- *       - accountSession: []
- *     parameters:
- *       - in: path
- *         name: token
- *         required: true
- *         schema: { type: string }
- *       - in: header
- *         name: X-CSRF-Token
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Convite aceite.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/TeamInviteAcceptEnvelope' }
- *       401:
- *         description: Sessão inválida.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/Error' }
- *       403:
- *         description: Email não verificado, diferente do convite ou CSRF inválido.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/Error' }
- *       404:
- *         description: Convite não encontrado.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/Error' }
- *       409:
- *         description: Convite expirado, revogado ou já aceite.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/Error' }
- */
-router.post(
-  '/team-invites/:token/accept',
-  publicTokenLimiter,
-  validate({ params: teamInviteTokenParamsSchema }),
-  asyncHandler(hostAccountAuth),
-  requireAuthCsrf,
-  asyncHandler(teamInviteController.accept)
 );
 
 export default router;

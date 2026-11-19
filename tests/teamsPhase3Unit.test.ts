@@ -197,7 +197,9 @@ describe('catálogo e renderização da Fase 3', () => {
     expect(message.subject).toContain('Cozinha');
     expect(message.html).toContain(links.teamInvite(TOKEN));
     expect(message.text).toContain(links.teamInvite(TOKEN));
-    expect(message.text.split(TOKEN)).toHaveLength(2);
+    expect(message.text).toContain(links.teamInviteReport(TOKEN));
+    // O token aparece no link de aceitação e no link de denúncia.
+    expect(message.text.split(TOKEN)).toHaveLength(3);
   });
 
   it('renderiza a atribuição com tarefa, autor e prazo', () => {
@@ -249,12 +251,33 @@ describe('catálogo e renderização da Fase 3', () => {
           assigneeName: 'Rita',
           previousAssigneeName: 'Ana',
           actorName: 'Pedro',
+          variant: 'novo',
         },
       })
     );
 
-    expect(reassigned.subject).toContain('Tarefa reatribuída');
+    expect(reassigned.subject).toContain('Passaram-te a tarefa');
+    expect(reassigned.text).toContain('Pedro passou-te a tarefa');
     expect(reassigned.text).toContain('O responsável anterior era Ana');
+
+    const previous = renderDelivery(
+      deliveryContext({
+        messageType: 'task_reassigned',
+        payload: {
+          taskId: TASK_ID,
+          taskTitle: 'Comprar gelo',
+          teamName: 'Cozinha',
+          recipientName: 'Ana',
+          assigneeName: 'Rita',
+          previousAssigneeName: 'Ana',
+          actorName: 'Pedro',
+          variant: 'anterior',
+        },
+      })
+    );
+
+    expect(previous.subject).toContain('Já não és responsável');
+    expect(previous.text).toContain('passou para Rita; já não és o responsável');
   });
 
   it('renderiza a adição e a alteração de papel com CTA para a equipa', () => {
@@ -290,7 +313,8 @@ describe('catálogo e renderização da Fase 3', () => {
     );
 
     expect(promoted.subject).toContain('Passaste a gestor');
-    expect(promoted.text).toContain('Pedro promoveu-te a gestor');
+    expect(promoted.text).toContain('Pedro promoveu-te a gestor do evento');
+    expect(promoted.text).toContain('acesso a todas as equipas e tarefas');
 
     const demoted = renderDelivery(
       deliveryContext({
@@ -328,6 +352,100 @@ describe('catálogo e renderização da Fase 3', () => {
     expect(message.html).toContain('&lt;script&gt;');
     expect(message.html).toContain('&lt;b&gt;Cozinha&lt;/b&gt;');
     expect(message.text).toContain('<script>alert("x")</script>');
+  });
+
+  it('remove preferências dos emails de equipas e mantém Ajuda', () => {
+    for (const code of [
+      'equipa_adicionado',
+      'equipa_papel_alterado',
+      'tarefa_atribuida',
+      'tarefa_concluida',
+      'tarefa_reatribuida',
+    ] as const) {
+      const content = catalog[code].email({
+        nome: 'Ana',
+        equipa: 'Cozinha',
+        evento: 'Casamento',
+        tarefa: 'Gelo',
+        autor: 'Pedro',
+        papel: 'gestor',
+        variante: 'novo',
+        url: 'https://exemplo.test/eventos/exemplo',
+      });
+      const html = renderEmailHtml(content, { baseUrl: 'https://exemplo.test', year: 2026 });
+      const text = renderEmailText(content, { baseUrl: 'https://exemplo.test', year: 2026 });
+
+      expect(html).not.toContain('Preferências de notificação');
+      expect(html).not.toContain('Deixar de receber');
+      expect(text).not.toContain('Preferências de notificação');
+      expect(text).not.toContain('Deixar de receber');
+      expect(html).toContain('Ajuda');
+      expect(text).toContain('Ajuda');
+    }
+  });
+
+  it('mostra apenas Ajuda e "Não conheço este convite" no rodapé do convite', () => {
+    const reportUrl = links.teamInviteReport(TOKEN);
+    const content = catalog.equipa_convite.email({
+      nome: 'Ana',
+      equipa: 'Cozinha',
+      evento: 'Casamento',
+      anfitriao: 'Pedro',
+      denunciarUrl: reportUrl,
+      url: links.teamInvite(TOKEN),
+    });
+    const html = renderEmailHtml(content, { baseUrl: 'https://exemplo.test', year: 2026 });
+    const text = renderEmailText(content, { baseUrl: 'https://exemplo.test', year: 2026 });
+
+    expect(html).toContain('Não conheço este convite');
+    expect(html).toContain(reportUrl);
+    expect(text).toContain('Não conheço este convite');
+    expect(text).toContain(reportUrl);
+    expect(html).not.toContain('Preferências de notificação');
+    expect(html).not.toContain('Deixar de receber');
+    expect(text).not.toContain('Preferências de notificação');
+    expect(text).not.toContain('Deixar de receber');
+    expect(html).toContain('Ajuda');
+  });
+
+  it('usa SUPPORT_EMAIL no contacto de ajuda', () => {
+    const content = catalog.tarefa_atribuida.email({
+      nome: 'Ana',
+      equipa: 'Cozinha',
+      evento: 'Casamento',
+      tarefa: 'Gelo',
+      autor: 'Pedro',
+    });
+    const text = renderEmailText(content, { baseUrl: 'https://exemplo.test', year: 2026 });
+
+    expect(text).toContain('Ajuda: mailto:apoio@exemplo.pt');
+    expect(text).not.toContain('csassapa');
+  });
+
+  it('trunca assuntos a 50 caracteres com reticências sem partir emoji', () => {
+    const longName = `${'Ação çãõ '.repeat(20)}🎉`;
+    const task = catalog.tarefa_atribuida.email({
+      nome: 'Ana',
+      equipa: 'Cozinha',
+      evento: 'Casamento',
+      tarefa: longName,
+      autor: 'Pedro',
+    });
+    const team = catalog.equipa_convite.email({
+      nome: 'Ana',
+      equipa: longName,
+      evento: 'Casamento',
+      anfitriao: 'Pedro',
+      url: 'https://exemplo.test/convite',
+    });
+
+    for (const subject of [task.subject, team.subject]) {
+      expect(Array.from(subject).length).toBeLessThanOrEqual(50);
+      expect(subject.endsWith('…')).toBe(true);
+      expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(subject)).toBe(
+        false
+      );
+    }
   });
 
   it('produz uma versão text/plain sem marcação HTML', () => {
@@ -377,6 +495,10 @@ describe('snapshots do texto dos emails da Fase 3', () => {
     papel: 'gestor',
     tarefa: 'Comprar gelo',
     prazo: '31 de jan. de 2030',
+    responsavel: 'Rita',
+    anterior: 'Ana',
+    variante: 'novo' as const,
+    denunciarUrl: 'https://exemplo.test/equipas/convite/token/denunciar',
     url: 'https://exemplo.test/equipas/convite/token',
   };
 
@@ -395,6 +517,29 @@ describe('snapshots do texto dos emails da Fase 3', () => {
       expect({ subject: content.subject, text }).toMatchSnapshot();
     });
   }
+
+  it('mantém as duas variantes de reatribuição', () => {
+    for (const variante of ['novo', 'anterior'] as const) {
+      const content = catalog.tarefa_reatribuida.email({
+        ...vars,
+        variante,
+        responsavel: variante === 'anterior' ? 'Rita' : 'Ana',
+        anterior: variante === 'anterior' ? undefined : 'Rita',
+      });
+      const text = renderEmailText(content, { baseUrl: 'https://exemplo.test', year: 2026 });
+
+      expect({ variante, subject: content.subject, text }).toMatchSnapshot();
+    }
+  });
+
+  it('mantém as duas variantes de alteração de papel', () => {
+    for (const papel of ['gestor', 'membro'] as const) {
+      const content = catalog.equipa_papel_alterado.email({ ...vars, papel });
+      const text = renderEmailText(content, { baseUrl: 'https://exemplo.test', year: 2026 });
+
+      expect({ papel, subject: content.subject, text }).toMatchSnapshot();
+    }
+  });
 });
 
 describe('evaluateApplicability das mensagens de equipa', () => {
@@ -520,6 +665,7 @@ describe('helpers das notificações de equipa', () => {
       eventId: EVENT_ID,
       teamName: 'Cozinha',
       actorName: 'Pedro',
+      createdByHostId: 'cccccccc-0000-4000-8000-000000000001',
     });
     expect(context?.dueDate).toContain('2030');
 
@@ -528,6 +674,7 @@ describe('helpers das notificações de equipa', () => {
 
   it('constrói links estáveis para convites, equipas e tarefas', () => {
     expect(links.teamInvite(TOKEN)).toContain(`/equipas/convite/${TOKEN}`);
+    expect(links.teamInviteReport(TOKEN)).toContain(`/equipas/convite/${TOKEN}/denunciar`);
     expect(links.team(EVENT_ID, TASK_ID)).toContain(`/eventos/${EVENT_ID}/equipas?equipa=${TASK_ID}`);
     expect(links.task(EVENT_ID, TASK_ID)).toContain(`/eventos/${EVENT_ID}/tarefas?tarefa=${TASK_ID}`);
   });
@@ -547,6 +694,7 @@ describe('segurança dos registos e do transporte', () => {
       {
         token: 'segredo-token',
         recipientEmail: 'ana@example.test',
+        url: `https://api.exemplo.pt/api/v1/public/team-invites/${TOKEN}`,
         payload: { token: 'outro-segredo', tokenEncrypted: 'texto-cifrado' },
       },
       'teste de redaction'
@@ -556,6 +704,7 @@ describe('segurança dos registos e do transporte', () => {
     expect(output).not.toContain('ana@example.test');
     expect(output).not.toContain('outro-segredo');
     expect(output).not.toContain('texto-cifrado');
+    expect(output).not.toContain(TOKEN);
     expect(output).toContain('[redacted]');
   });
 

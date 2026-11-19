@@ -4,6 +4,7 @@ import eventsRoutes from './events.routes';
 import hostRoutes from './host.routes';
 import hostWorkspaceRoutes from './hostWorkspace.routes';
 import publicRoutes from './public.routes';
+import teamInvitePublicRoutes from './teamInvitePublic.routes';
 import templatesRoutes from './templates.routes';
 
 /**
@@ -21,5 +22,6 @@ router.use('/events', eventsRoutes);
 router.use('/host', hostRoutes);
 router.use('/host', hostWorkspaceRoutes);
 router.use('/public/invitations', publicRoutes);
+router.use('/public/team-invites', teamInvitePublicRoutes);
 
 export default router;

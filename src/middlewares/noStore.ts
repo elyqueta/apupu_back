@@ -8,7 +8,7 @@ import { NextFunction, Request, Response } from 'express';
  * expor informação a outro utilizador do mesmo dispositivo.
  */
 export function noStore(_req: Request, res: Response, next: NextFunction): void {
-  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Pragma', 'no-cache');
   next();
 }

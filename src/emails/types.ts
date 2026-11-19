@@ -91,6 +91,13 @@ export interface EmailVars {
   papel?: string;
   /** Prazo já formatado, ex.: "31 jan 2030" (Fase 3). */
   prazo?: string;
+  /**
+   * Variante da reatribuição: `novo` para o novo responsável e
+   * `anterior` para quem deixou de o ser (Fase 3).
+   */
+  variante?: 'novo' | 'anterior';
+  /** Página de confirmação de "Não conheço este convite" (Fase 3). */
+  denunciarUrl?: string;
 }
 
 export type EmailTone = 'default' | 'danger';
@@ -101,6 +108,26 @@ export interface EmailDetails {
   date?: string;
   time?: string;
   location?: string;
+}
+
+/** Ligação adicional no rodapé. */
+export interface EmailFooterLink {
+  label: string;
+  url: string;
+}
+
+/**
+ * Configuração do rodapé.
+ *
+ * As mensagens de equipas/tarefas não têm modelo de preferências, por
+ * isso desligam `preferences`. O convite de equipa acrescenta a
+ * ligação de denúncia.
+ */
+export interface EmailFooter {
+  /** Mostra "Preferências de notificação" e "Deixar de receber". */
+  preferences?: boolean;
+  /** Ligações extra, apresentadas depois de "Ajuda". */
+  links?: EmailFooterLink[];
 }
 
 /** Conteúdo de um e-mail, independente do canal de entrega. */
@@ -118,6 +145,8 @@ export interface EmailContent {
   /** Completa a frase "Recebeste este e-mail porque ...". */
   reason: string;
   tone?: EmailTone;
+  /** Rodapé específico; por omissão mostra as preferências. */
+  footer?: EmailFooter;
 }
 
 /** Mensagem curta para in-app/push. */

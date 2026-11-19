@@ -43,6 +43,24 @@ export const teamInviteController = {
     res.status(204).end();
   },
 
+  /**
+   * `GET` da rota de denúncia.
+   *
+   * Scanners de email seguem ligações automaticamente. O `GET` nunca
+   * pode revogar o convite: responde `405` e indica que a confirmação
+   * exige um `POST` explícito do botão.
+   */
+  reportUnknownMethodNotAllowed: (req: Request, res: Response): void => {
+    res.set('Allow', 'POST');
+    res.status(405).json({
+      error: {
+        code: 'method_not_allowed',
+        message: 'Use POST para confirmar que não conhece este convite.',
+        request_id: req.id ?? 'unknown',
+      },
+    });
+  },
+
   /** Aceita o convite com a conta autenticada. */
   accept: async (req: Request, res: Response): Promise<void> => {
     const account = req.hostAccount;
