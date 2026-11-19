@@ -1072,6 +1072,13 @@ Regras de "Meus convites":
   `agendado` (`starts_at` no futuro) ou `em_curso` (já começou e ainda
   não terminou). O anfitrião é sempre `anfitriao`, mesmo que a linha
   materializada em `team_members` tenha `role=gestor`.
+- Sem `ends_at`, o evento **não** passa automaticamente a `concluido`:
+  depois de `starts_at` fica `em_curso` indefinidamente até ser marcado
+  como `completed`. Isto é intencional — a data de fim é opcional e o
+  servidor não inventa uma duração. Um `ends_at` igual ou anterior a
+  `starts_at` é rejeitado com `422` pela validação da API e pela
+  constraint `events_dates_check`, pelo que a combinação nunca chega a
+  produzir `event_status`.
 - Filtros do `GET /host/teams`: `event_id`, `category`, `role`
   (`anfitriao|gestor|membro`), `event_status`
   (`agendado|em_curso|concluido|cancelado|rascunho`), `mine` e `q`.
