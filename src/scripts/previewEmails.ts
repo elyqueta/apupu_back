@@ -46,6 +46,37 @@ const OVERRIDES: Partial<Record<EmailTemplateCode, Partial<EmailVars>>> = {
   email_verification: { url: 'https://conto-contigo.example/verificar-email/exemplo' },
   profile_reminder: { url: 'https://conto-contigo.example/definicoes' },
   decline_notification: { nome: 'Pedro' },
+  equipa_convite: {
+    equipa: 'Cozinha',
+    expiraEm: '7 dias',
+    url: 'https://conto-contigo.example/equipas/convite/exemplo',
+  },
+  equipa_adicionado: {
+    equipa: 'Cozinha',
+    url: 'https://conto-contigo.example/eventos/exemplo/equipas?equipa=cozinha',
+  },
+  equipa_papel_alterado: {
+    equipa: 'Cozinha',
+    papel: 'gestor',
+    url: 'https://conto-contigo.example/eventos/exemplo/equipas?equipa=cozinha',
+  },
+  tarefa_atribuida: {
+    equipa: 'Cozinha',
+    tarefa: 'Comprar gelo',
+    prazo: '20 de novembro',
+    url: 'https://conto-contigo.example/eventos/exemplo/tarefas?tarefa=gelo',
+  },
+  tarefa_concluida: {
+    equipa: 'Cozinha',
+    tarefa: 'Comprar gelo',
+    responsavel: 'Ana',
+    url: 'https://conto-contigo.example/eventos/exemplo/tarefas?tarefa=gelo',
+  },
+  tarefa_reatribuida: {
+    equipa: 'Cozinha',
+    tarefa: 'Comprar gelo',
+    url: 'https://conto-contigo.example/eventos/exemplo/tarefas?tarefa=gelo',
+  },
 };
 
 interface PreviewRow {

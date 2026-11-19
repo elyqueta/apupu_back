@@ -84,6 +84,14 @@ export const teamMemberParamsSchema = z.object({
   memberId: z.uuid('Identificador de membro inválido.'),
 });
 
+export const teamInviteTokenParamsSchema = z.object({
+  token: z
+    .string()
+    .trim()
+    .min(20, 'Token de convite inválido.')
+    .max(200, 'Token de convite inválido.'),
+});
+
 export const addTeamMembersSchema = z
   .object({
     emails: z
@@ -158,3 +166,4 @@ export type RemoveTeamMemberQuery = z.infer<typeof removeTeamMemberQuerySchema>;
 export type TaskAssigneeBody = z.infer<typeof taskAssigneeSchema>;
 export type TaskStatusBody = z.infer<typeof taskStatusBodySchema>;
 export type MoveTaskBody = z.infer<typeof moveTaskSchema>;
+export type TeamInviteTokenParams = z.infer<typeof teamInviteTokenParamsSchema>;

@@ -401,9 +401,11 @@ export const taskRepository = {
    */
   async complete(
     id: string,
-    assigneeMemberId: string
+    assigneeMemberId: string,
+    client?: PoolClient
   ): Promise<{ task: Task; changed: boolean } | null> {
-    const result = await query<{ id: string }>(
+    const runner = client ?? pool;
+    const result = await runner.query<{ id: string }>(
       `UPDATE host_tasks
           SET status = 'concluida',
               completed_at = now(),
@@ -417,7 +419,7 @@ export const taskRepository = {
       [id, assigneeMemberId]
     );
 
-    const current = await this.findById(id);
+    const current = await this.findById(id, client);
     if (!current) return null;
 
     return { task: current, changed: (result.rowCount ?? 0) > 0 };

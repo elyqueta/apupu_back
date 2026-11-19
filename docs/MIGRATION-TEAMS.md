@@ -1,6 +1,11 @@
 # Migração de equipas e tarefas (Prompt 5)
 
-Migração: [`../migrations/1739900000011_teams.js`](../migrations/1739900000011_teams.js)
+Migrações:
+
+- [`../migrations/1739900000011_teams.js`](../migrations/1739900000011_teams.js)
+- [`../migrations/1739900000012_team-task-indexes.js`](../migrations/1739900000012_team-task-indexes.js)
+- [`../migrations/1739900000013_team-notifications.js`](../migrations/1739900000013_team-notifications.js)
+- [`../migrations/1739900000014_team-invite-blocks.js`](../migrations/1739900000014_team-invite-blocks.js)
 
 ## O que faz
 
@@ -15,6 +20,21 @@ Migração: [`../migrations/1739900000011_teams.js`](../migrations/1739900000011
   transação (`pgm.noTransaction()`), para não bloquear escritas em
   `host_tasks` em produção; o `down` remove-os com
   `DROP INDEX CONCURRENTLY`.
+- A migração da Fase 3,
+  [`1739900000013_team-notifications.js`](../migrations/1739900000013_team-notifications.js),
+  acrescenta `payload jsonb` a `email_deliveries`, alarga
+  `email_deliveries_type_check` e `host_notifications_kind_check`, e cria
+  `team_invites` (HMAC do token, expiração, aceitação, revogação e
+  contadores anti-spam). O `down` apaga as linhas dos tipos novos antes
+  de restaurar as constraints antigas, pelo que é reversível mesmo com
+  dados gerados.
+- A migração
+  [`1739900000014_team-invite-blocks.js`](../migrations/1739900000014_team-invite-blocks.js)
+  acrescenta `created_by_host_id` a `team_invites` (remetente original),
+  cria `team_invite_blocks` (par anfitrião + email denunciado) e alinha
+  as constraints com o catálogo final: entram `team_added` e
+  `team_role_changed`, sai `member_removed`. O `down` repõe as
+  constraints da migração 13 e remove a tabela/coluna.
 - Cria a equipa **"Geral"** (categoria `outra`) por cada evento com
   tarefas antigas **e com pelo menos um responsável possível**
   (anfitrião ou gestor activo).
@@ -95,7 +115,7 @@ O script:
 4. mostra contagens antes;
 5. aplica as migrations;
 6. corre `tests/teamsMigration.test.ts` (invariantes de `up`);
-7. reverte com `down 2` (índices + equipas);
+7. reverte com `down 4` (bloqueios + notificações + índices + equipas);
 8. mostra contagens e corre os invariantes de `down`.
 
 Nunca escreve na base de origem. Para apontar a outra origem:
@@ -140,7 +160,8 @@ todas as escritas acontecem na cópia local (`apupu_cc5_copy`).
 
 Testes: **18 passed / 0 skipped** (`up`) e **4 passed / 0 skipped**
 (`down`). Cada execução regista apenas a direcção que está a validar,
-por isso não há testes ignorados.
+por isso não há testes ignorados. `npm run test:teams` cobre também os
+testes da API e da Fase 3 (53 passed na API).
 
 Para repetir a validação da API e da migração numa base limpa:
 
@@ -166,8 +187,9 @@ npm run migrate:up
 ## Rollback
 
 ```bash
-# Reverter as duas migrações de equipas (índices + tabelas/colunas)
-npx node-pg-migrate down 2
+# Reverter as quatro migrações de equipas
+# (bloqueios + notificações + índices + tabelas/colunas)
+npx node-pg-migrate down 4
 
 # Restaurar o backup completo (destrutivo: substitui a base)
 pg_restore --clean --if-exists -d "$DATABASE_URL" backup-pre-equipas-YYYYMMDD-HHMM.dump
@@ -187,3 +209,12 @@ colunas novas antes de as remover, pelo que nenhuma tarefa é perdida.
 - `team_materialize_event_staff(team_id)` materializa anfitrião e
   gestores activos numa equipa. A Fase 2 chama-a na mesma transação que
   cria a equipa ou altera o acesso de um gestor.
+- A Fase 3 não altera tabelas existentes além de `email_deliveries` e
+  `host_notifications` (coluna e constraints). `team_invites` e
+  `team_invite_blocks` são novas; os convites guardam só o HMAC do
+  token, e o token em claro fica no email cifrado da outbox.
+- Nenhum serviço envia email directamente: convites, adições,
+  alterações de papel, atribuições, conclusões e reatribuições passam
+  sempre pela outbox, com retries e supressão quando a mensagem deixa de
+  fazer sentido. A remoção de um membro é silenciosa: não gera email
+  nem notificação.

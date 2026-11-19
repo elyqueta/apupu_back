@@ -680,6 +680,61 @@ export const contoContigoSchemas = {
     },
   },
 
+  TeamInvitePreview: {
+    type: 'object',
+    properties: {
+      team_name: { type: 'string' },
+      invited_by: {
+        type: 'string',
+        description: 'Nome de quem convida (ou email do anfitrião, sem outros dados).',
+        example: 'Pedro Silva',
+      },
+    },
+    required: ['team_name', 'invited_by'],
+  },
+
+  TeamInvitePreviewEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/TeamInvitePreview' },
+    },
+  },
+
+  TeamInviteAccept: {
+    type: 'object',
+    properties: {
+      member_id: { type: 'string', format: 'uuid' },
+      team_id: { type: 'string', format: 'uuid' },
+      team_name: { type: 'string' },
+      event_id: { type: 'string', format: 'uuid' },
+      event_title: { type: 'string' },
+      role: { type: 'string', enum: ['gestor', 'membro'] },
+    },
+  },
+
+  TeamInviteAcceptEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/TeamInviteAccept' },
+    },
+  },
+
+  TeamInviteResend: {
+    type: 'object',
+    properties: {
+      send_count: { type: 'integer', minimum: 1 },
+      last_sent_at: { type: 'string', format: 'date-time' },
+      expires_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  TeamInviteResendEnvelope: {
+    type: 'object',
+    properties: {
+      data: { $ref: '#/components/schemas/TeamInviteResend' },
+    },
+  },
+
   Notification: {
     type: 'object',
     properties: {
@@ -699,6 +754,9 @@ export const contoContigoSchemas = {
           'rsvp_deadline',
           'task_assigned',
           'task_completed',
+          'task_reassigned',
+          'team_added',
+          'role_changed',
         ],
       },
       title: { type: 'string' },

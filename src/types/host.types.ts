@@ -107,6 +107,9 @@ export const NOTIFICATION_KINDS = [
   'rsvp_deadline',
   'task_assigned',
   'task_completed',
+  'task_reassigned',
+  'team_added',
+  'role_changed',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

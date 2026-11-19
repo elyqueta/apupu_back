@@ -440,7 +440,245 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
       pushMessage(`Convite removido: ${eventName(vars)}`, 'A ligação que recebeste já não é válida.'),
     sms: (vars) => smsMessage(`Conto Contigo: o teu convite para ${eventName(vars)} foi removido.`),
   },
+
+  equipa_convite: {
+    code: 'equipa_convite',
+    email: (vars) => ({
+      subject: short(`Convite para a equipa ${vars.equipa ?? 'do evento'}`, 50),
+      preheader: short(
+        `${hostName(vars)} convidou-te para ajudares em ${eventName(vars)}.`,
+        90
+      ),
+      title: 'Foste convidado para uma equipa',
+      greetingName: recipientName(vars),
+      paragraphs: [
+        `${hostName(vars)} convidou-te para a equipa ${vars.equipa ?? 'do evento'} do evento ${eventName(vars)}.`,
+        'Aceita o convite para veres as tarefas da equipa e acompanhares o que falta fazer.',
+        `A ligação expira ao fim de ${vars.expiraEm ?? '7 dias'} e só pode ser usada uma vez.`,
+      ],
+      details: eventDetails(vars),
+      cta: vars.url ? { label: 'Aceitar convite', url: vars.url } : undefined,
+      reason: `${hostName(vars)} adicionou-te a esta equipa`,
+    }),
+    push: (vars) =>
+      pushMessage(
+        `Convite para a equipa ${vars.equipa ?? 'do evento'}`,
+        `Ajuda a organizar ${eventName(vars)}.`
+      ),
+    sms: (vars) =>
+      smsMessage(
+        `Conto Contigo: ${hostName(vars)} convidou-te para a equipa ${vars.equipa ?? 'do evento'}. Aceita aqui:`,
+        vars.url
+      ),
+  },
+
+  equipa_adicionado: {
+    code: 'equipa_adicionado',
+    email: (vars) => ({
+      subject: short(`Foste adicionado à equipa ${vars.equipa ?? 'do evento'}`, 50),
+      preheader: short(
+        `${vars.autor ?? hostName(vars)} adicionou-te à equipa ${vars.equipa ?? 'do evento'} de ${eventName(vars)}.`,
+        90
+      ),
+      title: 'Foste adicionado a uma equipa',
+      greetingName: recipientName(vars),
+      paragraphs: [
+        `${vars.autor ?? hostName(vars)} adicionou-te à equipa ${vars.equipa ?? 'do evento'} do evento ${eventName(vars)}.`,
+        'Já podes ver e assumir as tarefas desta equipa.',
+        'Se não reconheces esta equipa, fala com o anfitrião do evento.',
+      ],
+      details: eventDetails(vars),
+      cta: vars.url ? { label: 'Ver a equipa', url: vars.url } : undefined,
+      reason: `${vars.autor ?? hostName(vars)} adicionou-te a esta equipa`,
+    }),
+    push: (vars) =>
+      pushMessage(
+        `Foste adicionado à equipa ${vars.equipa ?? 'do evento'}`,
+        `Já podes ajudar a organizar ${eventName(vars)}.`
+      ),
+    sms: (vars) =>
+      smsMessage(
+        `Conto Contigo: ${vars.autor ?? hostName(vars)} adicionou-te à equipa ${vars.equipa ?? 'do evento'}.`,
+        vars.url
+      ),
+  },
+
+  equipa_papel_alterado: {
+    code: 'equipa_papel_alterado',
+    email: (vars) => {
+      const promoted = vars.papel === 'gestor';
+      const actor = vars.autor ?? hostName(vars);
+      const team = vars.equipa ?? 'do evento';
+
+      return {
+        subject: short(
+          promoted ? `Passaste a gestor da equipa ${team}` : `O teu papel na equipa ${team} mudou`,
+          50
+        ),
+        preheader: short(
+          promoted
+            ? `${actor} promoveu-te a gestor da equipa ${team} de ${eventName(vars)}.`
+            : `${actor} alterou o teu papel na equipa ${team} de ${eventName(vars)}.`,
+          90
+        ),
+        title: promoted ? 'Passaste a gestor' : 'O teu papel mudou',
+        greetingName: recipientName(vars),
+        paragraphs: promoted
+          ? [
+              `${actor} promoveu-te a gestor da equipa ${team} do evento ${eventName(vars)}.`,
+              'Como gestor, podes ajudar a organizar a equipa e acompanhar as tarefas.',
+              'As permissões de gestão do evento continuam a ser decididas pelo anfitrião.',
+            ]
+          : [
+              `${actor} alterou o teu papel na equipa ${team} do evento ${eventName(vars)} para membro.`,
+              'Continuas a ver e a concluir as tarefas que te forem atribuídas.',
+            ],
+        details: eventDetails(vars),
+        cta: vars.url ? { label: 'Ver a equipa', url: vars.url } : undefined,
+        reason: 'o teu papel nesta equipa mudou',
+      };
+    },
+    push: (vars) => {
+      const promoted = vars.papel === 'gestor';
+      return pushMessage(
+        promoted
+          ? `Passaste a gestor da equipa ${vars.equipa ?? 'do evento'}`
+          : `O teu papel na equipa ${vars.equipa ?? 'do evento'} mudou`,
+        promoted ? 'Já podes ajudar a organizar a equipa.' : 'Continuas a ver as tuas tarefas.'
+      );
+    },
+    sms: (vars) =>
+      smsMessage(
+        vars.papel === 'gestor'
+          ? `Conto Contigo: passaste a gestor da equipa ${vars.equipa ?? 'do evento'}.`
+          : `Conto Contigo: o teu papel na equipa ${vars.equipa ?? 'do evento'} mudou.`
+      ),
+  },
+
+  tarefa_atribuida: {
+    code: 'tarefa_atribuida',
+    email: (vars) => {
+      const paragraphs = [
+        `${vars.autor ?? 'O anfitrião'} atribuiu-te a tarefa "${vars.tarefa ?? 'sem título'}" na equipa ${vars.equipa ?? 'do evento'} de ${eventName(vars)}.`,
+      ];
+
+      if (vars.prazo) {
+        paragraphs.push(`Prazo: ${vars.prazo}.`);
+      }
+
+      paragraphs.push('Podes concluí-la quando estiver pronta.');
+
+      return {
+        subject: short(`Nova tarefa: ${vars.tarefa ?? 'sem título'}`, 50),
+        preheader: short(`Ficaste responsável por uma tarefa em ${eventName(vars)}.`, 90),
+        title: 'Tens uma nova tarefa',
+        greetingName: recipientName(vars),
+        paragraphs,
+        details: eventDetails(vars),
+        cta: vars.url ? { label: 'Ver tarefa', url: vars.url } : undefined,
+        reason: 'és responsável por esta tarefa',
+      };
+    },
+    push: (vars) =>
+      pushMessage(
+        `Nova tarefa: ${vars.tarefa ?? 'sem título'}`,
+        `Ficaste responsável por uma tarefa em ${eventName(vars)}.`
+      ),
+    sms: (vars) =>
+      smsMessage(
+        `Conto Contigo: nova tarefa "${vars.tarefa ?? 'sem título'}" em ${eventName(vars)}.`,
+        vars.url
+      ),
+  },
+
+  tarefa_concluida: {
+    code: 'tarefa_concluida',
+    email: (vars) => ({
+      subject: short(`Tarefa concluída: ${vars.tarefa ?? 'sem título'}`, 50),
+      preheader: short(
+        `${vars.responsavel ?? 'O responsável'} concluiu uma tarefa em ${eventName(vars)}.`,
+        90
+      ),
+      title: 'Tarefa concluída',
+      greetingName: recipientName(vars),
+      paragraphs: [
+        `${vars.responsavel ?? 'O responsável'} concluiu a tarefa "${vars.tarefa ?? 'sem título'}" na equipa ${vars.equipa ?? 'do evento'}.`,
+        'A tarefa já não aparece nas pendentes.',
+      ],
+      details: eventDetails(vars),
+      cta: vars.url ? { label: 'Ver tarefa', url: vars.url } : undefined,
+      reason: 'acompanhas as tarefas deste evento',
+    }),
+    push: (vars) =>
+      pushMessage(
+        `Tarefa concluída: ${vars.tarefa ?? 'sem título'}`,
+        `${vars.responsavel ?? 'O responsável'} concluiu uma tarefa.`
+      ),
+    sms: (vars) =>
+      smsMessage(
+        `Conto Contigo: "${vars.tarefa ?? 'sem título'}" foi concluída em ${eventName(vars)}.`,
+        vars.url
+      ),
+  },
+
+  tarefa_reatribuida: {
+    code: 'tarefa_reatribuida',
+    email: (vars) => {
+      const paragraphs = [
+        `${vars.autor ?? 'O anfitrião'} reatribuiu a tarefa "${vars.tarefa ?? 'sem título'}" da equipa ${vars.equipa ?? 'do evento'} a ${vars.responsavel ?? 'um novo responsável'}.`,
+      ];
+
+      if (vars.anterior) {
+        paragraphs.push(`O responsável anterior era ${vars.anterior}.`);
+      }
+
+      paragraphs.push('O novo responsável passa a ser quem pode concluir a tarefa.');
+
+      return {
+        subject: short(`Tarefa reatribuída: ${vars.tarefa ?? 'sem título'}`, 50),
+        preheader: short(
+          `A tarefa "${vars.tarefa ?? 'sem título'}" passou para ${vars.responsavel ?? 'outra pessoa'}.`,
+          90
+        ),
+        title: 'Tarefa reatribuída',
+        greetingName: recipientName(vars),
+        paragraphs,
+        details: eventDetails(vars),
+        cta: vars.url ? { label: 'Ver tarefa', url: vars.url } : undefined,
+        reason: 'acompanhas as tarefas deste evento',
+      };
+    },
+    push: (vars) =>
+      pushMessage(
+        `Tarefa reatribuída: ${vars.tarefa ?? 'sem título'}`,
+        `A tarefa passou para ${vars.responsavel ?? 'outra pessoa'}.`
+      ),
+    sms: (vars) =>
+      smsMessage(
+        `Conto Contigo: "${vars.tarefa ?? 'sem título'}" passou para ${vars.responsavel ?? 'outra pessoa'}.`,
+        vars.url
+      ),
+  },
+
 };
+
+/**
+ * Aliases retrocompatíveis de códigos do catálogo.
+ *
+ * `convite_equipa` foi o nome usado na primeira entrega da Fase 3.
+ * Continua a resolver para `equipa_convite` para que payloads antigos
+ * da outbox e pré-visualizações guardadas não falhem. Novos usos devem
+ * usar sempre o nome canónico.
+ */
+export const catalogAliases: Record<string, EmailTemplateCode> = {
+  convite_equipa: 'equipa_convite',
+};
+
+/** Resolve um código do catálogo, aceitando aliases retrocompatíveis. */
+export function resolveCatalogCode(code: string): EmailTemplateCode | null {
+  if (code in catalog) return code as EmailTemplateCode;
+  return catalogAliases[code] ?? null;
+}
 
 /** Lista estável usada pelo script de pré-visualização. */
 export const catalogEntries: CatalogEntry[] = Object.values(catalog);

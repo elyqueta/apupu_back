@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Testes de integração das equipas/tarefas (Fase 2).
+# Testes de integração das equipas/tarefas (Fases 2 e 3).
 #
 # Sobe o Postgres de teste do docker-compose (porta 5433), recria duas
 # bases efémeras e corre:
 #   1. a API contra `apupu_teams_api` (schema completo);
 #   2. a migração contra `apupu_teams_migration` (schema anterior à
-#      migração de equipas + fixture), validando `up` e `down 2`.
+#      migração de equipas + fixture), validando `up` e `down 4`.
 #
 # Nunca toca na base de desenvolvimento (5432): todos os URLs usados
 # aqui apontam para 5433.
@@ -42,10 +42,12 @@ psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
 echo "== 3/6 A aplicar todas as migrations na base da API =="
 DATABASE_URL="$API_URL" npx node-pg-migrate up --verbose=false
 
-echo "== 4/6 Testes da API (equipas, membros, tarefas e correções) =="
+echo "== 4/6 Testes da API (equipas, membros, tarefas, convites e notificações) =="
 TEAMS_API_TEST_URL="$API_URL" npx vitest run \
+  tests/teamsPhase3Unit.test.ts \
   tests/teamsApi.test.ts \
-  tests/teamsApiPhase2Corrections.test.ts
+  tests/teamsApiPhase2Corrections.test.ts \
+  tests/teamsPhase3.test.ts
 
 echo "== 5/6 Migração: estado anterior + fixture + up =="
 DATABASE_URL="$MIGRATION_URL" npx node-pg-migrate up 11 --verbose=false
@@ -54,8 +56,8 @@ DATABASE_URL="$MIGRATION_URL" npx node-pg-migrate up --verbose=false
 
 TEAMS_MIGRATION_TEST_URL="$MIGRATION_URL" npx vitest run tests/teamsMigration.test.ts
 
-echo "== 6/6 Migração: down 2 e validação do rollback =="
-DATABASE_URL="$MIGRATION_URL" npx node-pg-migrate down 2 --verbose=false
+echo "== 6/6 Migração: down 4 e validação do rollback =="
+DATABASE_URL="$MIGRATION_URL" npx node-pg-migrate down 4 --verbose=false
 TEAMS_MIGRATION_TEST_URL="$MIGRATION_URL" TEAMS_MIGRATION_EXPECT=down \
   npx vitest run tests/teamsMigration.test.ts
 

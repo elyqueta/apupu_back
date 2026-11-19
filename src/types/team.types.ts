@@ -150,3 +150,39 @@ export interface TeamMemberAddResult {
   status: TeamMemberStatus;
   reason?: string;
 }
+
+/**
+ * Convite de equipa enviado por email.
+ *
+ * Guarda apenas o HMAC do token (`tokenHash`); o token em claro só
+ * existe no link entregue ao convidado e no email cifrado da outbox.
+ */
+export interface TeamInvite {
+  id: string;
+  memberId: string;
+  teamId: string;
+  email: string;
+  /** Anfitrião que criou o convite; identifica o remetente original. */
+  createdByHostId: string | null;
+  tokenHash: string;
+  expiresAt: Date;
+  acceptedAt: Date | null;
+  revokedAt: Date | null;
+  sendCount: number;
+  lastSentAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Convite com o contexto necessário para validar e aceitar. */
+export interface TeamInviteContext extends TeamInvite {
+  teamName: string;
+  eventId: string;
+  eventTitle: string;
+  /** Nome de quem convida (display name ou email do anfitrião remetente). */
+  inviterName: string | null;
+  memberDisplayName: string | null;
+  memberHostId: string | null;
+  memberStatus: TeamMemberStatus;
+  memberRemovedAt: Date | null;
+}

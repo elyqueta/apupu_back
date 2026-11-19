@@ -75,6 +75,9 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `422` | `otp_invalid` | Código OTP inválido ou expirado |
 | `422` | `otp_attempts_exceeded` | Limite de tentativas do código atingido; pedir novo código |
 | `423` | `account_locked` | Demasiadas falhas de login; bloqueio temporário |
+| `404` | `invite_not_found` | Convite de equipa inexistente, expirado ou já usado (resposta pública indistinguível) |
+| `409` | `invite_expired`, `invite_revoked`, `invite_already_accepted`, `invite_send_limit`, `invite_not_possible`, `member_already_active`, `member_without_email` | Convite de equipa inválido, esgotado ou bloqueado |
+| `429` | `invite_cooldown`, `invite_email_rate_limited`, `invite_host_rate_limited` | Anti-spam de convites de equipa |
 | `429` | `rate_limited` | Limite de pedidos excedido (activo em todos os ambientes) |
 | `429` | `otp_resend_too_soon` | Pedido de novo código antes do intervalo mínimo |
 | `500` | `internal_error` | Erro inesperado; sem stack trace |
@@ -429,6 +432,7 @@ estado. A listagem global pagina, filtra e pesquisa.
 | `POST` | `/api/v1/host/teams/{teamId}/members` | Adiciona membros por email (máx. 50 por pedido; acima devolve `400`) |
 | `PATCH` | `/api/v1/host/teams/{teamId}/members/{memberId}` | Promove ou despromove um membro; só o anfitrião |
 | `DELETE` | `/api/v1/host/teams/{teamId}/members/{memberId}` | Remove logicamente um membro, com reatribuição opcional |
+| `POST` | `/api/v1/host/teams/{teamId}/members/{memberId}/invite/resend` | Reenvia o convite de equipa com anti-spam e rotação do token |
 
 Parâmetros de lista:
 
@@ -1073,25 +1077,84 @@ Regras de "Meus convites":
   normaliza (trim + minúsculas), deduplica, não permite adicionar a
   própria conta e devolve `201`:
   `{ "added": [...], "pending": [...], "skipped": [...] }`, com
-  `reason` por linha (`already_member`, `duplicate_in_request`, `self`).
-  Acima de 50 emails devolve `400 too_many_emails` (depois de validar
-  o acesso). Emails sem conta activa ficam `convite_pendente`; o envio
-  fica para a Fase 3.
+  `reason` por linha (`already_member`, `duplicate_in_request`, `self`,
+  `invite_not_possible`). Acima de 50 emails devolve `400
+  too_many_emails` (depois de validar o acesso). Emails com conta
+  activa **e email verificado** ficam `ativo` e recebem notificação
+  in-app + email (`team_added`); os restantes ficam `convite_pendente`
+  e recebem apenas o convite por email (`team_invite`). Uma conta
+  registada com email por verificar **não adere** a equipas pendentes:
+  continua pendente até aceitar o convite com o email verificado.
 - `PATCH /api/v1/host/teams/{teamId}/members/{memberId}`
   (`{ role: 'gestor' | 'membro' }`): promover **e** despromover são
   exclusivos do anfitrião (`403 host_action_forbidden` para gestores).
   Promover cria/reactiva `event_managers` na mesma transação;
   despromover só altera o papel na equipa e não revoga o acesso ao
-  evento. O anfitrião nunca é despromovido nem removido
+  evento. A alteração gera notificação in-app e email
+  (`team_role_changed`) para o membro, excepto quando é o próprio autor.
+  O anfitrião nunca é despromovido nem removido
   (`409 host_member_immutable`).
 - `DELETE /api/v1/host/teams/{teamId}/members/{memberId}` remove
   logicamente. Com tarefas abertas devolve `409 member_has_open_tasks`
   e a lista em `error.details.tasks`; repetir com
   `reassign_to_member_id={uuid}` reatribui tudo e remove na mesma
-  transação.
+  transação. Os convites activos do membro são revogados e os emails
+  pendentes cancelados. **Quem é removido não recebe qualquer
+  mensagem**; só os novos responsáveis das tarefas reatribuídas são
+  avisados.
+- `POST /api/v1/host/teams/{teamId}/members/{memberId}/invite/resend`
+  reenvia o convite de um membro `convite_pendente`. Cada reenvio
+  rotaciona o token (o link anterior fica inválido) e devolve
+  `200 { "data": { "send_count", "last_sent_at", "expires_at" } }`.
+  Anti-spam, configurável por ambiente:
+  `TEAM_INVITE_RESEND_COOLDOWN_MINUTES` entre envios
+  (`429 invite_cooldown`), `TEAM_INVITE_MAX_SENDS` por convite
+  (`409 invite_send_limit`), `TEAM_INVITE_MAX_PER_EMAIL_PER_DAY`
+  (3 por omissão) por destinatário em 24 horas
+  (`429 invite_email_rate_limited`) e `TEAM_INVITE_MAX_PER_HOST_PER_HOUR`
+  (30) / `TEAM_INVITE_MAX_PER_HOST_PER_DAY` (100) por anfitrião
+  (`429 invite_host_rate_limited`). Os limites por email e por
+  anfitrião são partilhados por todos os eventos e equipas.
 
-Nesta fase não há envio de emails nem criação de notificações para
-equipas/tarefas; os pontos de chamada têm `TODO(Fase 3)`.
+##### Convites, notificações e emails
+
+O convite de equipa é criado quando um email sem conta activa
+verificada é adicionado (`POST .../members`) ou reenviado. A base de
+dados guarda apenas o HMAC do token (`team_invites.token_hash`); o token
+em claro existe só no link do email enfileirado na outbox e nunca é
+devolvido pela API. O token tem 32 bytes aleatórios, uso único, expira
+ao fim de `TEAM_INVITE_TTL_DAYS` dias e cada reenvio invalida o
+anterior. A comparação do hash é feita em tempo constante. Como o
+convite é um portador **com estado** (linha em `team_invites`), o uso
+único e a revogação são reais; um HMAC sem estado não conseguiria
+garantir nenhum dos dois.
+
+As notificações in-app e os emails das equipas/tarefas seguem o
+catálogo de mensagens:
+
+| Evento | Notificação (`kind`) | Email (`message_type`) | Destinatários |
+|---|---|---|---|
+| Convite para quem não tem conta verificada | — (só email) | `team_invite` | Email convidado |
+| Membro com conta verificada adicionado | `team_added` | `team_added` | Membro adicionado (excepto o autor) |
+| Tarefa atribuída | `task_assigned` | `task_assigned` | Novo responsável (excepto o autor) |
+| Tarefa concluída | `task_completed` | `task_completed` | Anfitrião e gestores activos (excepto o responsável) |
+| Tarefa reatribuída | `task_reassigned` | `task_reassigned` | Novo responsável e responsável anterior |
+| Papel alterado | `role_changed` | `team_role_changed` | Membro cujo papel mudou (excepto o autor) |
+
+Não existe mensagem de remoção: quem é removido deixa de ter acesso e
+não recebe email nem notificação. A revogação de um convite pendente
+também não notifica ninguém.
+
+Os emails entram sempre na outbox (`email_deliveries`) e só são
+entregues pelo worker; nenhum serviço envia directamente. O worker
+suprime mensagens que deixaram de fazer sentido: convite já aceite,
+revogado ou expirado; tarefa arquivada; evento em `draft`, `cancelled`
+ou `completed`.
+
+Fora de produção (`NODE_ENV !== 'production'`) o transporte é sempre
+`json`: as mensagens são escritas em `EMAIL_JSON_DIR` e nunca seguem
+para endereços reais, mesmo que `EMAIL_TRANSPORT=brevo|smtp|resend`.
+Em produção, o transporte configurado é usado.
 
 #### Capa do evento
 
@@ -1157,7 +1220,10 @@ altera `event_activity`.
 
 - `kind`: `rsvp_accepted`, `rsvp_declined`, `guest_added`,
   `reminder_sent`, `event_created`, `event_upcoming`, `rsvp_deadline`,
-  `task_assigned`, `task_completed`.
+  `task_assigned`, `task_completed`, `task_reassigned`, `team_added`,
+  `role_changed`. As cinco últimas vêm da Fase 3 (equipas e tarefas) e
+  têm email transaccional na outbox. O convite para quem não tem conta
+  verificada é só email e não gera notificação in-app.
 - `GET /api/v1/host/notifications/unread-count` — `200`
   `{ "data": { "unread_count": 3 } }`.
 - `PATCH /api/v1/host/notifications/{notificationId}` — corpo
@@ -1446,6 +1512,59 @@ convidado e `email_has_account` para o frontend sugerir conta.
 - Voltar de `declined` para `accepted` reagenda os lembretes futuros.
 - `409` se o evento estiver cancelado/terminado ou o prazo tiver
   passado.
+
+### Convite de equipa
+
+`GET /api/v1/public/team-invites/{token}` valida o token e devolve o
+resumo para a página de aceitação. A página pública mostra **apenas**
+o nome da equipa e quem convida: não revela o email convidado, o
+evento, a validade nem o estado do convite.
+
+```json
+{
+  "data": {
+    "team_name": "Cozinha",
+    "invited_by": "Pedro Silva"
+  }
+}
+```
+
+- `404 invite_not_found` para um token inexistente.
+- `409` com código estável para um convite expirado
+  (`invite_expired`), revogado (`invite_revoked`) ou já aceite
+  (`invite_already_accepted`).
+
+`POST /api/v1/public/team-invites/{token}/report` implementa o botão
+"Não conheço este convite". Revoga o convite, cancela os emails
+pendentes e bloqueia o **remetente original** para aquele email
+(`team_invite_blocks`, par anfitrião + email). O mesmo email pode
+continuar a receber convites de outros anfitriões. A resposta é sempre
+`204`, mesmo para um token inválido, para não permitir enumerar
+convites. A partir daí, o anfitrião bloqueado vê apenas
+`409 invite_not_possible` / `invite_not_possible` na adição ou
+reenvio, sem saber que houve uma denúncia.
+
+`POST /api/v1/public/team-invites/{token}/accept` exige sessão de conta
+(`apupu_auth`) e `X-CSRF-Token`. O email verificado da conta tem de
+coincidir com o email convidado; caso contrário devolve
+`403 invite_email_mismatch` (ou `403 email_not_verified`). A aceitação
+é atómica: o membro passa a `ativo` com `host_id`, o convite fica com
+`accepted_at` e os emails pendentes do convite são cancelados. Pedidos
+concorrentes produzem uma única aceitação; repetir devolve
+`409 invite_already_accepted`.
+
+```json
+{
+  "data": {
+    "member_id": "…",
+    "team_id": "…",
+    "team_name": "Cozinha",
+    "event_id": "…",
+    "event_title": "Casamento da Ana e do Paulo",
+    "role": "membro"
+  }
+}
+```
 
 ## Modelos de resposta
 
@@ -1775,6 +1894,33 @@ Inclui apenas os dados do próprio convidado. Nunca inclui
 `email_has_account` permite ao frontend sugerir entrar ou criar conta
 para abrir o convite em qualquer navegador.
 
+### `TeamInvitePreview` e `TeamInviteAccept`
+
+```json
+{
+  "team_name": "Cozinha",
+  "event_title": "Casamento da Ana e do Paulo",
+  "invited_email": "a********@exemplo.pt",
+  "expires_at": "2026-11-26T10:00:00.000Z",
+  "status": "active"
+}
+```
+
+```json
+{
+  "member_id": "0f0e5f6a-9b1c-4d3e-8a2b-7c6d5e4f3a21",
+  "team_id": "4c1f0d2e-8a3b-4c5d-9e6f-7a8b9c0d1e2f",
+  "team_name": "Cozinha",
+  "event_id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
+  "event_title": "Casamento da Ana e do Paulo",
+  "role": "membro"
+}
+```
+
+`invited_email` vem sempre mascarado no preview público. O token do
+convite nunca é devolvido em claro pela API; só existe no link do email
+enfileirado na outbox.
+
 ### `ReportSummary` e `DailyReport`
 
 ```json
@@ -1954,6 +2100,7 @@ corpo. Todas as rotas podem devolver os erros transversais de
 | `POST` | `/api/v1/host/teams/{teamId}/members` | `201` | `{ "added": MemberRow[], "pending": MemberRow[], "skipped": MemberRow[] }` |
 | `PATCH` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `200` | `{ "data": { "member": TeamMember, "event_manager_id": uuid \| null } }` |
 | `DELETE` | `/api/v1/host/teams/{teamId}/members/{memberId}` | `200` | `{ "data": { "removed": true, "reassigned_tasks": integer } }` |
+| `POST` | `/api/v1/host/teams/{teamId}/members/{memberId}/invite/resend` | `200` | `{ "data": { "send_count": integer, "last_sent_at": string, "expires_at": string } }` |
 
 `Team` = `{ id, event_id, event_title, name, category, description,
 member_count, open_task_count, created_at, updated_at }`.
@@ -1993,6 +2140,9 @@ created_at, updated_at }`.
 | `POST` | `/api/v1/public/invitations/{token}/claim` | `200` | `{ "data": PublicInvitation }` |
 | `GET` | `/api/v1/public/invitations/{token}` | `200` | `{ "data": PublicInvitation }` |
 | `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `200` | `{ "data": PublicInvitation }` |
+| `GET` | `/api/v1/public/team-invites/{token}` | `200` | `{ "data": TeamInvitePreview }` |
+| `POST` | `/api/v1/public/team-invites/{token}/accept` | `200` | `{ "data": TeamInviteAccept }` |
+| `POST` | `/api/v1/public/team-invites/{token}/report` | `204` | — |
 | `GET` | `/api/v1/templates` | `200` | `{ "data": Template[] }` |
 
 ## Respostas de erro por endpoint

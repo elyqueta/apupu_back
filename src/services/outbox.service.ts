@@ -8,7 +8,7 @@ import {
 } from '../repositories/emailDelivery.repository';
 import { activityRepository } from '../repositories/activity.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
-import { isHostMessage } from '../types/emailDelivery.types';
+import { isHostMessage, MessageType } from '../types/emailDelivery.types';
 import { reminderScheduledFor } from '../utils/date.util';
 import { renderDelivery, sendMail } from './email.service';
 
@@ -34,6 +34,16 @@ export interface OutboxResult {
 
 type Verdict = { ok: true } | { ok: false; reason: string };
 
+/** Mensagens de equipas/tarefas que não dependem de um convite de evento. */
+const TEAM_MESSAGE_TYPES: readonly MessageType[] = [
+  'team_invite',
+  'team_added',
+  'team_role_changed',
+  'task_assigned',
+  'task_completed',
+  'task_reassigned',
+];
+
 /**
  * Decide se uma entrega ainda é aplicável.
  *
@@ -57,6 +67,55 @@ export function evaluateApplicability(context: DeliveryContext): Verdict {
   // O aviso de remoção é o último email do link antigo: continua a ser
   // entregue mesmo depois de o convite ser revogado ou apagado.
   if (context.messageType === 'invitation_removed') {
+    return { ok: true };
+  }
+
+  // Mensagens de equipas e tarefas (Fase 3). Não têm `invitation_id`:
+  // a aplicabilidade é decidida pelo estado do evento, do convite de
+  // equipa e da tarefa.
+  if (TEAM_MESSAGE_TYPES.includes(context.messageType)) {
+    if (context.messageType === 'team_invite') {
+      if (!context.eventId) {
+        return { ok: false, reason: 'missing_event' };
+      }
+
+      if (context.eventStatus === 'draft') {
+        return { ok: false, reason: 'event_draft' };
+      }
+
+      if (context.eventStatus === 'cancelled' || context.eventStatus === 'completed') {
+        return { ok: false, reason: `event_${context.eventStatus}` };
+      }
+
+      if (!context.teamInviteExpiresAt) {
+        return { ok: false, reason: 'invite_missing' };
+      }
+
+      if (context.teamInviteAcceptedAt) {
+        return { ok: false, reason: 'invite_accepted' };
+      }
+
+      if (context.teamInviteRevokedAt) {
+        return { ok: false, reason: 'invite_revoked' };
+      }
+
+      if (context.teamInviteExpiresAt.getTime() <= Date.now()) {
+        return { ok: false, reason: 'invite_expired' };
+      }
+
+      return { ok: true };
+    }
+
+    // Tarefas: um email sobre uma tarefa apagada ou de um evento
+    // cancelado deixa de fazer sentido.
+    if (context.taskArchivedAt) {
+      return { ok: false, reason: 'task_archived' };
+    }
+
+    if (context.eventStatus === 'cancelled' || context.eventStatus === 'completed') {
+      return { ok: false, reason: `event_${context.eventStatus}` };
+    }
+
     return { ok: true };
   }
 

@@ -101,7 +101,7 @@ TEAMS_MIGRATION_TEST_URL="$DEST_URL" npx vitest run tests/teamsMigration.test.ts
 
 echo
 echo "== 7/8 A reverter (down) =="
-DATABASE_URL="$DEST_URL" npx node-pg-migrate down 2 --verbose=false
+DATABASE_URL="$DEST_URL" npx node-pg-migrate down 4 --verbose=false
 
 echo
 echo "== Contagens DEPOIS do rollback =="

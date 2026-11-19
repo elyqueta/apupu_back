@@ -13,6 +13,13 @@ export const MESSAGE_TYPES = [
   'host_welcome',
   'password_reset',
   'profile_reminder',
+  // Fase 3 — equipas e tarefas.
+  'team_invite',
+  'team_added',
+  'team_role_changed',
+  'task_assigned',
+  'task_completed',
+  'task_reassigned',
 ] as const;
 export type MessageType = (typeof MESSAGE_TYPES)[number];
 
@@ -50,6 +57,11 @@ export interface EmailDelivery {
   idempotencyKey: string;
   /** Token cifrado para mensagens de conta; nunca o token em claro. */
   tokenEncrypted: string | null;
+  /**
+   * Variáveis de renderização específicas da mensagem (nome da equipa,
+   * título da tarefa, autor, etc.). Nunca contém tokens em claro.
+   */
+  payload: Record<string, unknown>;
   sentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

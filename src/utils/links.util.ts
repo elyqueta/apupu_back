@@ -55,6 +55,23 @@ export const links = {
     return `${publicAppBaseUrl()}/convite/${token}`;
   },
 
+  /** Página de aceitação de um convite de equipa. */
+  teamInvite(token: string): string {
+    return `${publicAppBaseUrl()}/equipas/convite/${token}`;
+  },
+
+  /** Página de uma equipa dentro do evento. */
+  team(eventId: string, teamId: string): string {
+    const params = new URLSearchParams({ equipa: teamId });
+    return `${publicAppBaseUrl()}/eventos/${eventId}/equipas?${params.toString()}`;
+  },
+
+  /** Página da tarefa dentro do evento. */
+  task(eventId: string, taskId: string): string {
+    const params = new URLSearchParams({ tarefa: taskId });
+    return `${publicAppBaseUrl()}/eventos/${eventId}/tarefas?${params.toString()}`;
+  },
+
   /** Página de verificação de email da conta. */
   verifyEmail(token: string): string {
     return `${publicAppBaseUrl()}/verificar-email/${token}`;

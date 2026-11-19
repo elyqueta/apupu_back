@@ -419,6 +419,55 @@ describe.skipIf(!connectionString)("migração de equipas", () => {
         ),
       ).rejects.toMatchObject({ code: "23514" });
     });
+
+    it("cria a coluna created_by_host_id e a tabela de bloqueios", async () => {
+      const columns = await pool.query<{ column_name: string; is_nullable: string }>(
+        `SELECT column_name, is_nullable
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'team_invites'
+            AND column_name = 'created_by_host_id'`,
+      );
+      expect(columns.rows).toEqual([
+        { column_name: "created_by_host_id", is_nullable: "YES" },
+      ]);
+
+      const blocks = await pool.query<{ table_name: string }>(
+        `SELECT table_name
+           FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'team_invite_blocks'`,
+      );
+      expect(blocks.rows).toEqual([{ table_name: "team_invite_blocks" }]);
+
+      const unique = await pool.query<{ conname: string }>(
+        `SELECT conname FROM pg_constraint
+          WHERE conname = 'team_invite_blocks_host_email_unique'`,
+      );
+      expect(unique.rows).toHaveLength(1);
+    });
+
+    it("alinha as constraints com o catálogo final da Fase 3", async () => {
+      const constraints = await pool.query<{ conname: string; def: string }>(
+        `SELECT conname, pg_get_constraintdef(oid) AS def
+           FROM pg_constraint
+          WHERE conname IN (
+            'email_deliveries_type_check',
+            'host_notifications_kind_check'
+          )`,
+      );
+
+      const byName = new Map(constraints.rows.map((row) => [row.conname, row.def]));
+      const emails = byName.get("email_deliveries_type_check") ?? "";
+      expect(emails).toContain("team_added");
+      expect(emails).toContain("team_role_changed");
+      expect(emails).not.toContain("member_removed");
+
+      const notifications = byName.get("host_notifications_kind_check") ?? "";
+      expect(notifications).toContain("team_added");
+      expect(notifications).toContain("role_changed");
+      expect(notifications).not.toContain("member_removed");
+      expect(notifications).not.toContain("team_invite");
+    });
   });
 
   describeDown?.("depois de `down`", () => {
@@ -426,12 +475,45 @@ describe.skipIf(!connectionString)("migração de equipas", () => {
       const { rows } = await pool.query<{
         teams: string | null;
         members: string | null;
+        invites: string | null;
+        blocks: string | null;
       }>(
         `SELECT to_regclass('public.teams')::text AS teams,
-                to_regclass('public.team_members')::text AS members`,
+                to_regclass('public.team_members')::text AS members,
+                to_regclass('public.team_invites')::text AS invites,
+                to_regclass('public.team_invite_blocks')::text AS blocks`,
       );
 
-      expect(rows[0]).toEqual({ teams: null, members: null });
+      expect(rows[0]).toEqual({
+        teams: null,
+        members: null,
+        invites: null,
+        blocks: null,
+      });
+    });
+
+    it("restaura as constraints anteriores da outbox e das notificações", async () => {
+      const constraints = await pool.query<{ conname: string; def: string }>(
+        `SELECT conname, pg_get_constraintdef(oid) AS def
+           FROM pg_constraint
+          WHERE conname IN (
+            'email_deliveries_type_check',
+            'host_notifications_kind_check'
+          )`,
+      );
+
+      const byName = new Map(constraints.rows.map((row) => [row.conname, row.def]));
+      const emails = byName.get("email_deliveries_type_check") ?? "";
+      expect(emails).not.toContain("member_removed");
+      expect(emails).not.toContain("team_added");
+      expect(emails).not.toContain("team_role_changed");
+      expect(emails).not.toContain("team_invite");
+
+      const notifications = byName.get("host_notifications_kind_check") ?? "";
+      expect(notifications).not.toContain("member_removed");
+      expect(notifications).not.toContain("team_invite");
+      expect(notifications).not.toContain("team_added");
+      expect(notifications).not.toContain("role_changed");
     });
 
     it("remove as colunas novas de host_tasks", async () => {

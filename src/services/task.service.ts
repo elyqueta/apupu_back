@@ -1,5 +1,7 @@
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors';
+import { withTransaction } from '../database/pool';
 import { eventManagerRepository } from '../repositories/eventManager.repository';
+import { hostRepository } from '../repositories/host.repository';
 import { taskRepository } from '../repositories/task.repository';
 import { teamMemberRepository } from '../repositories/teamMember.repository';
 import { teamRepository } from '../repositories/team.repository';
@@ -16,6 +18,12 @@ import {
   resolveTeamAccess,
   ResourceRole,
 } from './teamAccess.service';
+import {
+  notifyTaskAssigned,
+  notifyTaskCompleted,
+  notifyTaskReassigned,
+  taskEventContext,
+} from './teamNotification.service';
 
 export interface TaskListResult {
   items: Task[];
@@ -45,6 +53,18 @@ function assigneeName(task: Task): string {
     displayName: task.assigneeDisplayName,
     email: task.assigneeEmail,
   });
+}
+
+/** Identidade da conta autenticada usada nas notificações. */
+async function actorIdentity(
+  scope: EventAccessScope
+): Promise<{ name: string; email: string | null }> {
+  const host = await hostRepository.findById(scope.hostId);
+
+  return {
+    name: host?.profile.displayName?.trim() || host?.email || 'O anfitrião',
+    email: host?.email ?? scope.managerEmail ?? null,
+  };
 }
 
 /**
@@ -136,18 +156,34 @@ async function applyStatusChange(
       return updated;
     }
 
-    const result = await taskRepository.complete(task.id, task.assigneeMemberId);
+    const result = await withTransaction(async (client) => {
+      const completed = await taskRepository.complete(
+        task.id,
+        task.assigneeMemberId as string,
+        client
+      );
 
-    if (!result) {
-      throw new NotFoundError(TASK_NOT_FOUND, 'task_not_found');
-    }
+      if (!completed) {
+        throw new NotFoundError(TASK_NOT_FOUND, 'task_not_found');
+      }
 
-    if (result.changed) {
-      // TODO(Fase 3): notificar o anfitrião/gestores que a tarefa foi
-      // concluída, uma única vez por transição.
-    }
+      if (completed.changed) {
+        const assignee = await teamMemberRepository.findById(
+          task.assigneeMemberId as string,
+          client
+        );
+        const identity = await actorIdentity(scope);
+        const context = taskEventContext(completed.task, identity.name, identity.email);
 
-    return result.task;
+        if (assignee && context) {
+          await notifyTaskCompleted({ event: context, assignee, client });
+        }
+      }
+
+      return completed.task;
+    });
+
+    return result;
   }
 
   const updated = await taskRepository.update(task.id, { status });
@@ -368,22 +404,38 @@ export const taskService = {
       }
     }
 
-    const task = await taskRepository.create({
-      hostId: scope.hostId,
-      eventId: team?.eventId ?? null,
-      teamId: team?.id ?? null,
-      assigneeMemberId,
-      title,
-      description: input.description ?? null,
-      dueDate: input.due_date ?? null,
-      priority: input.priority,
-      status,
-      createdByHostId: scope.hostId,
-      managerId,
-      completedByMemberId: status === 'concluida' ? assigneeMemberId : null,
-    });
+    const identity = await actorIdentity(scope);
 
-    // TODO(Fase 3): notificar o responsável pela atribuição da tarefa.
+    const task = await withTransaction(async (client) => {
+      const created = await taskRepository.create(
+        {
+          hostId: scope.hostId,
+          eventId: team?.eventId ?? null,
+          teamId: team?.id ?? null,
+          assigneeMemberId,
+          title,
+          description: input.description ?? null,
+          dueDate: input.due_date ?? null,
+          priority: input.priority,
+          status,
+          createdByHostId: scope.hostId,
+          managerId,
+          completedByMemberId: status === 'concluida' ? assigneeMemberId : null,
+        },
+        client
+      );
+
+      if (team && assigneeMemberId) {
+        const assignee = await teamMemberRepository.findById(assigneeMemberId, client);
+        const context = taskEventContext(created, identity.name, identity.email);
+
+        if (assignee && context) {
+          await notifyTaskAssigned({ event: context, assignee, client });
+        }
+      }
+
+      return created;
+    });
 
     return task;
   },
@@ -501,15 +553,31 @@ export const taskService = {
       });
     }
 
-    const updated = await taskRepository.reassign(taskId, member.id);
+    const previousAssignee = task.assigneeMemberId
+      ? await teamMemberRepository.findById(task.assigneeMemberId)
+      : null;
+    const identity = await actorIdentity(scope);
 
-    if (!updated) {
-      throw new NotFoundError(TASK_NOT_FOUND, 'task_not_found');
-    }
+    return withTransaction(async (client) => {
+      const updated = await taskRepository.reassign(taskId, member.id, client);
 
-    // TODO(Fase 3): notificar o novo responsável e o anterior.
+      if (!updated) {
+        throw new NotFoundError(TASK_NOT_FOUND, 'task_not_found');
+      }
 
-    return updated;
+      const context = taskEventContext(updated, identity.name, identity.email);
+
+      if (context) {
+        await notifyTaskReassigned({
+          event: context,
+          newAssignee: member,
+          previousAssignee,
+          client,
+        });
+      }
+
+      return updated;
+    });
   },
 
   /**
@@ -556,15 +624,41 @@ export const taskService = {
       );
     }
 
-    const moved = await taskRepository.moveToTeam(taskId, target.team.id, assigneeMemberId);
+    const previousAssignee = task.assigneeMemberId
+      ? await teamMemberRepository.findById(task.assigneeMemberId)
+      : null;
+    const identity = await actorIdentity(scope);
 
-    if (!moved) {
-      throw new NotFoundError(TASK_NOT_FOUND, 'task_not_found');
-    }
+    return withTransaction(async (client) => {
+      const moved = await taskRepository.moveToTeam(
+        taskId,
+        target.team.id,
+        assigneeMemberId,
+        client
+      );
 
-    // TODO(Fase 3): notificar a equipa de destino.
+      if (!moved) {
+        throw new NotFoundError(TASK_NOT_FOUND, 'task_not_found');
+      }
 
-    return moved;
+      const context = taskEventContext(moved, identity.name, identity.email);
+      const newAssignee = await teamMemberRepository.findById(assigneeMemberId, client);
+
+      if (context && newAssignee) {
+        if (previousAssignee && previousAssignee.id !== newAssignee.id) {
+          await notifyTaskReassigned({
+            event: context,
+            newAssignee,
+            previousAssignee,
+            client,
+          });
+        } else {
+          await notifyTaskAssigned({ event: context, assignee: newAssignee, client });
+        }
+      }
+
+      return moved;
+    });
   },
 
   /**

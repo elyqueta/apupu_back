@@ -7,7 +7,7 @@ import {
 } from '../utils/pagination.util';
 import { ageInYears, isValidCalendarDate, isValidTimeZone } from '../utils/date.util';
 import { EVENT_STATUSES } from '../types/event.types';
-import { HOST_LOCALES } from '../types/host.types';
+import { HOST_LOCALES, NOTIFICATION_KINDS } from '../types/host.types';
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -288,19 +288,7 @@ const taskIdParamsSchema = z.object({
 
 const notificationsQuerySchema = z.object({
   status: z.enum(['all', 'unread', 'read']).default('all'),
-  kind: z
-    .enum([
-      'rsvp_accepted',
-      'rsvp_declined',
-      'guest_added',
-      'reminder_sent',
-      'event_created',
-      'event_upcoming',
-      'rsvp_deadline',
-      'task_assigned',
-      'task_completed',
-    ])
-    .optional(),
+  kind: z.enum(NOTIFICATION_KINDS).optional(),
   event_id: z.uuid('Identificador de evento inválido.').optional(),
   q: z.string().trim().max(150).optional(),
   ...paginationQueryFields,

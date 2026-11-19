@@ -431,7 +431,7 @@ append-only).
 | `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`) |
 | `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`); nulo em notificações globais |
 | `activity_id` | uuid | FK → `event_activity` (`ON DELETE CASCADE`); nulo em lembretes |
-| `kind` | text | `rsvp_accepted`, `rsvp_declined`, `guest_added`, `reminder_sent`, `event_created`, `event_upcoming`, `rsvp_deadline`, `task_assigned`, `task_completed` |
+| `kind` | text | `rsvp_accepted`, `rsvp_declined`, `guest_added`, `reminder_sent`, `event_created`, `event_upcoming`, `rsvp_deadline`, `task_assigned`, `task_completed`, `task_reassigned`, `team_added`, `role_changed` |
 | `title` | text | |
 | `body` | text | opcional |
 | `metadata` | jsonb | por omissão `{}`; apenas identificadores |
@@ -563,14 +563,17 @@ nesta fase.
 | `provider_message_id` | text | |
 | `last_error` | text | mensagem operacional, sem tokens |
 | `idempotency_key` | text | único |
-| `token_encrypted` | text | AES-256-GCM; verificação, OTP, reposição de senha |
+| `token_encrypted` | text | AES-256-GCM; verificação, OTP, reposição de senha e token do convite de equipa |
+| `payload` | jsonb | por omissão `{}`; variáveis de renderização das mensagens de equipa/tarefa (nomes, ids, prazo) |
 | `sent_at` | timestamptz | |
 | `created_at` / `updated_at` | timestamptz | |
 
 Tipos de mensagem: `manage_link`, `manager_invite`, `invitation`,
 `reminder`, `decline_notification`, `event_cancelled`,
 `email_verification`, `registration_otp`, `host_welcome`,
-`password_reset`, `profile_reminder`.
+`password_reset`, `profile_reminder`, `team_invite`, `team_added`,
+`team_role_changed`, `task_assigned`, `task_completed`,
+`task_reassigned`.
 
 Índices: índice parcial `(status, scheduled_for)` para entregas
 pendentes, `event_id`, `invitation_id` e `host_id`.
@@ -593,6 +596,12 @@ Chaves idempotentes usadas:
 | Código OTP de registo | `registration_otp:<email>:<uuid>` |
 | Boas-vindas | `host_welcome:<hostId>` |
 | Reposição de senha | `password_reset:<hostId>:<uuid>` |
+| Convite de equipa | `team_invite:<inviteId>:<sendCount>` |
+| Membro adicionado | `team_added:<memberId>:<memberVersion>` |
+| Papel alterado | `role_changed:<memberId>:<role>:<memberVersion>` |
+| Tarefa atribuída | `task_assigned:<taskId>:<assigneeMemberId>` |
+| Tarefa concluída | `task_completed:<taskId>:<recipientEmail>` |
+| Tarefa reatribuída | `task_reassigned:<taskId>:<newAssigneeMemberId>:<recipientMemberId>` |
 
 Todas as mensagens passam pela outbox, incluindo o link de gestão e os
 convites de gestor. Nesses casos o token em claro é guardado cifrado em
@@ -616,6 +625,67 @@ dispara `pg_notify('outbox_new')`, que acorda os processos à escuta
 (`LISTEN outbox_new`); o polling por `OUTBOX_SCAN_INTERVAL_MS` continua
 como fallback para lembretes agendados e notificações perdidas.
 
+## `team_invites`
+
+Convites de equipa enviados por email. Guarda apenas o HMAC do token
+(`token_hash`); o token em claro existe só no link do email enfileirado
+na outbox e nunca é persistido nem devolvido pela API.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `member_id` | uuid | FK → `team_members` (`ON DELETE CASCADE`) |
+| `team_id` | uuid | FK → `teams` (`ON DELETE CASCADE`) |
+| `email` | citext | email convidado, normalizado |
+| `created_by_host_id` | uuid | FK → `hosts` (`ON DELETE SET NULL`); anfitrião remetente original, usado no bloqueio de denúncias |
+| `token_hash` | text | HMAC do token; único |
+| `expires_at` | timestamptz | `TEAM_INVITE_TTL_DAYS` após a criação/reenvio |
+| `accepted_at` | timestamptz | nulo enquanto pendente; preenchido uma única vez |
+| `revoked_at` | timestamptz | nulo enquanto válido; preenchido ao reenviar ou remover |
+| `send_count` | integer | envios realizados; limitado por `TEAM_INVITE_MAX_SENDS` |
+| `last_sent_at` | timestamptz | base do cooldown de reenvio |
+| `created_at` / `updated_at` | timestamptz | |
+
+Índices: `team_invites_one_active_per_member` (único e parcial: um
+convite activo por membro), `team_invites_email_created_idx`
+(`email, created_at DESC`) e `team_invites_expiry_idx` (parcial, para
+limpeza de expirados). O `token_hash` é `UNIQUE`.
+
+Regras:
+
+- Um reenvio revoga o convite activo e cria outro com novo token, na
+  mesma transação; o link anterior deixa de funcionar.
+- A aceitação exige sessão de conta com email verificado e coincidente
+  com `email`; é atómica (`FOR UPDATE` do convite + `UPDATE` condicional
+  do membro). Repetir devolve `409` e não activa o membro duas vezes.
+- Remover o membro revoga os convites activos e cancela os emails
+  pendentes. Não é enviada qualquer mensagem de remoção.
+- O limite por email (`TEAM_INVITE_MAX_PER_EMAIL_PER_DAY`, 3 por
+  omissão) conta todos os convites do mesmo email em 24 horas,
+  independentemente do evento. O limite por anfitrião
+  (`TEAM_INVITE_MAX_PER_HOST_PER_HOUR`=30,
+  `TEAM_INVITE_MAX_PER_HOST_PER_DAY`=100) conta os convites criados por
+  `created_by_host_id`.
+
+## `team_invite_blocks`
+
+Bloqueios por par (anfitrião, email), criados pelo botão "Não conheço
+este convite" da página pública. Impedem que o mesmo anfitrião volte a
+convidar aquele email; outros anfitriões não são afectados.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`) |
+| `email` | citext | email que denunciou |
+| `reason` | text | `unknown_invite` por omissão |
+| `created_at` / `updated_at` | timestamptz | |
+
+Constraint `team_invite_blocks_host_email_unique` (`host_id`, `email`)
+e índice `team_invite_blocks_email_idx` (`email`). A denúncia revoga o
+convite, cancela os emails pendentes e responde sempre `204`, mesmo
+para um token inexistente.
+
 ## Relações
 
 - Uma conta (`hosts`) tem um perfil, zero ou mais sessões de conta,
@@ -638,6 +708,17 @@ como fallback para lembretes agendados e notificações perdidas.
 - Uma tarefa pertence a uma conta (`host_id`) e, opcionalmente, a um
   evento e a um gestor. Apagar o gestor mantém a tarefa, mas limpa
   `manager_id` (`ON DELETE SET NULL`).
+- Uma equipa pertence a um evento e tem membros (`team_members`) e
+  convites de equipa (`team_invites`). Remover um membro ou uma equipa
+  apaga os convites em cascata. Os bloqueios (`team_invite_blocks`)
+  pertencem ao par anfitrião + email.
+- Uma entrega de email pode apontar para um evento, um convite de
+  evento, uma conta ou um convite de equipa (via `payload.inviteId`);
+  `payload` guarda as variáveis de renderização sem duplicar colunas.
+- As notificações de equipa (`task_assigned`, `task_completed`,
+  `task_reassigned`, `team_added`, `role_changed`)
+  guardam apenas identificadores em `metadata`; `dedupe_key` garante
+  idempotência.
 - Apagar uma conta remove em cascata perfil, sessões, tokens, tarefas,
   notificações e entregas; os eventos ficam com `host_id` nulo
   (`ON DELETE SET NULL`).

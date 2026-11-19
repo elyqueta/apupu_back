@@ -237,6 +237,19 @@ const envSchema = z.object({
   OUTBOX_SCAN_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
 
   MAX_INVITATIONS_PER_EVENT: z.coerce.number().int().positive().default(1000),
+
+  /** Validade do link de convite de equipa, em dias. */
+  TEAM_INVITE_TTL_DAYS: z.coerce.number().int().positive().default(7),
+  /** Intervalo mínimo entre reenvios do mesmo convite, em minutos. */
+  TEAM_INVITE_RESEND_COOLDOWN_MINUTES: z.coerce.number().int().positive().default(10),
+  /** Máximo de envios (inicial + reenvios) por convite. */
+  TEAM_INVITE_MAX_SENDS: z.coerce.number().int().positive().default(5),
+  /** Máximo de convites criados para o mesmo email em 24 horas. */
+  TEAM_INVITE_MAX_PER_EMAIL_PER_DAY: z.coerce.number().int().positive().default(3),
+  /** Máximo de convites criados por anfitrião numa hora. */
+  TEAM_INVITE_MAX_PER_HOST_PER_HOUR: z.coerce.number().int().positive().default(30),
+  /** Máximo de convites criados por anfitrião em 24 horas. */
+  TEAM_INVITE_MAX_PER_HOST_PER_DAY: z.coerce.number().int().positive().default(100),
 }).superRefine((values, context) => {
   if (values.EMAIL_TRANSPORT !== 'brevo') return;
 

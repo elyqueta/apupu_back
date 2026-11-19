@@ -10,6 +10,7 @@ import { reportController } from '../../controllers/report.controller';
 import { taskController } from '../../controllers/task.controller';
 import { teamController } from '../../controllers/team.controller';
 import { teamMemberController } from '../../controllers/teamMember.controller';
+import { teamInviteController } from '../../controllers/teamInvite.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
 import { hostAuth } from '../../middlewares/hostAuth';
@@ -646,11 +647,14 @@ router.post(
  *         description: Gestor removido.
  *       404:
  *         description: Evento ou gestor não encontrado.
- *
- * /api/v1/host/events/{eventId}/managers/{managerId}/resend:
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Error' }
+ */
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/managers/{managerId}/resend:
  *   post:
  *     tags: [Gestores]
  *     summary: Reenvia o link de gestão a um gestor
@@ -923,7 +927,7 @@ router.get(
  *         name: kind
  *         schema:
  *           type: string
- *           enum: [rsvp_accepted, rsvp_declined, guest_added, reminder_sent, event_created, event_upcoming, rsvp_deadline, task_assigned, task_completed]
+ *           enum: [rsvp_accepted, rsvp_declined, guest_added, reminder_sent, event_created, event_upcoming, rsvp_deadline, task_assigned, task_completed, task_reassigned, team_added, role_changed]
  *       - in: query
  *         name: event_id
  *         schema: { type: string, format: uuid }
@@ -2038,6 +2042,60 @@ router.delete(
   writeLimiter,
   requireAuthCsrf,
   asyncHandler(teamMemberController.remove)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}/members/{memberId}/invite/resend:
+ *   post:
+ *     tags: [Equipas]
+ *     summary: Reenvia o convite de equipa
+ *     description: >
+ *       Só para membros `convite_pendente`. Cada reenvio rotaciona o
+ *       token (o link anterior fica inválido) e está sujeito a
+ *       anti-spam: cooldown entre envios, máximo por convite e máximo
+ *       por email em 24 horas. Devolve `429 invite_cooldown` ou
+ *       `429 invite_rate_limited` quando os limites são atingidos e
+ *       `409 invite_send_limit` quando o convite esgotou os reenvios.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: teamId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: memberId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Convite reenviado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TeamInviteResendEnvelope' }
+ *       409:
+ *         description: O convite já não pode ser reenviado.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       429:
+ *         description: Limite anti-spam atingido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/teams/:teamId/members/:memberId/invite/resend',
+  validate({ params: teamMemberParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(teamInviteController.resend)
 );
 
 export default router;

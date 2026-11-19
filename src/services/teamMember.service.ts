@@ -28,6 +28,13 @@ import {
   resolveTeamAccess,
   scopeEmail,
 } from './teamAccess.service';
+import { teamInviteRepository } from '../repositories/teamInvite.repository';
+import { createInviteForMember, teamInviteService } from './teamInvite.service';
+import {
+  notifyRoleChanged,
+  notifyTaskReassigned,
+  notifyTeamMemberAdded,
+} from './teamNotification.service';
 
 export interface TeamMemberListResult {
   items: TeamMemberWithStats[];
@@ -44,6 +51,12 @@ const MEMBER_NOT_FOUND = 'Membro não encontrado.';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+/** Nome da conta autenticada usado nas notificações. */
+async function actorName(scope: EventAccessScope): Promise<string> {
+  const host = await hostRepository.findById(scope.hostId);
+  return host?.profile.displayName?.trim() || host?.email || 'O anfitrião';
 }
 
 export const teamMemberService = {
@@ -74,8 +87,9 @@ export const teamMemberService = {
    *
    * - normaliza (trim + minúsculas) e deduplica;
    * - não deixa a conta adicionar-se a si própria;
-   * - emails com conta activa ficam `ativo`; os restantes ficam
-   *   `convite_pendente` (o envio do convite é da Fase 3);
+   * - emails com conta activa **e verificada** ficam `ativo` e recebem
+   *   notificação + email; os restantes ficam `convite_pendente` e
+   *   recebem o convite pela outbox, salvo bloqueio do remetente;
    * - devolve `{ added, pending, skipped }` com o motivo por linha.
    */
   async add(
@@ -95,6 +109,8 @@ export const teamMemberService = {
     }
 
     const self = (await scopeEmail(scope))?.toLowerCase() ?? null;
+    const actor = await actorName(scope);
+    const actorEmail = self;
     const added: TeamMemberAddResult[] = [];
     const pending: TeamMemberAddResult[] = [];
     const skipped: TeamMemberAddResult[] = [];
@@ -147,8 +163,22 @@ export const teamMemberService = {
           continue;
         }
 
+        // O remetente denunciado ("não conheço este convite") fica
+        // bloqueado para aquele email. O motivo devolvido é genérico
+        // para não revelar a denúncia a quem a recebeu.
+        if (await teamInviteRepository.isBlocked(scope.hostId, email, client)) {
+          skipped.push({
+            email,
+            memberId: null,
+            status: 'convite_pendente',
+            reason: 'invite_not_possible',
+          });
+          continue;
+        }
+
         const account = await hostRepository.findByEmail(email);
-        const activeAccount = account && account.status === 'active' ? account : null;
+        const activeAccount =
+          account && account.status === 'active' && account.emailVerifiedAt ? account : null;
         const status = activeAccount ? 'ativo' : 'convite_pendente';
         const removed = await teamMemberRepository.findRemovedByTeamAndEmail(
           teamId,
@@ -199,13 +229,36 @@ export const teamMemberService = {
         };
 
         if (member.status === 'ativo') {
+          // Conta registada e com email verificado: recebe in-app e
+          // email, porque já pode entrar imediatamente.
+          await notifyTeamMemberAdded({
+            eventId: access.team.eventId,
+            teamId: access.team.id,
+            teamName: access.team.name,
+            member,
+            actorName: actor,
+            actorEmail,
+            client,
+          });
+
           added.push(entry);
         } else {
+          // Sem conta ou com email por verificar: fica pendente e recebe
+          // apenas o convite por email. Nunca é ativado sem verificar.
+          const invite = await createInviteForMember({
+            member,
+            team: access.team,
+            actorName: actor,
+            actorHostId: scope.hostId,
+            client,
+          });
+
+          if (invite.reason) {
+            entry.reason = invite.reason;
+          }
+
           pending.push(entry);
         }
-
-        // TODO(Fase 3): enviar convite por email ao membro pendente e
-        // criar a notificação transacional correspondente.
       }
     });
 
@@ -246,6 +299,9 @@ export const teamMemberService = {
       return { member, eventManagerId: null };
     }
 
+    const actor = await actorName(scope);
+    const actorEmail = await scopeEmail(scope);
+
     if (input.role === 'membro') {
       const updated = await teamMemberRepository.updateRole(member.id, 'membro');
 
@@ -255,7 +311,15 @@ export const teamMemberService = {
 
       // Decisão aprovada: despromover só mexe no papel de equipa. O
       // acesso ao evento em `event_managers` não é revogado aqui.
-      // TODO(Fase 3): notificar a alteração de papel.
+      await notifyRoleChanged({
+        eventId: access.team.eventId,
+        teamId: access.team.id,
+        member: updated,
+        teamName: access.team.name,
+        actorName: actor,
+        actorEmail,
+      });
+
       return { member: updated, eventManagerId: null };
     }
 
@@ -272,7 +336,16 @@ export const teamMemberService = {
         client
       );
 
-      // TODO(Fase 3): notificar a promoção a gestor.
+      await notifyRoleChanged({
+        eventId: access.team.eventId,
+        teamId: access.team.id,
+        member: updated,
+        teamName: access.team.name,
+        actorName: actor,
+        actorEmail,
+        client,
+      });
+
       return { member: updated, eventManagerId: manager.id };
     });
   },
@@ -307,6 +380,8 @@ export const teamMemberService = {
     }
 
     const openTasks = await teamMemberRepository.openTasksForMember(memberId);
+    const actor = await actorName(scope);
+    const actorEmail = await scopeEmail(scope);
 
     if (openTasks.length > 0) {
       if (!query.reassign_to_member_id) {
@@ -345,15 +420,34 @@ export const teamMemberService = {
         );
 
         await teamMemberRepository.softRemove(memberId, client);
+        await teamInviteService.revokeForMember(memberId, client);
 
-        // TODO(Fase 3): notificar a remoção e a reatribuição.
+        for (const task of openTasks) {
+          await notifyTaskReassigned({
+            event: {
+              taskId: task.id,
+              taskTitle: task.title,
+              eventId: access.team.eventId,
+              eventTitle: access.team.eventTitle,
+              teamName: access.team.name,
+              actorName: actor,
+              actorEmail,
+            },
+            newAssignee: target,
+            previousAssignee: null,
+            client,
+          });
+        }
+
         return { removed: true as const, reassignedTasks };
       });
     }
 
-    await teamMemberRepository.softRemove(memberId);
+    return withTransaction(async (client) => {
+      await teamMemberRepository.softRemove(memberId, client);
+      await teamInviteService.revokeForMember(memberId, client);
 
-    // TODO(Fase 3): notificar a remoção.
-    return { removed: true as const, reassignedTasks: 0 };
+      return { removed: true as const, reassignedTasks: 0 };
+    });
   },
 };

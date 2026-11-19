@@ -364,6 +364,33 @@ export const teamMemberRepository = {
     return this.findById(id, client);
   },
 
+  /**
+   * Liga uma conta ao membro pendente depois de o convite de equipa ser
+   * aceite. O email já foi verificado na aceitação; aqui só se liga a
+   * conta e se activa a linha.
+   */
+  async acceptInvite(
+    id: string,
+    data: { hostId: string; displayName: string | null },
+    client?: PoolClient
+  ): Promise<TeamMemberWithStats | null> {
+    const runner = client ?? pool;
+    await runner.query(
+      `UPDATE team_members
+          SET host_id = $2,
+              display_name = COALESCE($3, display_name),
+              status = 'ativo',
+              joined_at = COALESCE(joined_at, now()),
+              removed_at = NULL,
+              updated_at = now()
+        WHERE id = $1
+          AND removed_at IS NULL`,
+      [id, data.hostId, data.displayName]
+    );
+
+    return this.findById(id, client);
+  },
+
   async softRemove(id: string, client?: PoolClient): Promise<boolean> {
     const runner = client ?? pool;
     const result = await runner.query(

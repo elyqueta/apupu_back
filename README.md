@@ -250,7 +250,16 @@ verificar um domínio no Resend e trocar `EMAIL_FROM`.
 
 A outbox tem retries com backoff exponencial (`EMAIL_MAX_ATTEMPTS`,
 `EMAIL_RETRY_BASE_MS`) e chaves idempotentes que impedem envios
-duplicados.
+duplicados. Os convites de equipa têm limites anti-spam configuráveis
+(`TEAM_INVITE_TTL_DAYS`, `TEAM_INVITE_RESEND_COOLDOWN_MINUTES`,
+`TEAM_INVITE_MAX_SENDS`, `TEAM_INVITE_MAX_PER_EMAIL_PER_DAY`,
+`TEAM_INVITE_MAX_PER_HOST_PER_HOUR`,
+`TEAM_INVITE_MAX_PER_HOST_PER_DAY`).
+
+Fora de produção (`NODE_ENV !== 'production'`) o transporte é sempre
+`json`: as mensagens são escritas em `EMAIL_JSON_DIR` e nunca seguem
+para endereços reais, mesmo que `EMAIL_TRANSPORT` esteja configurado
+com `brevo`, `smtp` ou `resend`.
 
 Os templates com a identidade Conto Contigo vivem em `src/emails/`: o
 catálogo é a única fonte de copy para e-mail, texto simples, push e SMS.
@@ -297,13 +306,15 @@ da API a correr.
 `npm run test:teams` sobe o Postgres do `docker-compose` (porta 5433),
 recria duas bases efémeras e valida:
 
-- `tests/teamsApi.test.ts` e `tests/teamsApiPhase2Corrections.test.ts`
+- `tests/teamsPhase3Unit.test.ts`, `tests/teamsApi.test.ts`,
+  `tests/teamsApiPhase2Corrections.test.ts` e `tests/teamsPhase3.test.ts`
   contra `apupu_teams_api`, com o schema completo aplicado por
   `node-pg-migrate up`;
 - `tests/teamsMigration.test.ts` contra `apupu_teams_migration`: corre
   as migrations até à `1739900000010`, carrega
-  `tests/fixtures/teams-migration.sql`, aplica `1739900000011` e
-  `1739900000012`, valida o estado `up` e depois `down 2`.
+  `tests/fixtures/teams-migration.sql`, aplica `1739900000011`,
+  `1739900000012` e `1739900000013`, valida o estado `up` e depois
+  `down 3`.
 
 Nunca toca na base de desenvolvimento (5432). As bases criadas pelo
 script são recriadas em cada execução. Não existe configuração de CI no

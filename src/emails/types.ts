@@ -26,6 +26,14 @@ export const EMAIL_TEMPLATE_CODES = [
   'profile_reminder',
   'decline_notification',
   'invitation_removed',
+  // Fase 3 — equipas e tarefas.
+  // Nomes do catálogo em português, tal como o pedido.
+  'equipa_convite',
+  'equipa_adicionado',
+  'equipa_papel_alterado',
+  'tarefa_atribuida',
+  'tarefa_concluida',
+  'tarefa_reatribuida',
 ] as const;
 
 export type EmailTemplateCode = (typeof EMAIL_TEMPLATE_CODES)[number];
@@ -69,6 +77,20 @@ export interface EmailVars {
   contribuicao?: boolean;
   /** Informação adicional curta (ex.: e-mail do convidado). */
   detalhe?: string;
+  /** Nome da equipa (Fase 3). */
+  equipa?: string;
+  /** Título da tarefa (Fase 3). */
+  tarefa?: string;
+  /** Nome do responsável actual (Fase 3). */
+  responsavel?: string;
+  /** Nome do responsável anterior, em reatribuições (Fase 3). */
+  anterior?: string;
+  /** Nome de quem executou a acção (Fase 3). */
+  autor?: string;
+  /** Papel na equipa: "gestor" ou "membro" (Fase 3). */
+  papel?: string;
+  /** Prazo já formatado, ex.: "31 jan 2030" (Fase 3). */
+  prazo?: string;
 }
 
 export type EmailTone = 'default' | 'danger';
