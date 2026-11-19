@@ -17,7 +17,10 @@ Migrações:
 [`../migrations/1739900000005_invitations-account-email-index.js`](../migrations/1739900000005_invitations-account-email-index.js)
 (índice de "Meus convites") e
 [`../migrations/1739900000006_event-managers.js`](../migrations/1739900000006_event-managers.js)
-(gestores de evento por email).
+(gestores de evento por email) e
+[`../migrations/1739900000011_teams.js`](../migrations/1739900000011_teams.js)
+(equipas, membros e tarefas por equipa — ver
+[`MIGRATION-TEAMS.md`](MIGRATION-TEAMS.md)).
 
 ## `event_templates`
 
@@ -217,6 +220,69 @@ Invariantes:
 5. O anfitrião (`events.host_id`) nunca é uma linha de
    `event_managers`; o próprio email é rejeitado ao adicionar.
 
+## `teams`
+
+Equipas de trabalho de um evento. Cada tarefa pertence a uma equipa e
+herda o evento dela.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`); obrigatório |
+| `name` | text | 1–80 caracteres (sem espaços nas pontas) |
+| `category` | text | `logistica` \| `decoracao` \| `musica` \| `catering` \| `rececao` \| `outra` |
+| `description` | text | opcional |
+| `created_by_host_id` | uuid | FK → `hosts` (`ON DELETE SET NULL`) |
+| `deleted_at` | timestamptz | remoção lógica |
+| `created_at` / `updated_at` | timestamptz | |
+
+Constraints e índices: `teams_event_name_unique` — `(event_id,
+lower(btrim(name)))` único **apenas para equipas não apagadas**;
+`teams_event_id_idx` e `teams_created_by_idx`.
+
+## `team_members`
+
+Membros de uma equipa. O anfitrião e os gestores do evento são
+materializados como membros (`is_host`/`role=gestor`) em todas as
+equipas, dentro da mesma transação que cria a equipa ou altera o
+gestor.
+
+| Coluna | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `team_id` | uuid | FK → `teams` (`ON DELETE CASCADE`) |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE SET NULL`); nulo até haver conta |
+| `email` | citext | identidade do membro na equipa |
+| `display_name` | text | nome apresentado (perfil, quando existe) |
+| `role` | text | `gestor` \| `membro` |
+| `status` | text | `ativo` \| `convite_pendente` |
+| `origin` | text | `convidado` \| `email` |
+| `is_host` | boolean | anfitrião do evento; implica `role=gestor` |
+| `invited_by_host_id` | uuid | FK → `hosts` (`ON DELETE SET NULL`) |
+| `joined_at` | timestamptz | data de adesão |
+| `removed_at` | timestamptz | remoção lógica; preserva a FK do responsável |
+| `created_at` / `updated_at` | timestamptz | |
+
+Constraints e índices: `team_members_team_email_unique` (`(team_id,
+email)` único para membros não removidos), `team_members_one_host`
+(um anfitrião por equipa), `team_members_team_id_idx`,
+`team_members_host_id_idx` e `team_members_email_idx`.
+
+Invariantes:
+
+1. O anfitrião é gestor implícito de todas as equipas do evento.
+2. Promover um membro a gestor torna-o gestor do evento: cria ou
+   reativa `event_managers` e atualiza o papel em todas as equipas.
+3. Perder o acesso ao evento (`event_managers.revoked_at`) marca as
+   tarefas desse membro como "Responsável sem acesso"; só anfitrião ou
+   gestor as podem reatribuir.
+4. Remover um membro com tarefas abertas devolve `409
+   member_has_open_tasks` com a lista das tarefas.
+5. `team_materialize_event_staff(team_id)` insere o anfitrião e os
+   gestores activos do evento como membros, de forma idempotente. É
+   chamada na mesma transação que cria a equipa ou altera o acesso de
+   um gestor.
+
 ## `hosts`
 
 Conta de anfitrião.
@@ -385,27 +451,62 @@ por `host_id, dedupe_key`). Os lembretes (`event_upcoming`,
 
 ## `host_tasks`
 
-Tarefas do workspace, globais ou ligadas a um evento.
+Tarefas. Cada tarefa pertence a uma equipa (e herda o evento dela) ou,
+apenas no legado, vive sem equipa na secção "Pessoais (legado)".
 
 | Coluna | Tipo | Notas |
 |---|---|---|
 | `id` | uuid | PK |
-| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`); proprietário |
-| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`); nulo = global |
-| `manager_id` | uuid | FK → `event_managers` (`ON DELETE SET NULL`); nulo = tarefa do anfitrião |
-| `label` | text | |
-| `done` | boolean | por omissão `false` |
-| `completed_at` | timestamptz | preenchido quando `done=true` |
+| `host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`); conta proprietária original |
+| `event_id` | uuid | FK → `events` (`ON DELETE CASCADE`); derivado da equipa |
+| `team_id` | uuid | FK → `teams` (`ON DELETE RESTRICT`); nulo = tarefa pessoal legada |
+| `assignee_member_id` | uuid | FK → `team_members` (`ON DELETE SET NULL`); responsável único |
+| `title` | text | 1–200 caracteres |
+| `description` | text | opcional |
+| `due_date` | date | prazo opcional (data de calendário) |
+| `priority` | text | `baixa` \| `normal` \| `alta` |
+| `status` | text | `por_fazer` \| `em_curso` \| `concluida` |
+| `created_by_host_id` | uuid | FK → `hosts` (`ON DELETE CASCADE`); autor |
+| `completed_by_member_id` | uuid | FK → `team_members` (`ON DELETE SET NULL`); definido pelo serviço ao concluir, nunca inferido pelo trigger |
+| `completed_at` | timestamptz | preenchido quando `status=concluida` |
+| `archived_at` | timestamptz | arquivada ao remover a equipa sem destino; fora das listas |
+| `label` | text | legado; espelho de `title` durante a transição |
+| `done` | boolean | legado; espelho de `status=concluida` durante a transição |
+| `manager_id` | uuid | legado; responsável antigo em `event_managers` |
 | `created_at` / `updated_at` | timestamptz | |
 
-Constraints: `host_tasks_manager_event_check` (`manager_id IS NULL OR
-event_id IS NOT NULL`). Índices: `host_tasks_host_id_idx`,
-`host_tasks_event_id_idx`, `host_tasks_host_created_idx`
-(`host_id, created_at DESC, id DESC`) e `host_tasks_manager_idx`
-(`manager_id` parcial).
+Constraints: `host_tasks_title_check`, `host_tasks_priority_check`,
+`host_tasks_status_check`, `host_tasks_team_event_check` (`team_id IS
+NULL OR event_id IS NOT NULL`), `host_tasks_team_assignee_check`
+(`team_id IS NULL OR assignee_member_id IS NOT NULL`) e
+`host_tasks_manager_event_check` (legado). Índices: `host_tasks_team_id_idx`,
+`host_tasks_assignee_idx`, `host_tasks_status_idx`,
+`host_tasks_due_date_idx` (parcial, só tarefas não concluídas),
+`host_tasks_host_created_idx` e `host_tasks_manager_idx`. A migração
+`1739900000012_team-task-indexes` acrescenta
+`host_tasks_team_status_idx` (`(team_id, status)`),
+`host_tasks_assignee_status_idx` (`(assignee_member_id, status)`) e
+`host_tasks_archived_at_idx`, todos parciais (`archived_at IS NULL`,
+excepto o último) para apoiar as listas por equipa/responsável e a
+limpeza de arquivadas.
 
-Um gestor só vê as tarefas atribuídas ao seu email (gestor activo) e só
-pode alternar `done`; o anfitrião vê e gere todas as suas.
+O trigger `host_tasks_sync_team_event` garante que `event_id` é sempre
+o evento da equipa e impede mover uma tarefa para a equipa de outro
+evento. Durante a transição, `host_tasks_sync_legacy_columns` mantém
+`label`↔`title` e `done`↔`status` sincronizados, preenche
+`created_by_host_id` e `completed_at`, e limpa `completed_at` e
+`completed_by_member_id` ao reabrir. O trigger não assume quem
+concluiu: essa decisão é do serviço, que valida a permissão antes de
+gravar `completed_by_member_id`.
+
+Na migração, a equipa "Geral" só é criada para eventos com tarefas e
+com pelo menos um responsável possível (anfitrião ou gestor activo).
+Sem responsável, a tarefa fica sem equipa em "Pessoais (legado)".
+
+Regras: qualquer membro da equipa cria tarefas; editar/apagar está
+limitado a anfitrião, gestor ou ao autor; reatribuir é de
+anfitrião/gestor; **só o responsável** conclui, reabre ou passa a
+`em_curso` — em qualquer caminho que altere `status`/`done`.
 
 ## `host_audit_log`
 
