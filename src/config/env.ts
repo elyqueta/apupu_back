@@ -24,7 +24,12 @@ function isLocalUrl(value: string): boolean {
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 
-  PORT: z.coerce.number({ error: 'PORT deve ser um número' }).int().positive().default(3000),
+  // Um `.env.example` com `PORT=` não deve impedir o arranque: o vazio
+  // é tratado como "ausente" e cai no valor por omissão.
+  PORT: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.coerce.number({ error: 'PORT deve ser um número' }).int().positive().default(3000)
+  ),
 
   // 0 = sem proxy à frente; 1 = um proxy (cloud, reverse proxy).
   TRUST_PROXY: z.coerce.number({ error: 'TRUST_PROXY deve ser um número' }).int().min(0).default(0),
@@ -112,6 +117,26 @@ const envSchema = z.object({
   AUTH_COOKIE_NAME: z.string().min(1).default('apupu_auth'),
   AUTH_CSRF_COOKIE_NAME: z.string().min(1).default('apupu_csrf_auth'),
   AUTH_SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(10080),
+
+  /**
+   * OAuth2 com Google.
+   *
+   * Os três valores podem ficar vazios (é o que vem no `.env.example`):
+   * nesse caso a estratégia não é registada e as rotas `/auth/google*`
+   * respondem 503 em vez de derrubar o processo no arranque.
+   */
+  GOOGLE_CLIENT_ID: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().min(1).optional()
+  ),
+  GOOGLE_CLIENT_SECRET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().min(1).optional()
+  ),
+  CALLBACK_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().url('CALLBACK_URL deve ser uma URL válida').optional()
+  ),
 
   /**
    * Retenção de contas inactivas.

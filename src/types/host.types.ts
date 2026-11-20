@@ -32,7 +32,8 @@ export interface HostProfile {
 export interface HostAccount {
   id: string;
   email: string;
-  passwordHash: string;
+  /** Nulo em contas criadas apenas com login externo (Google). */
+  passwordHash: string | null;
   emailVerifiedAt: Date | null;
   /** Papel `super_admin` do Bloco 6; promoção apenas por SQL. */
   isSuperAdmin: boolean;
@@ -65,8 +66,21 @@ export interface HostPublicContact {
 
 export interface CreateHostInput {
   email: string;
-  passwordHash: string;
+  /** `null` quando a conta vem de um provedor OAuth sem senha local. */
+  passwordHash: string | null;
   displayName: string | null;
+  googleId?: string | null;
+  avatarUrl?: string | null;
+  emailVerified?: boolean;
+}
+
+/** Dados mínimos devolvidos pelo Google para criar/ligar uma conta. */
+export interface GoogleIdentityInput {
+  googleId: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+  emailVerified: boolean;
 }
 
 export interface UpdateHostProfileInput {

@@ -1,7 +1,8 @@
 import { PoolClient } from 'pg';
-import { pool, query } from '../database/pool';
+import { pool, query, withTransaction } from '../database/pool';
 import {
   CreateHostInput,
+  GoogleIdentityInput,
   HostLocale,
   HostProfile,
   HostPublicContact,
@@ -32,7 +33,7 @@ export interface AdminUserListItem {
 interface HostRow {
   id: string;
   email: string;
-  password_hash: string;
+  password_hash: string | null;
   email_verified_at: Date | null;
   is_super_admin: boolean;
   status: HostStatus;
@@ -129,19 +130,19 @@ export const hostRepository = {
   async create(input: CreateHostInput, client?: PoolClient): Promise<HostWithProfile> {
     const runner = client ?? pool;
     const hostResult = await runner.query<{ id: string }>(
-      `INSERT INTO hosts (email, password_hash)
-       VALUES ($1, $2)
+      `INSERT INTO hosts (email, password_hash, google_id, email_verified_at)
+       VALUES ($1, $2, $3, CASE WHEN $4 THEN now() ELSE NULL END)
        RETURNING id`,
-      [input.email, input.passwordHash]
+      [input.email, input.passwordHash, input.googleId ?? null, input.emailVerified ?? false]
     );
 
     const hostId = hostResult.rows[0]?.id;
     if (!hostId) throw new Error('Falha ao criar anfitrião: nenhum id devolvido.');
 
     await runner.query(
-      `INSERT INTO host_profiles (host_id, display_name)
-       VALUES ($1, $2)`,
-      [hostId, input.displayName]
+      `INSERT INTO host_profiles (host_id, display_name, avatar_url)
+       VALUES ($1, $2, $3)`,
+      [hostId, input.displayName, input.avatarUrl ?? null]
     );
 
     const created = await this.findById(hostId, client);
@@ -168,13 +169,74 @@ export const hostRepository = {
     return row ? toHost(row) : null;
   },
 
-  async findByEmail(email: string): Promise<HostWithProfile | null> {
-    const result = await query<HostRow>(
+  async findByEmail(email: string, client?: PoolClient): Promise<HostWithProfile | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<HostRow>(
       `SELECT ${SELECT_COLUMNS} ${FROM_HOSTS} WHERE h.email = $1`,
       [email]
     );
     const row = result.rows[0];
     return row ? toHost(row) : null;
+  },
+
+  async findByGoogleId(googleId: string, client?: PoolClient): Promise<HostWithProfile | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<HostRow>(
+      `SELECT ${SELECT_COLUMNS} ${FROM_HOSTS} WHERE h.google_id = $1`,
+      [googleId]
+    );
+    const row = result.rows[0];
+    return row ? toHost(row) : null;
+  },
+
+  /**
+   * Resolve uma identidade Google para uma conta local.
+   *
+   * Ordem: google_id -> email -> criação. Tudo numa transação e com
+   * `ON CONFLICT (email)` para que dois logins simultâneos com o mesmo
+   * email não criem contas duplicadas. O `google_id` nunca é sobrescrito
+   * se já pertencer a outra conta.
+   */
+  async findOrCreateFromGoogle(input: GoogleIdentityInput): Promise<HostWithProfile> {
+    return withTransaction(async (client) => {
+      const byGoogleId = await this.findByGoogleId(input.googleId, client);
+      if (byGoogleId) return byGoogleId;
+
+      const hostResult = await client.query<{ id: string }>(
+        `INSERT INTO hosts (email, password_hash, google_id, email_verified_at)
+         VALUES ($1, NULL, $2, CASE WHEN $3 THEN now() ELSE NULL END)
+         ON CONFLICT (email) DO UPDATE
+           SET google_id = COALESCE(hosts.google_id, EXCLUDED.google_id),
+               email_verified_at = CASE
+                 WHEN $3 THEN COALESCE(hosts.email_verified_at, now())
+                 ELSE hosts.email_verified_at
+               END,
+               updated_at = now()
+         RETURNING id`,
+        [input.email, input.googleId, input.emailVerified]
+      );
+
+      const hostId = hostResult.rows[0]?.id;
+      if (!hostId) throw new Error('Falha ao ligar conta Google: nenhum id devolvido.');
+
+      await client.query(
+        `INSERT INTO host_profiles (host_id, display_name, avatar_url)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (host_id) DO UPDATE
+           SET display_name = CASE
+                 WHEN NULLIF(btrim(host_profiles.display_name), '') IS NULL
+                   THEN EXCLUDED.display_name
+                 ELSE host_profiles.display_name
+               END,
+               avatar_url = COALESCE(host_profiles.avatar_url, EXCLUDED.avatar_url),
+               updated_at = now()`,
+        [hostId, input.displayName, input.avatarUrl]
+      );
+
+      const user = await this.findById(hostId, client);
+      if (!user) throw new Error('Falha ao ler conta Google após criação/ligação.');
+      return user;
+    });
   },
 
   async emailExists(email: string): Promise<boolean> {

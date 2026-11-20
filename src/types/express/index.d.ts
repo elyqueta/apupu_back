@@ -1,3 +1,4 @@
+import type { GoogleProfile } from '../../config/passport.config';
 import { Event, EventAccessRole } from '../event.types';
 import { GuestAccess } from '../guestAccess.types';
 import { Invitation } from '../invitation.types';
@@ -19,6 +20,12 @@ import { HostWithProfile } from '../host.types';
  */
 declare global {
   namespace Express {
+    /** Utilizador devolvido pela estratégia Google (ver passport.config.ts). */
+    interface User extends GoogleProfile {
+      /** Identificador do Google (`sub`). */
+      id: string;
+    }
+
     interface Request {
       id: string;
       event?: Event;
