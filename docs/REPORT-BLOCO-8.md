@@ -90,4 +90,6 @@ e respostas de erro com envelope JSON.
 - `99b3854` — enriquecimento dos DTOs com perfil, eventos e equipas
 - `d39da25` — geração e armazenamento dos PDFs semanais
 - `07d3582` — rotas de exportação e download
-- (testes, documentação e ajuste OpenAPI no commit final desta entrega)
+- `83318cb` — testes do detalhe, dos PDFs, do job e do OpenAPI
+- `db6f450` — plano, relatório e contrato
+- `0e50511` — correcção da descrição YAML com dois pontos
