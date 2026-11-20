@@ -166,7 +166,7 @@ router.get(
  *         schema: { type: string, format: uuid }
  *     responses:
  *       200:
- *         description: PDF com cabeçalho `Content-Disposition: attachment`.
+ *         description: "PDF com cabeçalho de descarga (Content-Disposition: attachment)."
  *         content:
  *           application/pdf:
  *             schema: { type: string, format: binary }
