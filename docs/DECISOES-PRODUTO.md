@@ -129,6 +129,14 @@ email verificado e `host_id` nulo passam a pertencer à conta. A operação
   `X-CSRF-Token`.
 - Falta implementar: variáveis de ambiente de produção e validação da
   origem no deployment.
+- Em ambientes de teste com `NODE_ENV=development` (para manter `/api-docs`
+  e `/openapi.json` acessíveis), `APP_BASE_URL` pode ficar com um valor
+  local por ter sido copiada do `.env`. Nesse caso `publicAppBaseUrl()`
+  usa a primeira origem pública de `CORS_ORIGIN`, evitando que emails e
+  links de convite apontem para `localhost`. Sem origem pública, mantém
+  o valor local — é o caso do desenvolvimento na própria máquina. Em
+  produção a guarda de `env.ts` continua a rejeitar `APP_BASE_URL` local,
+  pelo que o fallback nunca mascará uma configuração inválida.
 
 ## 11. Recuperação do link de gestão legado
 
