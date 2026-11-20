@@ -37,6 +37,9 @@ interface AdminActivityDto {
   target_type: string | null;
   target_id: string | null;
   created_at: string;
+  /** Identidade do autor, resolvida na listagem para não mostrar "Sistema". */
+  admin_email: string | null;
+  admin_name: string | null;
 }
 
 interface AdminAuditDto extends AdminActivityDto {
@@ -88,6 +91,8 @@ export const adminService = {
         target_type: entry.targetType,
         target_id: entry.targetId,
         created_at: entry.createdAt.toISOString(),
+        admin_email: entry.adminEmail,
+        admin_name: entry.adminName,
       })),
     };
   },
@@ -296,6 +301,8 @@ export const adminService = {
       items: result.items.map((entry) => ({
         id: entry.id,
         admin_id: entry.adminId,
+        admin_email: entry.adminEmail,
+        admin_name: entry.adminName,
         action: entry.action,
         target_type: entry.targetType,
         target_id: entry.targetId,

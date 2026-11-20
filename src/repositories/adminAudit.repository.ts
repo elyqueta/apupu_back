@@ -10,6 +10,8 @@ import { pool, query } from '../database/pool';
 export interface AdminAuditEntry {
   id: string;
   adminId: string;
+  adminEmail: string | null;
+  adminName: string | null;
   action: string;
   targetType: string | null;
   targetId: string | null;
@@ -21,6 +23,8 @@ export interface AdminAuditEntry {
 interface AdminAuditRow {
   id: string;
   admin_id: string;
+  admin_email: string | null;
+  admin_name: string | null;
   action: string;
   target_type: string | null;
   target_id: string | null;
@@ -29,14 +33,30 @@ interface AdminAuditRow {
   created_at: Date;
 }
 
+/**
+ * O ator é resolvido por join porque a auditoria guarda só `admin_id`.
+ * `admin_id` é FK NOT NULL para `hosts`, logo o join é seguro; mantém-se
+ * `LEFT` para não perder linhas se a retenção remover a conta mais tarde.
+ */
 const SELECT_COLUMNS = `
-  id, admin_id, action, target_type, target_id, reason, metadata, created_at
+  a.id, a.admin_id,
+  h.email::text AS admin_email,
+  p.display_name AS admin_name,
+  a.action, a.target_type, a.target_id, a.reason, a.metadata, a.created_at
+`;
+
+const FROM = `
+  FROM admin_audit_log a
+  LEFT JOIN hosts h ON h.id = a.admin_id
+  LEFT JOIN host_profiles p ON p.host_id = h.id
 `;
 
 function toEntry(row: AdminAuditRow): AdminAuditEntry {
   return {
     id: row.id,
     adminId: row.admin_id,
+    adminEmail: row.admin_email,
+    adminName: row.admin_name,
     action: row.action,
     targetType: row.target_type,
     targetId: row.target_id,
@@ -97,17 +117,17 @@ export const adminAuditRepository = {
       clauses.push(sql.replace('?', `$${params.length}`));
     };
 
-    if (filters.q) push('action ILIKE ?', `%${filters.q}%`);
-    if (filters.action) push('action = ?', filters.action);
-    if (filters.from) push('created_at >= ?', filters.from);
-    if (filters.to) push('created_at <= ?', filters.to);
+    if (filters.q) push('a.action ILIKE ?', `%${filters.q}%`);
+    if (filters.action) push('a.action = ?', filters.action);
+    if (filters.from) push('a.created_at >= ?', filters.from);
+    if (filters.to) push('a.created_at <= ?', filters.to);
 
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '';
-    const base = `FROM admin_audit_log${where}`;
+    const base = `${FROM}${where}`;
 
     const [items, count] = await Promise.all([
       query<AdminAuditRow>(
-        `SELECT ${SELECT_COLUMNS} ${base} ORDER BY created_at DESC LIMIT $${
+        `SELECT ${SELECT_COLUMNS} ${base} ORDER BY a.created_at DESC LIMIT $${
           params.length + 1
         } OFFSET $${params.length + 2}`,
         [...params, filters.limit, filters.offset]
@@ -123,7 +143,7 @@ export const adminAuditRepository = {
 
   async recent(limit: number): Promise<AdminAuditEntry[]> {
     const result = await query<AdminAuditRow>(
-      `SELECT ${SELECT_COLUMNS} FROM admin_audit_log ORDER BY created_at DESC LIMIT $1`,
+      `SELECT ${SELECT_COLUMNS} ${FROM} ORDER BY a.created_at DESC LIMIT $1`,
       [limit]
     );
     return result.rows.map(toEntry);

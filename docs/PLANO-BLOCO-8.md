@@ -156,6 +156,38 @@ alterada; a migração não depende de dados.
 migração `down` e `up` na base de desenvolvimento; smoke test das rotas com a
 conta `csassapa@gmail.com` (já promovida a super admin).
 
+## Melhoria — exposição explícita da atividade administrativa
+
+A atividade recente e a auditoria mostravam chaves cruas (`admin_users_listed`,
+`admin_all_users_report_exported`, …) e o ator genérico “Sistema”, porque os
+DTOs não devolviam a identidade do admin e o frontend só conhecia cinco acções.
+
+- `adminAudit.repository.ts`: resolver `admin_id` com `hosts`/`host_profiles` e
+  devolver `admin_email` e `admin_name` em `list()` e `recent()`.
+- `admin.service.ts`: incluir esses campos em `recent_activity` e na lista de
+  auditoria, sem expor hashes, tokens nem conteúdo de mensagens.
+- Testes: validar que os DTOs incluem o autor e que a consulta continua
+  paginada/filtrável.
+
+## Correcção — refresh do front local cai sempre no login
+
+Reproduzido no browser: depois de login, um refresh de `/painel` redirecciona
+para `/entrar?returnUrl=%2Fpainel` durante o SSR, sem nenhum pedido
+`GET /auth/session` visível na rede.
+
+Causa: `apupu_auth` é gravado com `Path=/api/v1`. O browser só envia cookies
+cujo `Path` corresponda ao URL pedido, pelo que **não envia o cookie ao pedir
+`/painel`** no dev server (4200). O SSR depende desse cookie (reencaminhado
+pelo interceptor) para autenticar; sem ele recebe 401 e o guard redirecciona.
+Em produção/teste/Vercel o comportamento não deve mudar.
+
+- Em `NODE_ENV=development`, gravar o cookie de conta com `Path=/`; nos outros
+  ambientes manter `Path=/api/v1`. O `clearAuthSession` usa o mesmo valor.
+- O cookie de CSRF mantém `Path=/api/v1`: o token do escopo `auth` vem da
+  resposta JSON e nunca é lido de cookie pelo frontend.
+- Teste: `setAuthSession`/`clearAuthSession` com `NODE_ENV=development` usam
+  `path='/'`; com `NODE_ENV=production` mantêm `path='/api/v1'`.
+
 ## Fora de âmbito
 
 - Envio do relatório por email (decisão: apenas download no `/admin`).

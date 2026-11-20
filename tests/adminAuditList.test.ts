@@ -42,12 +42,13 @@ describe('adminAuditRepository.list · placeholders de paginação', () => {
     expect(vi.mocked(query)).toHaveBeenCalledTimes(2);
 
     const items = call(0);
-    expect(items.sql).toContain('ORDER BY created_at DESC LIMIT $1 OFFSET $2');
+    expect(items.sql).toContain('ORDER BY a.created_at DESC LIMIT $1 OFFSET $2');
     expect(items.params).toEqual([20, 0]);
     expectPlaceholdersAligned(items.sql, items.params);
 
     const count = call(1);
-    expect(count.sql).toContain('SELECT count(*)::text AS count FROM admin_audit_log');
+    expect(count.sql).toContain('SELECT count(*)::text AS count');
+    expect(count.sql).toContain('FROM admin_audit_log a');
     expect(count.params).toEqual([]);
     expectPlaceholdersAligned(count.sql, count.params);
   });
@@ -63,10 +64,10 @@ describe('adminAuditRepository.list · placeholders de paginação', () => {
     });
 
     const items = call(0);
-    expect(items.sql).toContain('action ILIKE $1');
-    expect(items.sql).toContain('action = $2');
-    expect(items.sql).toContain('created_at >= $3');
-    expect(items.sql).toContain('created_at <= $4');
+    expect(items.sql).toContain('a.action ILIKE $1');
+    expect(items.sql).toContain('a.action = $2');
+    expect(items.sql).toContain('a.created_at >= $3');
+    expect(items.sql).toContain('a.created_at <= $4');
     expect(items.sql).toContain('LIMIT $5 OFFSET $6');
     expect(items.params).toEqual([
       '%Ana%',
@@ -79,8 +80,49 @@ describe('adminAuditRepository.list · placeholders de paginação', () => {
     expectPlaceholdersAligned(items.sql, items.params);
 
     const count = call(1);
-    expect(count.sql).toContain('action ILIKE $1');
+    expect(count.sql).toContain('a.action ILIKE $1');
     expect(count.params).toHaveLength(4);
     expectPlaceholdersAligned(count.sql, count.params);
+  });
+});
+
+describe('adminAuditRepository · identidade do autor', () => {
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(query).mockResolvedValue({ rows: [] } as never);
+  });
+
+  function row() {
+    return {
+      id: 'log-1',
+      admin_id: 'admin-1',
+      admin_email: 'admin@exemplo.ao',
+      admin_name: 'Admin Geral',
+      action: 'admin_all_users_report_exported',
+      target_type: 'admin',
+      target_id: 'admin-1',
+      reason: null,
+      metadata: {},
+      created_at: new Date('2026-11-20T15:00:00Z'),
+    };
+  }
+
+  it('devolve email e nome do admin na atividade recente', async () => {
+    vi.mocked(query).mockResolvedValue({ rows: [row()] } as never);
+
+    const [entry] = await adminAuditRepository.recent(10);
+
+    expect(entry.adminEmail).toBe('admin@exemplo.ao');
+    expect(entry.adminName).toBe('Admin Geral');
+    expect(call(0).sql).toContain('LEFT JOIN host_profiles p ON p.host_id = h.id');
+  });
+
+  it('devolve email e nome do admin na lista paginada', async () => {
+    vi.mocked(query).mockResolvedValueOnce({ rows: [row()] } as never);
+
+    const { items } = await adminAuditRepository.list({ limit: 10, offset: 0 });
+
+    expect(items[0].adminEmail).toBe('admin@exemplo.ao');
+    expect(items[0].adminName).toBe('Admin Geral');
   });
 });
