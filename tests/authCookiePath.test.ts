@@ -21,11 +21,32 @@ function fakeResponse() {
   };
 }
 
+/** Cookies efetivamente escritos (os de limpeza não têm `value`). */
+function written(cookies: CookieCall[], name: string): CookieCall | undefined {
+  return cookies.find((cookie) => cookie.name === name && cookie.value !== undefined);
+}
+
+/** Confirma que o legado `Path=/api/v1` é apagado mesmo quando não é o atual. */
+function expectLegacyCleared(cookies: CookieCall[]): void {
+  expect(cookies).toContainEqual({
+    name: 'apupu_auth',
+    options: { path: '/api/v1' },
+  });
+  expect(cookies).toContainEqual({
+    name: 'apupu_csrf_auth',
+    options: { path: '/api/v1' },
+  });
+}
+
 /**
  * O refresh da SPA em desenvolvimento passa pelo SSR do Angular. O browser só
  * envia cookies cujo Path corresponda ao URL da página (`/painel`), por isso o
  * cookie de conta precisa de `Path=/` em dev. Fora de dev o comportamento tem
  * de continuar exactamente como antes (`Path=/api/v1`).
+ *
+ * Em todos os ambientes é obrigatório limpar as duas variantes de Path: um
+ * cookie antigo com `Path=/api/v1` é enviado primeiro pelo browser e fazia o
+ * `hostAccountAuth` ler um token revogado depois de um novo login.
  */
 describe('cookie de sessão da conta · Path', () => {
   afterEach(() => {
@@ -38,34 +59,42 @@ describe('cookie de sessão da conta · Path', () => {
 
     setAuthSession(res as never, 'token-de-sessao');
 
-    expect(res.cookies[0].name).toBe('apupu_auth');
-    expect(res.cookies[0].options).toMatchObject({
+    const auth = written(res.cookies, 'apupu_auth');
+    expect(auth?.options).toMatchObject({
       path: '/',
       httpOnly: true,
       secure: false,
       sameSite: 'lax',
     });
-    // O CSRF do escopo auth vem da resposta JSON, não de cookie.
-    expect(res.cookies[1].name).toBe('apupu_csrf_auth');
-    expect(res.cookies[1].options).toMatchObject({ path: '/api/v1', httpOnly: false });
+    expect(written(res.cookies, 'apupu_csrf_auth')?.options).toMatchObject({
+      path: '/api/v1',
+      httpOnly: false,
+    });
+    // O cookie antigo tem de ser apagado antes de escrever o novo.
+    expectLegacyCleared(res.cookies);
+    expect(res.cookies.findIndex((c) => c.name === 'apupu_auth' && !c.value)).toBeLessThan(
+      res.cookies.indexOf(auth as CookieCall),
+    );
 
     clearAuthSession(res as never);
-    expect(res.cookies[2]).toMatchObject({ name: 'apupu_auth', options: { path: '/' } });
-    expect(res.cookies[3]).toMatchObject({
-      name: 'apupu_csrf_auth',
-      options: { path: '/api/v1' },
-    });
+    expectLegacyCleared(res.cookies);
+    expect(res.cookies).toContainEqual({ name: 'apupu_auth', options: { path: '/' } });
   });
 
-  it('mantém Path=/api/v1 em produção', () => {
+  it('mantém Path=/api/v1 em produção e limpa também a variante /', () => {
     env.NODE_ENV = 'production';
     const res = fakeResponse();
 
     setAuthSession(res as never, 'token-de-sessao');
 
-    expect(res.cookies[0].options).toMatchObject({ path: '/api/v1', secure: true });
+    expect(written(res.cookies, 'apupu_auth')?.options).toMatchObject({
+      path: '/api/v1',
+      secure: true,
+    });
+    expect(res.cookies).toContainEqual({ name: 'apupu_auth', options: { path: '/' } });
+
     clearAuthSession(res as never);
-    expect(res.cookies[2].options).toMatchObject({ path: '/api/v1' });
+    expect(res.cookies).toContainEqual({ name: 'apupu_auth', options: { path: '/api/v1' } });
   });
 
   it('mantém Path=/api/v1 em teste', () => {
@@ -74,6 +103,10 @@ describe('cookie de sessão da conta · Path', () => {
 
     setAuthSession(res as never, 'token-de-sessao');
 
-    expect(res.cookies[0].options).toMatchObject({ path: '/api/v1', secure: false });
+    expect(written(res.cookies, 'apupu_auth')?.options).toMatchObject({
+      path: '/api/v1',
+      secure: false,
+    });
+    expectLegacyCleared(res.cookies);
   });
 });

@@ -1,4 +1,5 @@
-import express, { Application, Request, Response } from 'express';
+import 'dotenv/config';
+import express, { Application, NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -9,11 +10,19 @@ import { swaggerSpec } from './config/swagger';
 import { asyncHandler } from './middlewares/asyncHandler';
 import { notFoundHandler } from './middlewares/notFoundHandler';
 import { errorHandler } from './middlewares/errorHandler';
-import { apiLimiter } from './middlewares/rateLimiter';
+import { apiLimiter, authIpLimiter } from './middlewares/rateLimiter';
 import { noStore } from './middlewares/noStore';
 import { publicInviteHeaders } from './middlewares/publicInviteHeaders';
 import { requestId } from './middlewares/requestId';
 import { logger } from './config/logger';
+import {
+  configurePassport,
+  isGoogleOAuthConfigured,
+  typedPassport,
+} from './config/passport.config';
+import { auditContext } from './services/audit.service';
+import { authService } from './services/auth.service';
+import { setAuthSession } from './utils/cookie.util';
 import v1Routes from './routes/v1';
 
 const app: Application = express();
@@ -33,6 +42,98 @@ app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+
+/**
+ * Passport sem sessões: o callback devolve JSON e não cria cookie.
+ * A estratégia só é registada quando as variáveis Google estão preenchidas.
+ */
+configurePassport();
+app.use(typedPassport.initialize());
+
+// Respostas de autenticação também não podem ser cacheadas.
+app.use('/auth', noStore);
+
+/**
+ * Inicia o fluxo OAuth2 do Google.
+ *
+ * GET /auth/google -> redireciona para o consent screen do Google,
+ * pedindo os escopos `profile` e `email`.
+ */
+app.get('/auth/google', authIpLimiter, (req: Request, res: Response, next: NextFunction) => {
+  if (!isGoogleOAuthConfigured()) {
+    res.status(503).json({
+      error: 'google_oauth_not_configured',
+      message: 'Defina GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e CALLBACK_URL no .env.',
+    });
+    return;
+  }
+
+  typedPassport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: false,
+  })(req, res, next);
+});
+
+/**
+ * Callback do Google.
+ *
+ * GET /auth/google/callback?code=... -> valida o código, cria a sessão de
+ * conta e devolve um cookie HttpOnly (`apupu_auth`). O browser é depois
+ * redirecionado para `${APP_BASE_URL}/login-success`, onde o frontend apenas
+ * confirma a sessão com `GET /api/v1/auth/session` — não vê nem guarda token.
+ *
+ * Em produção este caminho é servido através do rewrite do Vercel, por isso
+ * o cookie fica associado ao domínio do frontend (mesma origem da SPA).
+ */
+app.get(
+  '/auth/google/callback',
+  authIpLimiter,
+  (req: Request, res: Response, next: NextFunction) => {
+    if (!isGoogleOAuthConfigured()) {
+      res.status(503).json({
+        error: 'google_oauth_not_configured',
+        message: 'Defina GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e CALLBACK_URL no .env.',
+      });
+      return;
+    }
+
+    typedPassport.authenticate(
+      'google',
+      { session: false },
+      (err: unknown, user: Express.User | false | undefined, _info: unknown) => {
+        if (err) {
+          next(err);
+          return;
+        }
+
+        if (!user) {
+          res.status(401).json({
+            error: 'google_authentication_failed',
+            message: 'O Google não autenticou o utilizador ou o pedido foi cancelado.',
+          });
+          return;
+        }
+
+        if (!user.localUserId) {
+          next(new Error('Google autenticado sem conta local associada.'));
+          return;
+        }
+
+        void authService
+          .startGoogleSession(
+            user.localUserId,
+            req.header('user-agent') ?? null,
+            auditContext(req)
+          )
+          .then((session) => {
+            setAuthSession(res, session.sessionToken);
+            res.redirect(303, `${env.APP_BASE_URL.replace(/\/+$/, '')}/login-success`);
+          })
+          .catch(next);
+      }
+    )(req, res, next);
+  }
+);
 
 // Dados pessoais e links secretos nunca devem ser guardados em caches.
 app.use('/api/v1', noStore);

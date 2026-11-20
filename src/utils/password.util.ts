@@ -72,7 +72,12 @@ export async function hashPassword(password: string): Promise<string> {
   return hash(password, ARGON2_OPTIONS);
 }
 
-export async function verifyPassword(hashValue: string, password: string): Promise<boolean> {
+export async function verifyPassword(hashValue: string | null, password: string): Promise<boolean> {
+  if (!hashValue) {
+    // Conta externa (Google) não tem senha local: nunca autentica por senha.
+    return false;
+  }
+
   try {
     return await verify(hashValue, password, ARGON2_OPTIONS);
   } catch {

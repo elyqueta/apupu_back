@@ -742,6 +742,37 @@ export const authService = {
     return { host: refreshed, session };
   },
 
+  /**
+   * Inicia uma sessão de conta depois de um login externo (Google).
+   *
+   * Não há senha local nem código OTP: a identidade já foi confirmada pelo
+   * Passport. O cookie HttpOnly é definido pelo chamador com `setAuthSession`.
+   */
+  async startGoogleSession(
+    hostId: string,
+    userAgent: string | null,
+    context?: AuditContext
+  ): Promise<CreatedAccountSession> {
+    const host = await hostRepository.findById(hostId);
+
+    if (!host || host.status !== 'active') {
+      throw new UnauthorizedError(INVALID_SESSION, 'host_session_invalid');
+    }
+
+    await hostRepository.registerSuccessfulLogin(hostId);
+    const session = await createAccountSession(hostId, userAgent);
+
+    await auditService.record({
+      ip: context?.ip ?? null,
+      requestId: context?.requestId ?? null,
+      action: 'login_success',
+      hostId,
+      metadata: { provider: 'google', email_verified: host.emailVerifiedAt !== null },
+    });
+
+    return session;
+  },
+
   /** Resolve a conta de uma sessão de conta válida. */
   async sessionHost(hostId: string): Promise<HostWithProfile> {
     const host = await hostRepository.findById(hostId);
