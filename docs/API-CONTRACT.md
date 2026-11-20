@@ -2768,8 +2768,8 @@ não existe rota para atribuir ou remover o papel.
 | `GET` | `/api/v1/admin/overview` | `{ data: { stats, recent_activity } }` |
 | `GET` | `/api/v1/admin/events` | `{ data: [...], pagination }` (`q`, `status`, `host`, `from`, `to`, `order`) |
 | `GET` | `/api/v1/admin/events/:eventId` | `{ data: { event } }` |
-| `GET` | `/api/v1/admin/users` | `{ data: [...], pagination }` (`q`, `role`, `status`, `from`, `order`) |
-| `GET` | `/api/v1/admin/users/:userId` | `{ data: { id, email, status, is_super_admin, ... } }` |
+| `GET` | `/api/v1/admin/users` | `{ data: [...], pagination }` (`q`, `role`, `status`, `from`, `order`); cada item inclui `avatar_url`, `cover_url`, `phone`, `birth_date`, `locale`, `timezone` e `profile_complete` |
+| `GET` | `/api/v1/admin/users/:userId` | `{ data: AdminUserDetail }` — campos de `AdminUser` mais `events` e `teams` (até 50 cada) |
 | `POST` | `/api/v1/admin/users/:userId/suspend` | `{ data: { id, email, status } }` (corpo opcional `{ reason }`) |
 | `POST` | `/api/v1/admin/users/:userId/reactivate` | `{ data: { id, email, status } }` |
 | `POST` | `/api/v1/admin/users/:userId/revoke-sessions` | `{ data: { revoked } }` |
@@ -2785,3 +2785,31 @@ O super admin não pode suspender a própria conta, revogar as próprias
 sessões nem actuar sobre outro super admin: `403 admin_self_action`.
 Todas as acções, incluindo listagens, são registadas em
 `admin_audit_log` (append-only), sem senhas, tokens ou OTPs.
+
+#### Perfis e relatórios PDF (Bloco 8)
+
+| Método | Rota | Corpo de sucesso |
+|---|---|---|
+| `GET` | `/api/v1/admin/users/:userId/report` | PDF individual (`application/pdf`), nome `conto-contigo_perfil_<slug>_<AAAA-MM-DD>.pdf` |
+| `GET` | `/api/v1/admin/reports/all` | PDF global imediato com todos os perfis e contadores agregados |
+| `GET` | `/api/v1/admin/reports/weekly` | `{ data: [AdminWeeklyReport] }` — até 12 semanas, mais recente primeiro |
+| `GET` | `/api/v1/admin/reports/weekly/:reportId/download` | PDF guardado, com `Content-Disposition: attachment` e `Cache-Control: private, no-store` |
+
+`AdminUserDetail.events[]` contém `id`, `title`, `status`, `starts_at`,
+`created_at` e `guest_count`; `teams[]` contém `id`, `name`,
+`member_count` e `event_title`. São incluídos eventos próprios e geridos
+por email de gestor. Nenhum DTO admin expõe `password_hash`, hashes de
+imagem, `public_id` do Cloudinary, tokens ou OTPs.
+
+`AdminWeeklyReport` contém `id`, `week_start` (segunda-feira, `AAAA-MM-DD`),
+`status`, `filename`, `size_bytes`, `host_count`, `generated_at` e
+`created_at`. O relatório semanal é gerado à segunda-feira às 09:00 de
+`Africa/Luanda`, com idempotência por `week_start`; o job não envia
+email. Configuração por ambiente: `ADMIN_WEEKLY_REPORT_ENABLED`
+(`true`), `ADMIN_WEEKLY_REPORT_LOCAL_HOUR` (`9`),
+`ADMIN_WEEKLY_REPORT_LOCAL_WEEKDAY` (`1`),
+`ADMIN_WEEKLY_REPORT_RETENTION_WEEKS` (`12`) e
+`ADMIN_WEEKLY_REPORT_IMAGE_TIMEOUT_MS` (`3000`). Também pode ser
+disparado por `npm run admin-report:run`. Erros: `user_not_found` e
+`report_not_found` (404), `admin_forbidden` (403), `validation_failed`
+(422), `rate_limited` (429).

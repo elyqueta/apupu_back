@@ -12,3 +12,10 @@
 | 2026-11-20 | Exportação CSV | Cabeçalho fixo `email,created_at` com vírgula (contrato do front). Valores iniciados por `=`, `+`, `-` ou `@` recebem `'` e aspas duplas são duplicadas. |
 | 2026-11-20 | Auditoria do Bloco 7 | Todas as acções admin (incluindo listagens e exportação) ficam em `admin_audit_log`. A resolução e a remoção também geram entradas em `host_audit_log` com acções novas; a metadata só contém identificadores, nunca conteúdo de mensagens ou emails. |
 | 2026-11-20 | Migrações do Bloco 7 | As duas tabelas novas usam 0023/0024. O alargamento do CHECK de `host_audit_log` foi incluído na 0023 (com `down` que repõe a lista anterior) para não criar uma terceira migração. |
+| 2026-11-20 | Entrega do relatório global | Apenas download no `/admin`, sem envio por email (decisão do utilizador). |
+| 2026-11-20 | Periodicidade e formato | Relatório global semanal, segunda-feira às 09:00 de `Africa/Luanda`; PDF por perfil e global, sem novas dependências (`pdfkit` já existe). |
+| 2026-11-20 | Armazenamento dos PDFs semanais | `bytea` em `admin_weekly_reports`, não sistema de ficheiros: ambientes containerizados têm disco efémero e a base já é persistida/com backup. Sem serviço de objectos nem segredos novos. |
+| 2026-11-20 | Retenção dos PDFs | 12 semanas por omissão (`ADMIN_WEEKLY_REPORT_RETENTION_WEEKS`); limpeza no próprio job, depois de gerar a semana corrente. |
+| 2026-11-20 | Idempotência do job | `UNIQUE (week_start)` + `INSERT ... ON CONFLICT DO NOTHING RETURNING id`: só a instância que inserir gera o PDF. Reservas com mais de uma hora são reclamadas; falha liberta a reserva. |
+| 2026-11-20 | Imagens nos PDFs | Só URLs HTTPS de `res.cloudinary.com` do cloud configurado, com timeout e limite de tamanho; `avatar_url`/`cover_url` podem ser definidos pelo utilizador e aceitar URLs arbitrárias seria SSRF. Falha de imagem nunca falha o relatório. |
+| 2026-11-20 | Auditoria dos relatórios | Exportações manuais são auditadas; o job semanal não escreve em `admin_audit_log` porque `admin_id` é FK para `hosts` e o agendador não corre com sessão. |
