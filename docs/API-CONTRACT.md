@@ -62,11 +62,17 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `403` | `host_action_forbidden` | A ação está reservada ao anfitrião (proprietário); um gestor tentou executá-la |
 | `403` | `task_complete_forbidden` | A conta não é o responsável pela tarefa e tentou concluir, reabrir ou mudar o estado |
 | `403` | `task_edit_forbidden`, `task_reassign_forbidden`, `task_move_forbidden`, `task_delete_forbidden`, `team_action_forbidden` | Ação não permitida pelo papel na equipa/evento |
+| `403` | `admin_forbidden` | Área reservada ao super admin |
+| `403` | `admin_self_action` | O super admin não pode agir sobre a própria conta/sessões |
+| `404` | `message_not_found` | Mensagem da caixa de entrada inexistente ou fora do workspace |
+| `404` | `support_message_not_found` | Mensagem de apoio inexistente |
+| `404` | `newsletter_subscription_not_found` | Subscrição de novidades inexistente |
 | `404` | `invitation_not_found` | Token inválido, convite revogado ou reclamado por outro navegador (resposta sempre igual) |
 | `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
 | `404` | `event_not_found` / `invitation_not_found` / `task_not_found` / `manager_not_found` / `notification_not_found` / `activity_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
 | `404` | `route_not_found` | Rota inexistente |
-| `409` | `event_not_scheduled`, `event_cancelled`, `event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`, `invitation_limit_reached`, `invitation_host_email`, `email_already_registered` | Conflito de estado |
+| `409` | `event_not_scheduled`, `event_completed`, `rsvp_deadline_passed`, `invitation_email_duplicate`, `invitation_limit_reached`, `invitation_host_email`, `email_already_registered` | Conflito de estado |
+| `409` | `event_cancelled` | Evento cancelado: escritas bloqueadas. Mensagem: "Este evento foi cancelado. Já não é possível fazer alterações." |
 | `409` | `invitation_revoked`, `invitation_not_resendable` | Convite revogado ou sem link reutilizável para reenvio |
 | `409` | `manager_already_exists` | O email já é gestor activo do evento |
 | `422` | `validation_failed` | Validação Zod; inclui `fields` |
@@ -1667,6 +1673,7 @@ contrário.
   "email": "ana@exemplo.ao",
   "email_verified": true,
   "status": "active",
+  "is_super_admin": false,
   "profile": {
     "display_name": "Ana",
     "phone": null,
@@ -1686,6 +1693,7 @@ contrário.
 |---|---|---|
 | `email_verified` | booleano | Deriva de `email_verified_at` |
 | `status` | string | `active`, `suspended` ou `deleted` |
+| `is_super_admin` | booleano | Papel da conta; lido pelo painel `/admin` a partir da sessão |
 | `profile.birth_date` | string \| null | `YYYY-MM-DD`; nunca incluído noutros recursos |
 | `profile_complete` | booleano | `false` enquanto faltar `birth_date` |
 | `missing_fields` | string[] | Actualmente `["birth_date"]` ou `[]` |
@@ -1964,7 +1972,9 @@ O token do link nunca é devolvido.
     "email_has_account": true,
     "rsvp_status": "pending",
     "rsvp_responded_at": null,
-    "message": null
+    "message": null,
+    "message_answer": null,
+    "message_answered_at": null
   },
   "rsvp_deadline_passed": false,
   "csrf_token": "<valor para X-CSRF-Token>"
@@ -1981,6 +1991,11 @@ O `event` expõe apenas o contacto mínimo do anfitrião: `host_name` e
 `host_phone` e `host_avatar_url` vêm do perfil de uma conta verificada
 e ativa e são `null` quando não preenchidos. Nunca são expostos
 `birth_date`, preferências ou outros dados do perfil.
+
+`guest.message` é a mensagem deixada pelo convidado ao responder.
+`guest.message_answer` e `guest.message_answered_at` são a resposta do
+anfitrião (Parte F): ficam visíveis no convite mesmo quando o e-mail de
+notificação não pôde ser enfileirado.
 
 ### `TeamInvitePreview` e `TeamInviteAccept`
 
@@ -2051,6 +2066,105 @@ Todos os erros usam o envelope `error` descrito em
 [Convenções](#convenções). `fields` só aparece em `422` de validação e
 `request_id` aparece sempre.
 
+## Apoio e novidades (Bloco 7)
+
+### Formulários públicos
+
+As duas rotas não exigem sessão, cookie nem `X-CSRF-Token`: não existe
+capacidade nem sessão nestes formulários, pelo que o abuso é travado por
+um limite próprio por IP (baldes separados; ver [Rate limit](#rate-limit)).
+O corpo é validado com Zod e tem de ser estritamente um objeto JSON.
+
+| Método | Rota | Corpo | Limites |
+|---|---|---|---|
+| `POST` | `/api/v1/public/support` | `{ "name", "email", "message" }` | nome 2–120, email válido até 254, mensagem 10–2000 caracteres |
+| `POST` | `/api/v1/public/newsletter` | `{ "email" }` | email válido até 254 caracteres |
+
+O email é normalizado (sem espaços nas extremidades, minúsculas) antes
+de chegar ao serviço. Campos extra são rejeitados com `422
+validation_failed` e `fields`. O limite global `/api/v1` aplica-se
+igualmente.
+
+`POST /api/v1/public/support` — resposta `201`; só devolve o
+identificador e a data de criação, sem dados de contacto adicionais:
+
+```json
+{ "data": { "id": "3f2c1d0e-8b7a-4c6d-9e5f-1a2b3c4d5e6f", "created_at": "2026-11-20T10:00:00.000Z" } }
+```
+
+`POST /api/v1/public/newsletter` — resposta `201`, idempotente:
+`INSERT ... ON CONFLICT (lower(email)) DO NOTHING`. A mesma resposta é
+devolvida quer o email já exista quer seja novo, sem revelar o estado da
+lista e sem envio de email de confirmação:
+
+```json
+{ "data": { "subscribed": true } }
+```
+
+Erros: `400 invalid_json`, `422 validation_failed`, `429 rate_limited`,
+`500 internal_error`. Falhas de base de dados não são expostas ao
+cliente.
+
+### Gestão administrativa
+
+Todas as rotas correm depois de `hostAccountAuth` + `requireSuperAdmin`
+(`403 admin_forbidden` sem o papel). Escritas exigem `X-CSRF-Token`
+(`403 csrf_invalid`) e todas as rotas usam `adminActionLimiter` com chave
+pela conta autenticada. Listagens e detalhe também são auditados em
+`admin_audit_log`, sem conteúdo de mensagens nem emails na metadata.
+
+| Método | Rota | Filtros / corpo | Sucesso |
+|---|---|---|---|
+| `GET` | `/api/v1/admin/support` | `q`, `status=open\|resolved\|all`, `from`, `to`, `page`, `page_size` | `200 { data: [SupportMessage], pagination }` |
+| `GET` | `/api/v1/admin/support/:messageId` | — | `200 { data: SupportMessage }` |
+| `POST` | `/api/v1/admin/support/:messageId/resolve` | sem corpo | `200 { data: SupportMessage }` |
+| `GET` | `/api/v1/admin/newsletter` | `q`, `from`, `to`, `page`, `page_size` | `200 { data: [NewsletterSubscription], pagination }` |
+| `GET` | `/api/v1/admin/newsletter/export` | `q`, `from`, `to` | `200` CSV |
+| `DELETE` | `/api/v1/admin/newsletter/:subscriptionId` | sem corpo | `200 { data: { removed: true } }` |
+
+`q` pesquisa nome/email/mensagem (`support`) ou email (`newsletter`) com
+`ILIKE` e escaping de `%`, `_` e `\`. `from`/`to` filtram `created_at`.
+A ordenação é `created_at DESC, id DESC`. `page` começa em 1 e
+`page_size` vai até 100, com a `pagination` descrita em
+[Convenções](#convenções).
+
+`resolve` é idempotente: repetir o pedido devolve o mesmo
+`resolved_at`/`resolved_by` e não cria uma nova acção de negócio. A
+remoção de uma subscrição inexistente devolve `404
+newsletter_subscription_not_found`; um `messageId` inexistente devolve
+`404 support_message_not_found`.
+
+A exportação usa os mesmos filtros da lista, sem paginação, e responde:
+
+- `Content-Type: text/csv; charset=utf-8`;
+- `Content-Disposition: attachment; filename="newsletter.csv"`;
+- cabeçalho exacto `email,created_at` e linhas terminadas em CRLF;
+- células que começam por `=`, `+`, `-` ou `@` são prefixadas com `'`
+  (mesmo após espaços iniciais) e aspas duplas são duplicadas.
+
+DTOs (todos em `snake_case`):
+
+```json
+{
+  "id": "3f2c1d0e-8b7a-4c6d-9e5f-1a2b3c4d5e6f",
+  "name": "Ana Silva",
+  "email": "ana@exemplo.pt",
+  "message": "Olá, preciso de ajuda com o convite.",
+  "status": "open",
+  "created_at": "2026-11-20T10:00:00.000Z",
+  "resolved_at": null,
+  "resolved_by": null
+}
+```
+
+```json
+{
+  "id": "3f2c1d0e-8b7a-4c6d-9e5f-1a2b3c4d5e6f",
+  "email": "ana@exemplo.pt",
+  "created_at": "2026-11-20T10:00:00.000Z"
+}
+```
+
 ## Templates
 
 `GET /api/v1/templates` — lista apenas templates activos, com os campos
@@ -2083,6 +2197,10 @@ Todos os ambientes aplicam `/api/v1`:
 - Global: `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX`.
 - Endpoints públicos com token: `PUBLIC_RATE_LIMIT_WINDOW_MS` /
   `PUBLIC_RATE_LIMIT_MAX`.
+- Formulários públicos de apoio e novidades: os mesmos
+  `PUBLIC_RATE_LIMIT_WINDOW_MS` / `PUBLIC_RATE_LIMIT_MAX`, mas com chave
+  por IP e balde separado para cada formulário (`public-support:<ip>` e
+  `public-newsletter:<ip>`). Não exigem CSRF.
 - Troca do segredo de gestão: `HOST_SESSION_RATE_LIMIT_WINDOW_MS` /
   `HOST_SESSION_RATE_LIMIT_MAX`.
 - Autenticação (`register`, `register/request-code`,
@@ -2095,6 +2213,9 @@ Todos os ambientes aplicam `/api/v1`:
   `WRITE_RATE_LIMIT_MAX`.
 - RSVP público: `RSVP_RATE_LIMIT_WINDOW_MS` /
   `RSVP_RATE_LIMIT_MAX`, aplicado por IP + token do convite.
+- Rotas `/admin` e OTP de cancelamento: `AUTH_RATE_LIMIT_*` para pedido
+  de código e `WRITE_RATE_LIMIT_*` para acções, com chave por conta
+  autenticada (não por IP).
 - Verificação de email, verificação de código OTP e reposição de senha
   consomem também o limite público de tokens.
 
@@ -2532,6 +2653,14 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `POST` | `/api/v1/public/invitations/{token}/claim` | `404 invitation_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/public/invitations/{token}` | `404 invitation_not_found`; `429 rate_limited` |
 | `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `403 csrf_invalid`; `404 invitation_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/public/support` | `400 invalid_json`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/public/newsletter` | `400 invalid_json`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/admin/support` | `401 host_session_invalid`; `403 admin_forbidden`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/admin/support/{messageId}` | `401 host_session_invalid`; `403 admin_forbidden`; `404 support_message_not_found`; `429 rate_limited` |
+| `POST` | `/api/v1/admin/support/{messageId}/resolve` | `401 host_session_invalid`; `403 csrf_invalid`/`admin_forbidden`; `404 support_message_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/admin/newsletter` | `401 host_session_invalid`; `403 admin_forbidden`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/admin/newsletter/export` | `401 host_session_invalid`; `403 admin_forbidden`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/admin/newsletter/{subscriptionId}` | `401 host_session_invalid`; `403 csrf_invalid`/`admin_forbidden`; `404 newsletter_subscription_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/templates` | `429 rate_limited` |
 
 Além disso, qualquer rota pode devolver `400 invalid_json` quando o
@@ -2554,14 +2683,16 @@ Acções registadas nesta fase:
 - `email_verified`;
 - `password_changed`, `password_reset`;
 - `profile_updated` (inclui avatar);
-- `event_created`, `event_deleted`;
+- `event_created`, `event_deleted`, `event_cancelled`,
+  `event_cancel_otp_requested`, `admin_event_cancelled`;
 - `guest_added`, `guest_updated`, `guest_deleted`,
   `guest_invitation_resent`, `guest_access_revoked`;
 - `manage_link_rotated`, `manage_link_resent`;
 - `manager_added`, `manager_removed`, `manager_invite_resent`,
   `manager_link_used`;
 - `event_cover_updated`, `event_cover_removed`;
-- `activity_deleted`.
+- `activity_deleted`;
+- `support_message_resolved`, `newsletter_subscription_removed`.
 
 Regras:
 
@@ -2573,3 +2704,112 @@ Regras:
   `host_id` quando existe sessão de conta, ou o `host_id` do evento no
   fluxo legado.
 - A tabela não é exposta por nenhum endpoint nesta fase.
+
+## Bloco 5 e Bloco 6 — rotas acrescentadas
+
+Todas usam o envelope `{ "data": ... }` e o envelope de erro descrito em
+[Convenções](#convenções). O código nunca é devolvido em claro em nenhuma
+resposta — apenas na outbox cifrada e, quando aplicável, no e-mail.
+
+### Cancelamento de evento
+
+| Método | Rota | Corpo | Notas |
+|---|---|---|---|
+| `POST` | `/api/v1/host/events/:eventId/cancel/otp` | — | Envia OTP para a conta autenticada; `200` com `expires_at` e `resend_available_at` |
+| `POST` | `/api/v1/host/events/:eventId/cancel` | `{ "otp": "123456", "reason": null }` | `otp` obrigatório; `reason` opcional |
+| `POST` | `/api/v1/admin/events/:eventId/cancel/otp` | — | OTP para super admin |
+| `POST` | `/api/v1/admin/events/:eventId/cancel` | `{ "otp": "123456", "reason": "..." }` | `reason` obrigatório (mín. 10 caracteres) |
+
+OTP: 6 dígitos, 10 minutos, 5 tentativas e cooldown de 60 s. A
+finalidade em `registration_verifications.purpose` é `event_cancel`.
+Depois do cancelamento, todas as escritas ligadas ao evento respondem
+`409 event_cancelled`, incluindo rotas em que o `eventId` só existe
+dentro de outro recurso (tarefa, equipa, convite ou mensagem). Leituras
+e o próprio cancelamento continuam disponíveis.
+
+### Apoio e novidades (público)
+
+| Método | Rota | Sucesso | Corpo |
+|---|---|---|---|
+| `POST` | `/api/v1/public/support` | `201` | `{ "data": { "id": string, "created_at": string } }` |
+| `POST` | `/api/v1/public/newsletter` | `201` | `{ "data": { "subscribed": true } }` |
+
+### Caixa de entrada de mensagens
+
+| Método | Rota | Corpo / query | Notas |
+|---|---|---|---|
+| `GET` | `/api/v1/host/inbox` | `q`, `event_id`, `read=read\|unread`, `answered=answered\|unanswered`, `from`, `to`, `page`, `page_size` | Inclui eventos próprios e geridos (email verificado) |
+| `POST` | `/api/v1/host/inbox/:invitationId/read` | `{ "read": true }` | Marca como lida/não lida |
+| `POST` | `/api/v1/host/inbox/:invitationId/answer` | `{ "answer": "..." }` | Até 1000 caracteres |
+
+A resposta fica em `message_answer` / `message_answered_at`, aparece no
+convite público e é enfileirada por e-mail (`resposta_mensagem`). Se a
+fila falhar, a resposta continua visível no convite.
+
+### Validade de links
+
+| Método | Rota | Corpo | Notas |
+|---|---|---|---|
+| `PATCH` | `/api/v1/host/events/:eventId/invitations/:invitationId/link` | `{ "expires_at": "..." }` | Data futura; máx. fim do evento + 30 dias |
+| `POST` | `/api/v1/host/manager/access-code` | — | Sessão de gestão; devolve novo `link` e `access_code` uma vez e revoga sessões antigas do evento |
+
+A validade do link do gestor mantém a regra anterior: 1 semana por
+omissão, configurável pelo anfitrião, máx. fim do evento + 1 dia.
+
+### Painel do super admin
+
+Todas as rotas exigem sessão de conta com `is_super_admin = true` e
+devolvem `403 admin_forbidden` em caso contrário. As escritas exigem
+também `X-CSRF-Token`. A promoção a super admin é feita apenas por SQL;
+não existe rota para atribuir ou remover o papel.
+
+| Método | Rota | Corpo de sucesso |
+|---|---|---|
+| `GET` | `/api/v1/admin/overview` | `{ data: { stats, recent_activity } }` |
+| `GET` | `/api/v1/admin/events` | `{ data: [...], pagination }` (`q`, `status`, `host`, `from`, `to`, `order`) |
+| `GET` | `/api/v1/admin/events/:eventId` | `{ data: { event } }` |
+| `GET` | `/api/v1/admin/users` | `{ data: [...], pagination }` (`q`, `role`, `status`, `from`, `order`); cada item inclui `avatar_url`, `cover_url`, `phone`, `birth_date`, `locale`, `timezone` e `profile_complete` |
+| `GET` | `/api/v1/admin/users/:userId` | `{ data: AdminUserDetail }` — campos de `AdminUser` mais `events` e `teams` (até 50 cada) |
+| `POST` | `/api/v1/admin/users/:userId/suspend` | `{ data: { id, email, status } }` (corpo opcional `{ reason }`) |
+| `POST` | `/api/v1/admin/users/:userId/reactivate` | `{ data: { id, email, status } }` |
+| `POST` | `/api/v1/admin/users/:userId/revoke-sessions` | `{ data: { revoked } }` |
+| `GET` | `/api/v1/admin/audit` | `{ data: [...], pagination }` (`q`, `action`, `from`, `to`, `order`) |
+| `GET` | `/api/v1/admin/support` | `{ data: [SupportMessage], pagination }` (`q`, `status`, `from`, `to`, `page`, `page_size`) |
+| `GET` | `/api/v1/admin/support/:messageId` | `{ data: SupportMessage }` |
+| `POST` | `/api/v1/admin/support/:messageId/resolve` | `{ data: SupportMessage }` (idempotente) |
+| `GET` | `/api/v1/admin/newsletter` | `{ data: [NewsletterSubscription], pagination }` (`q`, `from`, `to`, `page`, `page_size`) |
+| `GET` | `/api/v1/admin/newsletter/export` | CSV `email,created_at` com `newsletter.csv` |
+| `DELETE` | `/api/v1/admin/newsletter/:subscriptionId` | `{ data: { removed: true } }` |
+
+O super admin não pode suspender a própria conta, revogar as próprias
+sessões nem actuar sobre outro super admin: `403 admin_self_action`.
+Todas as acções, incluindo listagens, são registadas em
+`admin_audit_log` (append-only), sem senhas, tokens ou OTPs.
+
+#### Perfis e relatórios PDF (Bloco 8)
+
+| Método | Rota | Corpo de sucesso |
+|---|---|---|
+| `GET` | `/api/v1/admin/users/:userId/report` | PDF individual (`application/pdf`), nome `conto-contigo_perfil_<slug>_<AAAA-MM-DD>.pdf` |
+| `GET` | `/api/v1/admin/reports/all` | PDF global imediato com todos os perfis e contadores agregados |
+| `GET` | `/api/v1/admin/reports/weekly` | `{ data: [AdminWeeklyReport] }` — até 12 semanas, mais recente primeiro |
+| `GET` | `/api/v1/admin/reports/weekly/:reportId/download` | PDF guardado, com `Content-Disposition: attachment` e `Cache-Control: private, no-store` |
+
+`AdminUserDetail.events[]` contém `id`, `title`, `status`, `starts_at`,
+`created_at` e `guest_count`; `teams[]` contém `id`, `name`,
+`member_count` e `event_title`. São incluídos eventos próprios e geridos
+por email de gestor. Nenhum DTO admin expõe `password_hash`, hashes de
+imagem, `public_id` do Cloudinary, tokens ou OTPs.
+
+`AdminWeeklyReport` contém `id`, `week_start` (segunda-feira, `AAAA-MM-DD`),
+`status`, `filename`, `size_bytes`, `host_count`, `generated_at` e
+`created_at`. O relatório semanal é gerado à segunda-feira às 09:00 de
+`Africa/Luanda`, com idempotência por `week_start`; o job não envia
+email. Configuração por ambiente: `ADMIN_WEEKLY_REPORT_ENABLED`
+(`true`), `ADMIN_WEEKLY_REPORT_LOCAL_HOUR` (`9`),
+`ADMIN_WEEKLY_REPORT_LOCAL_WEEKDAY` (`1`),
+`ADMIN_WEEKLY_REPORT_RETENTION_WEEKS` (`12`) e
+`ADMIN_WEEKLY_REPORT_IMAGE_TIMEOUT_MS` (`3000`). Também pode ser
+disparado por `npm run admin-report:run`. Erros: `user_not_found` e
+`report_not_found` (404), `admin_forbidden` (403), `validation_failed`
+(422), `rate_limited` (429).

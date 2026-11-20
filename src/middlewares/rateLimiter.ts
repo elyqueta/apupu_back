@@ -43,6 +43,28 @@ export const publicTokenLimiter = rateLimit({
 });
 
 /**
+ * Limites por IP dos formulários públicos (Bloco 7).
+ *
+ * Não há sessão nem capacidade nestas rotas, pelo que a chave é sempre o
+ * IP. Cada formulário tem o seu próprio balde: enviar apoio não consome
+ * a quota de subscrição de novidades. Os limites vêm das mesmas
+ * variáveis dos outros endpoints públicos — nenhuma variável nova.
+ */
+function publicFormLimiter(action: 'support' | 'newsletter'): RequestHandler {
+  return rateLimit({
+    windowMs: env.PUBLIC_RATE_LIMIT_WINDOW_MS,
+    limit: env.PUBLIC_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request) => `public-${action}:${req.ip ?? 'unknown'}`,
+    handler: limitHandler,
+  });
+}
+
+export const supportFormLimiter = publicFormLimiter('support');
+export const newsletterFormLimiter = publicFormLimiter('newsletter');
+
+/**
  * Limite por IP e por acção nas rotas públicas de convites de equipa.
  *
  * Cada acção (`preview`, `accept`, `report`) tem o seu próprio balde:
@@ -169,5 +191,32 @@ export const authEmailLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `${req.ip ?? 'unknown'}:${requestEmail(req)}`,
+  handler: limitHandler,
+});
+
+/**
+ * Limites dedicados das acções administrativas e dos OTP de
+ * cancelamento. A chave usa a conta autenticada quando existe, para
+ * que a quota não seja contornada pela troca de IP.
+ */
+function adminKey(req: Request): string {
+  return `admin:${req.hostAccount?.id ?? req.ip ?? 'unknown'}`;
+}
+
+export const adminOtpLimiter = rateLimit({
+  windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
+  limit: env.AUTH_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: adminKey,
+  handler: limitHandler,
+});
+
+export const adminActionLimiter = rateLimit({
+  windowMs: env.WRITE_RATE_LIMIT_WINDOW_MS,
+  limit: env.WRITE_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: adminKey,
   handler: limitHandler,
 });

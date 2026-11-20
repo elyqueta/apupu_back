@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { toInvitationDto } from '../dto/invitation.dto';
 import { CreateInvitationBody, UpdateInvitationBody } from '../schemas/event.schemas';
+import { InvitationLinkBody } from '../schemas/invitation.schemas';
 import { auditService } from '../services/audit.service';
 import { invitationService } from '../services/invitation.service';
 import { Event } from '../types/event.types';
@@ -54,6 +55,27 @@ export const invitationController = {
       hostId: auditHostId(req),
       eventId: event.id,
       metadata: { invitation_id: invitation.id },
+    });
+
+    res.status(200).json({ data: toInvitationDto(invitation) });
+  },
+
+  updateLink: async (req: Request, res: Response): Promise<void> => {
+    const event = requireEvent(req);
+    const invitation = await invitationService.updateLink(
+      event.id,
+      req.params.invitationId ?? '',
+      (req.body as InvitationLinkBody).expires_at
+    );
+
+    await auditService.recordRequest(req, {
+      action: 'guest_updated',
+      hostId: auditHostId(req),
+      eventId: event.id,
+      metadata: {
+        invitation_id: invitation.id,
+        fields: ['invitation_url_expires_at'],
+      },
     });
 
     res.status(200).json({ data: toInvitationDto(invitation) });

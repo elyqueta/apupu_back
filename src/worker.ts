@@ -1,6 +1,10 @@
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { closePool } from './database/pool';
+import {
+  startAdminReportScheduler,
+  stopAdminReportScheduler,
+} from './services/adminReportScheduler';
 import { startOutboxScheduler, stopOutboxScheduler } from './services/outbox.service';
 
 /**
@@ -26,6 +30,7 @@ if (!env.OUTBOX_ENABLED) {
 logger.info({ nodeEnv: env.NODE_ENV }, 'Worker da outbox a iniciar.');
 
 startOutboxScheduler();
+startAdminReportScheduler();
 
 let shuttingDown = false;
 
@@ -35,6 +40,7 @@ async function shutdown(signal: string): Promise<void> {
 
   logger.info(`${signal} recebido. A encerrar o worker da outbox...`);
   stopOutboxScheduler();
+  stopAdminReportScheduler();
 
   try {
     await closePool();

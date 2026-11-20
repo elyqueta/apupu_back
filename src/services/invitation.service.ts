@@ -231,6 +231,35 @@ export const invitationService = {
     }
   },
 
+  /**
+   * Altera a validade do link individual do convite.
+   *
+   * O limite é fim do evento + 30 dias; o link do gestor continua com
+   * a regra antiga (1 semana / máx. fim + 1 dia).
+   */
+  async updateLink(
+    eventId: string,
+    invitationId: string,
+    expiresAt: Date
+  ): Promise<Invitation> {
+    return withTransaction(async (client) => {
+      const invitation = await findOwnedInvitation(eventId, invitationId, client);
+      const event = await eventRepository.findById(eventId, client);
+      if (!event) throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+
+      const resolved = await linkValidityService.resolveInvitationExpiry(event, expiresAt);
+      const updated = await invitationRepository.update(
+        invitation.id,
+        { linkExpiresAt: resolved },
+        client
+      );
+      if (!updated) {
+        throw new NotFoundError('Convidado não encontrado.', 'invitation_not_found');
+      }
+      return updated;
+    });
+  },
+
   async remove(eventId: string, invitationId: string): Promise<void> {
     await withTransaction(async (client) => {
       const invitation = await findOwnedInvitation(eventId, invitationId, client);
@@ -437,7 +466,10 @@ export const invitationService = {
       }
 
       if (event.status === 'cancelled') {
-        throw new ConflictError('Este evento foi cancelado.', 'event_cancelled');
+        throw new ConflictError(
+          'Este evento foi cancelado. Já não é possível fazer alterações.',
+          'event_cancelled'
+        );
       }
 
       if (event.status === 'completed') {

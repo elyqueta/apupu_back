@@ -115,7 +115,21 @@ export function readCsrfHeader(req: Request): string | null {
 
 /* ───────────────────────── Sessão de conta ───────────────────────── */
 
-const AUTH_PATH = '/api/v1';
+/**
+ * Caminho do cookie de sessão da conta.
+ *
+ * Em desenvolvimento a SPA corre numa origem diferente da API
+ * (`localhost:4200` vs `localhost:3000`) e o SSR do Angular precisa de ver o
+ * cookie quando pede a própria página (por exemplo `/painel`) para
+ * reautenticar. O browser só envia cookies cujo `Path` corresponda ao URL
+ * pedido, por isso em dev o cookie usa `/`.
+ *
+ * Produção e teste (incluindo Vercel, onde a API serve `/api/v1` na mesma
+ * origem) mantêm `/api/v1` — o comportamento não muda nesses ambientes.
+ */
+function authPath(): string {
+  return env.NODE_ENV === 'development' ? '/' : '/api/v1';
+}
 
 export function readAuthSession(req: Request): string | null {
   const value: unknown = req.cookies?.[env.AUTH_COOKIE_NAME];
@@ -128,16 +142,16 @@ export function setAuthSession(res: Response, sessionToken: string): void {
   res.cookie(
     env.AUTH_COOKIE_NAME,
     sessionToken,
-    baseCookieOptions(AUTH_PATH, maxAgeMs)
+    baseCookieOptions(authPath(), maxAgeMs)
   );
   res.cookie(
     env.AUTH_CSRF_COOKIE_NAME,
     csrfTokenFor(sessionToken),
-    csrfCookieOptions(AUTH_PATH, maxAgeMs)
+    csrfCookieOptions('/api/v1', maxAgeMs)
   );
 }
 
 export function clearAuthSession(res: Response): void {
-  res.clearCookie(env.AUTH_COOKIE_NAME, { path: AUTH_PATH });
-  res.clearCookie(env.AUTH_CSRF_COOKIE_NAME, { path: AUTH_PATH });
+  res.clearCookie(env.AUTH_COOKIE_NAME, { path: authPath() });
+  res.clearCookie(env.AUTH_CSRF_COOKIE_NAME, { path: '/api/v1' });
 }

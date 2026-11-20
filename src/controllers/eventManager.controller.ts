@@ -64,6 +64,32 @@ export const eventManagerController = {
     });
   },
 
+  /** Troca de código pelo próprio gestor, sem conta de anfitrião. */
+  regenerateOwnAccess: async (req: Request, res: Response): Promise<void> => {
+    if (!req.hostSession?.managerId) {
+      throw new Error('Sessão de gestor não resolvida.');
+    }
+    const eventId = req.hostSession.eventId;
+    const managerId = req.hostSession.managerId;
+    const result = await eventManagerService.regenerateOwnAccess(eventId, managerId);
+
+    await auditService.recordRequest(req, {
+      action: 'manager_invite_resent',
+      hostId: req.event?.hostId ?? null,
+      eventId,
+      metadata: { manager_id: managerId, reason: 'self_rotate' },
+    });
+
+    res.status(200).json({
+      data: {
+        manager: toEventManagerDto(result.manager),
+        link: result.link,
+        access_code: result.code,
+        invite_email_status: result.status,
+      },
+    });
+  },
+
   updateLink: async (req: Request, res: Response): Promise<void> => {
     const hostId = requireHostId(req);
     const { eventId, managerId } = routeParams(req);

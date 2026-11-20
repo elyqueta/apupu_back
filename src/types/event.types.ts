@@ -73,6 +73,10 @@ export interface Event {
   coverPublicId: string | null;
   rsvpDeadline: Date | null;
   status: EventStatus;
+  /** Campos de cancelamento (preenchidos por anfitrião ou super admin). */
+  cancelledAt: Date | null;
+  cancelledReason: string | null;
+  cancelledBy: string | null;
   manageTokenExpiresAt: Date | null;
   manageTokenRevokedAt: Date | null;
   createdAt: Date;

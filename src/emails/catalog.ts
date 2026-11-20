@@ -155,6 +155,30 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
       ),
   },
 
+  cancelamento_codigo: {
+    code: 'cancelamento_codigo',
+    email: (vars) => ({
+      subject: short('Confirma o cancelamento do evento', 50),
+      preheader: short('Usa o código para autorizares o cancelamento.', 90),
+      title: 'Confirma o cancelamento',
+      greetingName: recipientName(vars),
+      paragraphs: [
+        'Recebemos um pedido para cancelar um evento no Conto Contigo.',
+        'Usa este código para confirmar a operação:',
+        `O código expira ao fim de ${vars.expiraEm ?? '10 minutos'} e só pode ser usado uma vez.`,
+        'Se não fizeste este pedido, ignora este e-mail.',
+      ],
+      code: vars.codigo ?? '------',
+      reason: 'pediste um código para cancelar um evento',
+    }),
+    push: () =>
+      pushMessage('Código de cancelamento', 'Usa o código enviado para confirmares o cancelamento.'),
+    sms: (vars) =>
+      smsMessage(
+        `Conto Contigo: código ${vars.codigo ?? '------'}. Expira em ${vars.expiraEm ?? '10 minutos'}.`
+      ),
+  },
+
   recuperar_senha: {
     code: 'recuperar_senha',
     email: (vars) => ({
@@ -302,22 +326,52 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
 
   evento_cancelado: {
     code: 'evento_cancelado',
+    email: (vars) => {
+      const byPlatform = vars.canceladoPor === 'plataforma';
+      const reason = typeof vars.motivo === 'string' ? vars.motivo.trim() : '';
+      const lead = byPlatform
+        ? `O responsável da plataforma cancelou o evento.${reason ? ` Motivo: ${reason}` : ''}`
+        : `O evento ${eventName(vars)} foi cancelado pelo anfitrião.${reason ? ` Motivo: ${reason}` : ''}`;
+
+      return {
+        subject: short(`${eventName(vars)} foi cancelado`, 50),
+        preheader: short(lead, 90),
+        title: 'O evento foi cancelado',
+        greetingName: recipientName(vars),
+        paragraphs: [lead, 'Não é necessário responder ao convite.'],
+        details: eventDetails(vars),
+        reason: 'estavas convidado para este evento',
+        tone: 'danger',
+      };
+    },
+    push: (vars) =>
+      pushMessage(
+        `${eventName(vars)} foi cancelado`,
+        vars.canceladoPor === 'plataforma'
+          ? 'O responsável da plataforma cancelou o evento.'
+          : 'O anfitrião cancelou o evento.'
+      ),
+    sms: (vars) => smsMessage(`Conto Contigo: ${eventName(vars)} foi cancelado.`),
+  },
+
+  resposta_mensagem: {
+    code: 'resposta_mensagem',
     email: (vars) => ({
-      subject: short(`${eventName(vars)} foi cancelado`, 50),
-      preheader: short(`${eventName(vars)} foi cancelado pelo anfitrião.`, 90),
-      title: 'O evento foi cancelado',
+      subject: short(`Resposta sobre ${eventName(vars)}`, 50),
+      preheader: short('O anfitrião respondeu à tua mensagem.', 90),
+      title: 'Resposta do anfitrião',
       greetingName: recipientName(vars),
       paragraphs: [
-        `O evento ${eventName(vars)} foi cancelado pelo anfitrião.`,
-        'Não é necessário responder ao convite.',
+        `O anfitrião respondeu à mensagem que deixaste no convite de ${eventName(vars)}:`,
+        `“${typeof vars.resposta === 'string' ? vars.resposta : ''}”`,
+        'Também podes ver a resposta na página do convite.',
       ],
       details: eventDetails(vars),
-      reason: 'estavas convidado para este evento',
-      tone: 'danger',
+      reason: 'enviaste uma mensagem no convite',
     }),
     push: (vars) =>
-      pushMessage(`${eventName(vars)} foi cancelado`, 'O anfitrião cancelou o evento.'),
-    sms: (vars) => smsMessage(`Conto Contigo: ${eventName(vars)} foi cancelado.`),
+      pushMessage(`${eventName(vars)}: nova resposta`, 'O anfitrião respondeu à tua mensagem.'),
+    sms: (vars) => smsMessage(`Conto Contigo: o anfitrião respondeu sobre ${eventName(vars)}.`),
   },
 
   lembrete: {

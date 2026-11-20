@@ -48,6 +48,9 @@ interface EventRow {
   cover_public_id: string | null;
   rsvp_deadline: Date | null;
   status: EventStatus;
+  cancelled_at: Date | null;
+  cancelled_reason: string | null;
+  cancelled_by: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -100,6 +103,9 @@ function toEvent(row: EventRow): EventRecord {
     coverPublicId: row.cover_public_id,
     rsvpDeadline: row.rsvp_deadline,
     status: row.status,
+    cancelledAt: row.cancelled_at,
+    cancelledReason: row.cancelled_reason,
+    cancelledBy: row.cancelled_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -129,7 +135,8 @@ const SELECT_COLUMNS = `
   message, rules, dress_code, template_id, theme,
   contribution_enabled, contribution_bank_name, contribution_account_holder,
   contribution_account_reference, cover_url, cover_hash, cover_public_id,
-  rsvp_deadline, status, created_at, updated_at
+  rsvp_deadline, status, cancelled_at, cancelled_reason, cancelled_by,
+  created_at, updated_at
 `;
 
 /** Prefixa as colunas do evento com o alias usado na query. */
@@ -326,7 +333,12 @@ export const eventRepository = {
 
   async update(
     id: string,
-    changes: Partial<InsertEventData> & { status?: EventStatus },
+    changes: Partial<InsertEventData> & {
+      status?: EventStatus;
+      cancelledAt?: Date | null;
+      cancelledReason?: string | null;
+      cancelledBy?: string | null;
+    },
     client?: PoolClient
   ): Promise<EventRecord | null> {
     const runner = client ?? pool;
@@ -349,6 +361,9 @@ export const eventRepository = {
       ['coverPublicId', 'cover_public_id', (v: unknown): unknown => v],
       ['rsvpDeadline', 'rsvp_deadline', (v: unknown): unknown => v],
       ['status', 'status', (v: unknown): unknown => v],
+      ['cancelledAt', 'cancelled_at', (v: unknown): unknown => v],
+      ['cancelledReason', 'cancelled_reason', (v: unknown): unknown => v],
+      ['cancelledBy', 'cancelled_by', (v: unknown): unknown => v],
     ];
 
     const set: string[] = [];
@@ -623,6 +638,75 @@ export const eventRepository = {
       accepted: Number(row?.accepted ?? '0'),
       declined: Number(row?.declined ?? '0'),
       pending: Number(row?.pending ?? '0'),
+    };
+  },
+
+  /** Contagens globais para a visão geral do super admin. */
+  async countAll(): Promise<{ hosts: number; active: number; cancelled: number }> {
+    const result = await query<{
+      hosts: string;
+      active: string;
+      cancelled: string;
+    }>(
+      `SELECT
+         (SELECT count(*)::text FROM hosts) AS hosts,
+         (SELECT count(*)::text FROM events WHERE status = 'scheduled') AS active,
+         (SELECT count(*)::text FROM events WHERE status = 'cancelled') AS cancelled`
+    );
+    const row = result.rows[0];
+    return {
+      hosts: Number(row?.hosts ?? '0'),
+      active: Number(row?.active ?? '0'),
+      cancelled: Number(row?.cancelled ?? '0'),
+    };
+  },
+
+  /** Lista global para o painel admin, com filtros opcionais. */
+  async listForAdmin(filters: {
+    q?: string;
+    status?: EventStatus;
+    host?: string;
+    from?: Date;
+    to?: Date;
+    order: 'asc' | 'desc';
+    limit: number;
+    offset: number;
+  }): Promise<{ items: EventWithStats[]; total: number }> {
+    const values: unknown[] = [];
+    const conditions: string[] = [];
+
+    const push = (sql: string, value: unknown): void => {
+      values.push(value);
+      conditions.push(sql.replace('?', `$${values.length}`));
+    };
+
+    if (filters.q) push('(e.title ILIKE ? OR e.host_email::text ILIKE ?)', `%${filters.q}%`);
+    if (filters.status) push('e.status = ?', filters.status);
+    if (filters.host) push('e.host_email::text ILIKE ?', `%${filters.host}%`);
+    if (filters.from) push('e.created_at >= ?', filters.from);
+    if (filters.to) push('e.created_at <= ?', filters.to);
+
+    const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+    const direction = filters.order === 'asc' ? 'ASC' : 'DESC';
+
+    const [count, list] = await Promise.all([
+      query<{ total: string }>(`SELECT count(*)::text AS total FROM events e${where}`, values),
+      query<EventWithStatsRow>(
+        `SELECT ${columnsFor('e')},
+                stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending,
+                'owner'::text AS access_role
+           FROM events e
+           ${STATS_LATERAL}
+           ${where}
+          ORDER BY e.created_at ${direction}, e.id ${direction}
+          LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, filters.limit, filters.offset]
+      ),
+    ]);
+
+    return {
+      items: list.rows.map(toEventWithStats),
+      total: Number(count.rows[0]?.total ?? '0'),
     };
   },
 };

@@ -22,6 +22,8 @@ export interface HostDto {
   email: string;
   email_verified: boolean;
   status: string;
+  /** Papel da conta; usado pelo painel de administração do Bloco 6. */
+  is_super_admin: boolean;
   profile: HostProfileDto;
   profile_complete: boolean;
   missing_fields: string[];
@@ -47,6 +49,7 @@ export function toHostDto(host: HostWithProfile): HostDto {
     email: host.email,
     email_verified: host.emailVerifiedAt !== null,
     status: host.status,
+    is_super_admin: host.isSuperAdmin,
     profile: {
       display_name: host.profile.displayName,
       phone: host.profile.phone,

@@ -3,15 +3,22 @@ import { toEventDto } from '../dto/event.dto';
 import { CreateEventBody } from '../schemas/event.schemas';
 import { HostEventsQuery } from '../schemas/host.schemas';
 import { auditService } from '../services/audit.service';
+import { assertEventCancelOtp, requestEventCancelOtp } from '../services/auth.service';
+import { eventService } from '../services/event.service';
 import { hostEventService } from '../services/hostEvent.service';
+import { HostCancelBody } from '../schemas/admin.schemas';
 import { EventAccessScope, HostTotals } from '../types/event.types';
+import { HostWithProfile } from '../types/host.types';
 
-function requireHostId(req: Request): string {
+function requireHost(req: Request): HostWithProfile {
   if (!req.hostAccount) {
     throw new Error('Conta não resolvida: falta o middleware hostAccountAuth.');
   }
+  return req.hostAccount;
+}
 
-  return req.hostAccount.id;
+function requireHostId(req: Request): string {
+  return requireHost(req).id;
 }
 
 /** Scope de leitura: eventos próprios e eventos geridos (email verificado). */
@@ -93,6 +100,42 @@ export const hostEventController = {
         totals: toTotalsDto(dashboard.totals),
       },
     });
+  },
+
+  requestCancelOtp: async (req: Request, res: Response): Promise<void> => {
+    const host = requireHost(req);
+    const result = await requestEventCancelOtp(host.email);
+
+    await auditService.recordRequest(req, {
+      action: 'event_cancel_otp_requested',
+      hostId: host.id,
+      eventId: req.params.eventId,
+    });
+
+    res.status(200).json({
+      data: {
+        expires_at: result.expiresAt.toISOString(),
+        resend_available_at: result.resendAvailableAt.toISOString(),
+      },
+    });
+  },
+
+  cancel: async (req: Request, res: Response): Promise<void> => {
+    const host = requireHost(req);
+    const eventId = req.params.eventId ?? '';
+    const { reason, otp } = req.body as HostCancelBody;
+
+    await assertEventCancelOtp(host.email, otp);
+    const event = await eventService.cancel(eventId, { hostId: host.id, role: 'anfitriao' }, reason);
+
+    await auditService.recordRequest(req, {
+      action: 'event_cancelled',
+      hostId: host.id,
+      eventId,
+      metadata: { reason: reason ?? null },
+    });
+
+    res.status(200).json({ data: { event: toEventDto(event) } });
   },
 
   remove: async (req: Request, res: Response): Promise<void> => {

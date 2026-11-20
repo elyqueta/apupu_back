@@ -3,7 +3,15 @@ import { env } from '../config/env';
 import { UnauthorizedError } from '../errors';
 import { hostRepository } from '../repositories/host.repository';
 import { UpdateProfileBody } from '../schemas/host.schemas';
-import { HostWithProfile, UpdateHostProfileInput } from '../types/host.types';
+import {
+  HostWithProfile,
+  UpdateHostProfileInput,
+} from '../types/host.types';
+import {
+  avatarFileHash,
+  avatarPublicIdFromUrl,
+  avatarService,
+} from './avatar.service';
 import { destroyImage, uploadImage } from './cloudinary.service';
 
 /**
@@ -13,10 +21,37 @@ import { destroyImage, uploadImage } from './cloudinary.service';
  * serviço limita-se a persistir o valor já validado (data de
  * calendário, passada, idade mínima) e a devolver a conta completa.
  *
- * A imagem de capa segue o mesmo padrão da capa de evento: URL
+ * Tanto o avatar como a capa seguem o padrão da capa de evento: URL
  * directo ou upload assinado para o Cloudinary, com idempotência por
- * SHA-256 e remoção do asset antigo.
+ * SHA-256 e remoção do asset antigo. A remoção é best-effort: uma
+ * falha do Cloudinary nunca impede a actualização da base de dados.
  */
+
+/**
+ * Aplica um URL de avatar e limpa o asset antigo quando já não está
+ * referenciado. Um URL que aponte para o mesmo `public_id` é
+ * idempotente (por exemplo, uma variante com transformação).
+ */
+async function applyAvatarUrl(
+  host: HostWithProfile,
+  avatarUrl: string | null
+): Promise<void> {
+  const previousPublicId = host.profile.avatarPublicId;
+  const nextPublicId = avatarPublicIdFromUrl(avatarUrl);
+  const keepPublicId =
+    previousPublicId && previousPublicId === nextPublicId ? previousPublicId : null;
+
+  await hostRepository.updateProfile(host.id, {
+    avatarUrl,
+    avatarHash: null,
+    avatarPublicId: keepPublicId,
+  });
+
+  if (previousPublicId && previousPublicId !== keepPublicId) {
+    await destroyImage(previousPublicId);
+  }
+}
+
 export const profileService = {
   async get(hostId: string): Promise<HostWithProfile> {
     const host = await hostRepository.findById(hostId);
@@ -36,16 +71,78 @@ export const profileService = {
     if ('birth_date' in input) changes.birthDate = input.birth_date ?? null;
     if (input.locale !== undefined) changes.locale = input.locale;
     if (input.timezone !== undefined) changes.timezone = input.timezone;
-    if ('avatar_url' in input) changes.avatarUrl = input.avatar_url ?? null;
     if ('cover_url' in input) changes.coverUrl = input.cover_url ?? null;
+
+    if ('avatar_url' in input) {
+      const current = await this.get(hostId);
+      const nextAvatarUrl = input.avatar_url ?? null;
+
+      if (current.profile.avatarUrl !== nextAvatarUrl) {
+        await applyAvatarUrl(current, nextAvatarUrl);
+      }
+    }
 
     await hostRepository.updateProfile(hostId, changes);
 
     return this.get(hostId);
   },
 
-  async setAvatar(hostId: string, avatarUrl: string): Promise<HostWithProfile> {
-    await hostRepository.updateProfile(hostId, { avatarUrl });
+  /** Define o avatar por URL. Repetir o mesmo URL é idempotente. */
+  async setAvatarFromUrl(hostId: string, avatarUrl: string): Promise<HostWithProfile> {
+    const host = await this.get(hostId);
+
+    if (host.profile.avatarUrl === avatarUrl) return host;
+
+    await applyAvatarUrl(host, avatarUrl);
+    return this.get(hostId);
+  },
+
+  /**
+   * Upload com idempotência por conteúdo: o mesmo ficheiro (SHA-256)
+   * não volta a ser enviado para o Cloudinary.
+   */
+  async uploadAvatar(
+    hostId: string,
+    buffer: Buffer,
+    contentType: string
+  ): Promise<HostWithProfile> {
+    const host = await this.get(hostId);
+    const hash = avatarFileHash(buffer);
+
+    if (host.profile.avatarHash === hash && host.profile.avatarUrl) {
+      return host;
+    }
+
+    const uploaded = await avatarService.upload(buffer, contentType);
+    const previousPublicId = host.profile.avatarPublicId;
+
+    await hostRepository.updateProfile(hostId, {
+      avatarUrl: uploaded.url,
+      avatarHash: hash,
+      avatarPublicId: uploaded.publicId,
+    });
+
+    if (previousPublicId && previousPublicId !== uploaded.publicId) {
+      await destroyImage(previousPublicId);
+    }
+
+    return this.get(hostId);
+  },
+
+  /** Remove o avatar. Repetir a remoção é idempotente. */
+  async removeAvatar(hostId: string): Promise<HostWithProfile> {
+    const host = await this.get(hostId);
+    const { avatarUrl, avatarHash, avatarPublicId } = host.profile;
+
+    if (!avatarUrl && !avatarHash && !avatarPublicId) return host;
+
+    await hostRepository.updateProfile(hostId, {
+      avatarUrl: null,
+      avatarHash: null,
+      avatarPublicId: null,
+    });
+    await destroyImage(avatarPublicId);
+
     return this.get(hostId);
   },
 
@@ -68,10 +165,6 @@ export const profileService = {
     return this.get(hostId);
   },
 
-  /**
-   * Upload com idempotência por conteúdo: o mesmo ficheiro (SHA-256)
-   * não volta a ser enviado para o Cloudinary.
-   */
   async uploadCover(
     hostId: string,
     buffer: Buffer,

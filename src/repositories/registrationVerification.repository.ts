@@ -4,18 +4,25 @@ import { pool } from '../database/pool';
 /**
  * Repositório da verificação de email por OTP.
  *
- * Fluxo:
- * 1. `create` grava o HMAC do código e invalida pedidos anteriores.
- * 2. `registerFailedAttempt` incrementa as tentativas de forma atómica.
- * 3. `markVerified` troca o código válido por um token de uso único.
- * 4. `consumeVerificationToken` valida e consome esse token antes de a
- *    conta ser criada.
+ * A mesma tabela serve o registo de contas e o cancelamento de eventos,
+ * mas `purpose` separa as finalidades: um código de registo nunca pode
+ * cancelar um evento, nem um código de cancelamento pode criar conta.
  *
- * O código e o token em claro nunca chegam à base de dados.
+ * 1. `create` grava o HMAC do código e invalida pedidos anteriores da
+ *    mesma finalidade.
+ * 2. `registerFailedAttempt` incrementa as tentativas de forma atómica.
+ * 3. `markVerified` troca o código válido por um token de uso único
+ *    (apenas no registo).
+ * 4. `consumeVerificationToken` valida e consome esse token.
+ *
+ * O código em claro nunca chega à base de dados.
  */
+export type VerificationPurpose = 'registration' | 'event_cancel';
+
 interface RegistrationVerificationRow {
   id: string;
   email: string;
+  purpose: VerificationPurpose;
   code_hash: string;
   attempts: number;
   expires_at: Date;
@@ -30,6 +37,7 @@ interface RegistrationVerificationRow {
 export interface RegistrationVerification {
   id: string;
   email: string;
+  purpose: VerificationPurpose;
   codeHash: string;
   attempts: number;
   expiresAt: Date;
@@ -45,6 +53,7 @@ function toVerification(row: RegistrationVerificationRow): RegistrationVerificat
   return {
     id: row.id,
     email: row.email,
+    purpose: row.purpose,
     codeHash: row.code_hash,
     attempts: row.attempts,
     expiresAt: row.expires_at,
@@ -58,20 +67,24 @@ function toVerification(row: RegistrationVerificationRow): RegistrationVerificat
 }
 
 const SELECT_COLUMNS = `
-  id, email, code_hash, attempts, expires_at, verified_at,
+  id, email, purpose, code_hash, attempts, expires_at, verified_at,
   verification_token_hash, verification_token_expires_at,
   consumed_at, created_at, updated_at
 `;
 
 export const registrationVerificationRepository = {
-  /** Invalida pedidos pendentes do mesmo email antes de emitir outro código. */
-  async consumePendingForEmail(email: string, client?: PoolClient): Promise<number> {
+  /** Invalida pedidos pendentes do mesmo email e finalidade. */
+  async consumePendingForEmail(
+    email: string,
+    client?: PoolClient,
+    purpose: VerificationPurpose = 'registration'
+  ): Promise<number> {
     const runner = client ?? pool;
     const result = await runner.query(
       `UPDATE registration_verifications
           SET consumed_at = now(), updated_at = now()
-        WHERE email = $1 AND consumed_at IS NULL`,
-      [email]
+        WHERE email = $1 AND purpose = $2 AND consumed_at IS NULL`,
+      [email, purpose]
     );
     return result.rowCount ?? 0;
   },
@@ -80,18 +93,19 @@ export const registrationVerificationRepository = {
     email: string,
     codeHash: string,
     expiresAt: Date,
-    client?: PoolClient
+    client?: PoolClient,
+    purpose: VerificationPurpose = 'registration'
   ): Promise<RegistrationVerification> {
     const runner = client ?? pool;
     const result = await runner.query<RegistrationVerificationRow>(
-      `INSERT INTO registration_verifications (email, code_hash, expires_at)
-       VALUES ($1, $2, $3)
+      `INSERT INTO registration_verifications (email, purpose, code_hash, expires_at)
+       VALUES ($1, $2, $3, $4)
        RETURNING ${SELECT_COLUMNS}`,
-      [email, codeHash, expiresAt]
+      [email, purpose, codeHash, expiresAt]
     );
 
     const row = result.rows[0];
-    if (!row) throw new Error('Falha ao criar verificação de registo.');
+    if (!row) throw new Error('Falha ao criar verificação.');
     return toVerification(row);
   },
 
@@ -110,9 +124,9 @@ export const registrationVerificationRepository = {
     const runner = client ?? pool;
     const result = await runner.query<RegistrationVerificationRow>(
       `INSERT INTO registration_verifications
-         (email, code_hash, expires_at, verified_at,
+         (email, purpose, code_hash, expires_at, verified_at,
           verification_token_hash, verification_token_expires_at)
-       VALUES ($1, $2, $3, now(), $2, $3)
+       VALUES ($1, 'registration', $2, $3, now(), $2, $3)
        RETURNING ${SELECT_COLUMNS}`,
       [email, tokenHash, tokenExpiresAt]
     );
@@ -122,21 +136,22 @@ export const registrationVerificationRepository = {
     return toVerification(row);
   },
 
-  /** Pedido mais recente do email ainda não consumido nem expirado. */
+  /** Pedido mais recente do email/finalidade ainda não consumido nem expirado. */
   async findLatestActiveForEmail(
     email: string,
-    client?: PoolClient
+    client?: PoolClient,
+    purpose: VerificationPurpose = 'registration'
   ): Promise<RegistrationVerification | null> {
     const runner = client ?? pool;
     const result = await runner.query<RegistrationVerificationRow>(
       `SELECT ${SELECT_COLUMNS}
          FROM registration_verifications
-        WHERE email = $1
+        WHERE email = $1 AND purpose = $2
           AND consumed_at IS NULL
           AND expires_at > now()
         ORDER BY created_at DESC
         LIMIT 1`,
-      [email]
+      [email, purpose]
     );
 
     const row = result.rows[0];
@@ -146,18 +161,19 @@ export const registrationVerificationRepository = {
   /** Versão bloqueante para a verificação do código (evita corridas). */
   async findLatestActiveForEmailForUpdate(
     email: string,
-    client: PoolClient
+    client: PoolClient,
+    purpose: VerificationPurpose = 'registration'
   ): Promise<RegistrationVerification | null> {
     const result = await client.query<RegistrationVerificationRow>(
       `SELECT ${SELECT_COLUMNS}
          FROM registration_verifications
-        WHERE email = $1
+        WHERE email = $1 AND purpose = $2
           AND consumed_at IS NULL
           AND expires_at > now()
         ORDER BY created_at DESC
         LIMIT 1
         FOR UPDATE`,
-      [email]
+      [email, purpose]
     );
 
     const row = result.rows[0];
@@ -200,6 +216,21 @@ export const registrationVerificationRepository = {
   },
 
   /**
+   * Consome um OTP sem emitir token de registo. Usado pelo
+   * cancelamento de eventos: o código serve apenas como confirmação.
+   */
+  async consumeCode(id: string, client: PoolClient): Promise<boolean> {
+    const result = await client.query(
+      `UPDATE registration_verifications
+          SET consumed_at = now(), updated_at = now()
+        WHERE id = $1 AND consumed_at IS NULL
+        RETURNING id`,
+      [id]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  /**
    * Consome o token de verificação. A condição inclui o email, o que
    * impede reutilizar o token numa conta diferente.
    */
@@ -212,6 +243,7 @@ export const registrationVerificationRepository = {
       `UPDATE registration_verifications
           SET consumed_at = now(), updated_at = now()
         WHERE email = $1
+          AND purpose = 'registration'
           AND verification_token_hash = $2
           AND consumed_at IS NULL
           AND verified_at IS NOT NULL

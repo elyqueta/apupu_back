@@ -2,6 +2,10 @@ import app from './app';
 import { env } from './config/env';
 import { closePool } from './database/pool';
 import { logger } from './config/logger';
+import {
+  startAdminReportScheduler,
+  stopAdminReportScheduler,
+} from './services/adminReportScheduler';
 import { startOutboxScheduler, stopOutboxScheduler } from './services/outbox.service';
 
 const server = app.listen(env.PORT, () => {
@@ -11,6 +15,7 @@ const server = app.listen(env.PORT, () => {
 if (env.OUTBOX_ENABLED && env.OUTBOX_IN_API) {
   startOutboxScheduler();
 }
+startAdminReportScheduler();
 
 /**
  * Shutdown gracioso.
@@ -22,6 +27,7 @@ if (env.OUTBOX_ENABLED && env.OUTBOX_IN_API) {
 function shutdown(signal: string): void {
   logger.info(`${signal} recebido. A encerrar graciosamente...`);
   stopOutboxScheduler();
+  stopAdminReportScheduler();
 
   server.close((err) => {
     if (err) {

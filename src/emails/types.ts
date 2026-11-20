@@ -11,6 +11,7 @@
 export const EMAIL_TEMPLATE_CODES = [
   'boas_vindas',
   'verificacao_codigo',
+  'cancelamento_codigo',
   'recuperar_senha',
   'convite_recebido',
   'presenca_confirmada',
@@ -18,6 +19,7 @@ export const EMAIL_TEMPLATE_CODES = [
   'lembrete_2h',
   'evento_alterado',
   'evento_cancelado',
+  'resposta_mensagem',
   // Mensagens operacionais que já existiam na outbox.
   'lembrete',
   'manage_link',
@@ -89,6 +91,12 @@ export interface EmailVars {
   autor?: string;
   /** Papel na equipa: "gestor" ou "membro" (Fase 3). */
   papel?: string;
+  /** Quem cancelou o evento: o anfitrião ou a plataforma. */
+  canceladoPor?: 'anfitriao' | 'plataforma';
+  /** Motivo do cancelamento, quando fornecido. */
+  motivo?: string;
+  /** Resposta do anfitrião à mensagem do convidado. */
+  resposta?: string;
   /** Prazo já formatado, ex.: "31 jan 2030" (Fase 3). */
   prazo?: string;
   /**
