@@ -167,6 +167,12 @@ export const contoContigoSchemas = {
       guest_email: { type: 'string', format: 'email' },
       guest_phone: { type: 'string', nullable: true },
       table_name: { type: 'string', nullable: true },
+      guest_message: {
+        type: 'string',
+        nullable: true,
+        maxLength: 500,
+        description: 'Mensagem opcional deixada pelo convidado ao responder.',
+      },
       rsvp_status: {
         type: 'string',
         enum: ['pending', 'accepted', 'declined'],
@@ -270,6 +276,12 @@ export const contoContigoSchemas = {
             type: 'string',
             format: 'date-time',
             nullable: true,
+          },
+          message: {
+            type: 'string',
+            nullable: true,
+            maxLength: 500,
+            description: 'Mensagem deixada pelo próprio convidado ao responder.',
           },
         },
       },

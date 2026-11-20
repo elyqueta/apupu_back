@@ -75,6 +75,7 @@ const invitation: AccountInvitation = {
   guestEmail: host.email,
   guestPhone: '+244900000000',
   tableName: 'Mesa 3',
+  guestMessage: null,
   tokenHash: 'hash-secreto',
   tokenEncrypted: encryptToken(INVITE_TOKEN),
   claimHash: null,

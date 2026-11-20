@@ -7,10 +7,13 @@ vi.mock('../src/database/pool', () => ({
 vi.mock('../src/repositories/invitation.repository', () => ({
   invitationRepository: {
     findById: vi.fn(),
+    findByIdForUpdate: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
     create: vi.fn(),
     countByEvent: vi.fn(),
+    respond: vi.fn(),
+    setGuestMessage: vi.fn(),
   },
 }));
 
@@ -19,7 +22,7 @@ vi.mock('../src/repositories/emailDelivery.repository', () => ({
 }));
 
 vi.mock('../src/repositories/event.repository', () => ({
-  eventRepository: { findById: vi.fn() },
+  eventRepository: { findById: vi.fn(), findByIdForUpdate: vi.fn() },
 }));
 
 vi.mock('../src/repositories/activity.repository', () => ({
@@ -39,6 +42,7 @@ vi.mock('../src/services/guestAccess.service', () => ({
   accountOwnsInvitation: vi.fn(),
 }));
 
+import { activityRepository } from '../src/repositories/activity.repository';
 import { eventRepository } from '../src/repositories/event.repository';
 import { invitationRepository } from '../src/repositories/invitation.repository';
 import { invitationService } from '../src/services/invitation.service';
@@ -61,6 +65,7 @@ function makeInvitation(overrides: Partial<Invitation> = {}): Invitation {
     guestEmail: 'joao@exemplo.ao',
     guestPhone: '+244900000000',
     tableName: null,
+    guestMessage: null,
     tokenHash: 'hash-secreto',
     tokenEncrypted: 'token-cifrado',
     claimHash: null,
@@ -213,5 +218,82 @@ describe('invitationService.update', () => {
     });
 
     expect(invitationRepository.update).toHaveBeenCalled();
+  });
+});
+
+describe('invitationService.respond', () => {
+  const access = {
+    kind: 'account' as const,
+    secret: 'sessao',
+    email: 'joao@exemplo.ao',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(eventRepository.findByIdForUpdate).mockResolvedValue({
+      id: eventId,
+      status: 'scheduled',
+      rsvpDeadline: null,
+    } as never);
+  });
+
+  it('guarda a mensagem e inclui-a nos metadados da notificação', async () => {
+    vi.mocked(invitationRepository.findByIdForUpdate).mockResolvedValue(makeInvitation());
+    vi.mocked(invitationRepository.respond).mockResolvedValue(
+      makeInvitation({ rsvpStatus: 'accepted', guestMessage: 'Vou lá estar!' })
+    );
+
+    await invitationService.respond(eventId, invitationId, access, 'accepted', 'Vou lá estar!');
+
+    expect(invitationRepository.respond).toHaveBeenCalledWith(
+      invitationId,
+      'accepted',
+      'Vou lá estar!',
+      expect.anything()
+    );
+    expect(activityRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'rsvp_accepted',
+        metadata: { guest_message: 'Vou lá estar!' },
+      }),
+      expect.anything()
+    );
+  });
+
+  it('altera só a mensagem quando o estado não muda', async () => {
+    vi.mocked(invitationRepository.findByIdForUpdate).mockResolvedValue(
+      makeInvitation({ rsvpStatus: 'accepted', rsvpRespondedAt: new Date('2026-03-01T10:00:00Z') })
+    );
+    vi.mocked(invitationRepository.setGuestMessage).mockResolvedValue(
+      makeInvitation({ rsvpStatus: 'accepted', guestMessage: 'Obrigado!' })
+    );
+
+    await invitationService.respond(eventId, invitationId, access, 'accepted', 'Obrigado!');
+
+    expect(invitationRepository.setGuestMessage).toHaveBeenCalledWith(
+      invitationId,
+      'Obrigado!',
+      expect.anything()
+    );
+    expect(invitationRepository.respond).not.toHaveBeenCalled();
+    expect(activityRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('mantém a mensagem anterior quando o campo não é enviado', async () => {
+    vi.mocked(invitationRepository.findByIdForUpdate).mockResolvedValue(
+      makeInvitation({ guestMessage: 'Mensagem anterior' })
+    );
+    vi.mocked(invitationRepository.respond).mockResolvedValue(
+      makeInvitation({ rsvpStatus: 'declined', guestMessage: 'Mensagem anterior' })
+    );
+
+    await invitationService.respond(eventId, invitationId, access, 'declined');
+
+    expect(invitationRepository.respond).toHaveBeenCalledWith(
+      invitationId,
+      'declined',
+      'Mensagem anterior',
+      expect.anything()
+    );
   });
 });

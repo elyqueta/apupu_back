@@ -113,7 +113,8 @@ export const publicController = {
       requireEvent(req).id,
       requireInvitation(req).id,
       access,
-      body.status
+      body.status,
+      body.message
     );
 
     res.status(200).json({

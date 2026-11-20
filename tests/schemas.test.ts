@@ -231,4 +231,27 @@ describe('rsvpSchema', () => {
   it('rejeita campos desconhecidos', () => {
     expect(rsvpSchema.safeParse({ status: 'accepted', companion_count: 2 }).success).toBe(false);
   });
+
+  it('aceita uma mensagem opcional e remove marcações e caracteres de controlo', () => {
+    const parsed = rsvpSchema.parse({
+      status: 'accepted',
+      message: '  Vou lá estar <script>alert(1)</script>\u0007 com a família!  ',
+    });
+
+    expect(parsed.message).toBe('Vou lá estar alert(1) com a família!');
+  });
+
+  it('transforma uma mensagem vazia em null', () => {
+    expect(rsvpSchema.parse({ status: 'accepted', message: '   ' }).message).toBeNull();
+    expect(rsvpSchema.parse({ status: 'accepted', message: null }).message).toBeNull();
+  });
+
+  it('rejeita mensagens com mais de 500 caracteres depois de sanitizadas', () => {
+    expect(
+      rsvpSchema.safeParse({ status: 'accepted', message: 'a'.repeat(501) }).success
+    ).toBe(false);
+    expect(
+      rsvpSchema.safeParse({ status: 'accepted', message: 'a'.repeat(500) }).success
+    ).toBe(true);
+  });
 });

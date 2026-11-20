@@ -157,6 +157,7 @@ describe('eventManagerService.add', () => {
       guestEmail: data.guestEmail,
       guestPhone: data.guestPhone,
       tableName: data.tableName,
+      guestMessage: null,
       tokenHash: data.tokenHash,
       tokenEncrypted: data.tokenEncrypted,
       claimHash: null,

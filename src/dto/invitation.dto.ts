@@ -18,6 +18,8 @@ export interface InvitationDto {
   guest_email: string;
   guest_phone: string | null;
   table_name: string | null;
+  /** Mensagem opcional deixada ao responder (texto simples, até 500 caracteres). */
+  guest_message: string | null;
   rsvp_status: string;
   rsvp_responded_at: string | null;
   send_status: string;
@@ -78,6 +80,7 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     guest_email: invitation.guestEmail,
     guest_phone: invitation.guestPhone,
     table_name: invitation.tableName,
+    guest_message: invitation.guestMessage,
     rsvp_status: invitation.rsvpStatus,
     rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     send_status: invitation.sendStatus,
@@ -199,6 +202,8 @@ export interface PublicInvitationDto {
     email_has_account: boolean;
     rsvp_status: string;
     rsvp_responded_at: string | null;
+    /** Texto simples deixado pelo próprio convidado ao responder. */
+    message: string | null;
   };
   rsvp_deadline_passed: boolean;
 }
@@ -218,6 +223,7 @@ export function toPublicInvitationDto(
       email_has_account: emailHasAccount,
       rsvp_status: invitation.rsvpStatus,
       rsvp_responded_at: iso(invitation.rsvpRespondedAt),
+      message: invitation.guestMessage,
     },
     rsvp_deadline_passed: rsvpDeadlinePassed,
   };

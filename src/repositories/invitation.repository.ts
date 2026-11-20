@@ -19,6 +19,7 @@ interface InvitationRow {
   guest_email: string;
   guest_phone: string | null;
   table_name: string | null;
+  guest_message: string | null;
   token_hash: string;
   token_encrypted: string;
   claim_hash: string | null;
@@ -42,6 +43,7 @@ function toInvitation(row: InvitationRow): Invitation {
     guestEmail: row.guest_email,
     guestPhone: row.guest_phone,
     tableName: row.table_name,
+    guestMessage: row.guest_message,
     tokenHash: row.token_hash,
     tokenEncrypted: row.token_encrypted,
     claimHash: row.claim_hash,
@@ -59,7 +61,7 @@ function toInvitation(row: InvitationRow): Invitation {
 }
 
 const SELECT_COLUMNS = `
-  id, event_id, guest_name, guest_email, guest_phone, table_name,
+  id, event_id, guest_name, guest_email, guest_phone, table_name, guest_message,
   token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
   rsvp_status, rsvp_responded_at, rsvp_version,
   send_status, send_count, last_sent_at, created_at, updated_at
@@ -681,12 +683,14 @@ export const invitationRepository = {
   async respond(
     id: string,
     status: Exclude<RsvpStatus, 'pending'>,
+    message: string | null,
     client?: PoolClient
   ): Promise<Invitation | null> {
     const runner = client ?? pool;
     const result = await runner.query<InvitationRow>(
       `UPDATE invitations
           SET rsvp_status = $2,
+              guest_message = $3,
               rsvp_responded_at = now(),
               rsvp_version = CASE
                 WHEN rsvp_status = $2 THEN rsvp_version
@@ -695,7 +699,30 @@ export const invitationRepository = {
               updated_at = now()
         WHERE id = $1
         RETURNING ${SELECT_COLUMNS}`,
-      [id, status]
+      [id, status, message]
+    );
+
+    const row = result.rows[0];
+    return row ? toInvitation(row) : null;
+  },
+
+  /**
+   * Atualiza apenas a mensagem quando o estado da resposta não mudou.
+   * Não altera `rsvp_responded_at` nem a versão, para não duplicar
+   * notificações nem fazer parecer que o convidado respondeu de novo.
+   */
+  async setGuestMessage(
+    id: string,
+    message: string | null,
+    client?: PoolClient
+  ): Promise<Invitation | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `UPDATE invitations
+          SET guest_message = $2, updated_at = now()
+        WHERE id = $1
+        RETURNING ${SELECT_COLUMNS}`,
+      [id, message]
     );
 
     const row = result.rows[0];

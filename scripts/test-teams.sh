@@ -6,7 +6,7 @@
 # bases efémeras e corre:
 #   1. a API contra `apupu_teams_api` (schema completo);
 #   2. a migração contra `apupu_teams_migration` (schema anterior à
-#      migração de equipas + fixture), validando `up` e `down 5`.
+#      migração de equipas + fixture), validando `up` e `down 6`.
 #
 # Nunca toca na base de desenvolvimento (5432): todos os URLs usados
 # aqui apontam para 5433.
@@ -60,8 +60,8 @@ DATABASE_URL="$MIGRATION_URL" npx node-pg-migrate up --verbose=false
 
 TEAMS_MIGRATION_TEST_URL="$MIGRATION_URL" npx vitest run tests/teamsMigration.test.ts
 
-echo "== 6/6 Migração: down 5 e validação do rollback =="
-DATABASE_URL="$MIGRATION_URL" npx node-pg-migrate down 5 --verbose=false
+echo "== 6/6 Migração: down 6 e validação do rollback =="
+DATABASE_URL="$MIGRATION_URL" npx node-pg-migrate down 6 --verbose=false
 TEAMS_MIGRATION_TEST_URL="$MIGRATION_URL" TEAMS_MIGRATION_EXPECT=down \
   npx vitest run tests/teamsMigration.test.ts
 

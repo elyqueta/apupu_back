@@ -1530,7 +1530,8 @@ Resposta `200`:
       "email": "joao@exemplo.ao",
       "email_has_account": true,
       "rsvp_status": "pending",
-      "rsvp_responded_at": null
+      "rsvp_responded_at": null,
+      "message": null
     },
     "rsvp_deadline_passed": false,
     "csrf_token": "<valor para X-CSRF-Token>"
@@ -1551,10 +1552,14 @@ convidado e `email_has_account` para o frontend sugerir conta.
 `PUT /api/v1/public/invitations/{token}/rsvp`
 
 ```json
-{ "status": "accepted" }
+{ "status": "accepted", "message": "Vou lá estar!" }
 ```
 
 - `status`: `accepted` | `declined`.
+- `message`: opcional, texto simples de até 500 caracteres; ausente mantém
+  a mensagem anterior, `null` limpa-a. A API remove marcações HTML e
+  caracteres de controlo antes de guardar. O anfitrião vê o valor em
+  `guest_message` na lista de convidados e nos metadados da notificação.
 - Exige a capacidade do navegador ou a sessão de conta correspondente,
   mais `X-CSRF-Token` derivado desse segredo.
 - Repetir o mesmo estado é idempotente.
@@ -1742,6 +1747,7 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
   "guest_email": "joao@exemplo.ao",
   "guest_phone": "+244900000000",
   "table_name": "Mesa 1",
+  "guest_message": null,
   "rsvp_status": "pending",
   "rsvp_responded_at": null,
   "send_status": "queued",
@@ -1762,6 +1768,7 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
 | `send_count` | inteiro | Número de envios |
 | `opened_at` | string \| null | Primeira vez que o convidado abriu o link; `null` enquanto nunca foi aberto |
 | `table_name` | string \| null | Visível apenas ao anfitrião |
+| `guest_message` | string \| null | Mensagem opcional do convidado ao responder; texto simples até 500 caracteres |
 | `invitation_url` | string \| null | URL absoluto para o anfitrião partilhar (WhatsApp, etc.); `null` quando o convite foi revogado. Só existe nas respostas de gestão |
 | `invitation_url_expires_at` | string \| null | Hoje é sempre `null`: o link não expira e só é invalidado pela revogação |
 
@@ -1945,7 +1952,8 @@ O token do link nunca é devolvido.
     "email": "joao@exemplo.ao",
     "email_has_account": true,
     "rsvp_status": "pending",
-    "rsvp_responded_at": null
+    "rsvp_responded_at": null,
+    "message": null
   },
   "rsvp_deadline_passed": false,
   "csrf_token": "<valor para X-CSRF-Token>"

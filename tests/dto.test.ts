@@ -48,6 +48,7 @@ const invitation: Invitation = {
   guestName: 'João',
   guestEmail: 'joao@exemplo.ao',
   guestPhone: null,
+  guestMessage: null,
   tokenHash: 'hash-secreto',
   tokenEncrypted: encryptToken(INVITE_TOKEN),
   claimHash: 'claim-secreto',
@@ -90,6 +91,7 @@ describe('DTOs', () => {
     expect(serialized).not.toContain(invitation.claimHash);
     expect(dto).not.toHaveProperty('token_hash');
     expect(dto).not.toHaveProperty('claim_hash');
+    expect(dto.guest_message).toBeNull();
   });
 
   it('o link de partilha do convite é absoluto e reutiliza o token do email', () => {
@@ -138,6 +140,7 @@ describe('DTOs', () => {
     expect(dto.guest.email).toBe(invitation.guestEmail);
     expect(dto.guest.email_has_account).toBe(true);
     expect(dto.guest.rsvp_status).toBe('pending');
+    expect(dto.guest.message).toBeNull();
     expect(dto).not.toHaveProperty('invitations');
     expect(dto).not.toHaveProperty('invitation_url');
     expect(serialized).not.toContain(invitation.tokenHash);

@@ -399,7 +399,8 @@ export const invitationService = {
     eventId: string,
     invitationId: string,
     access: GuestAccess,
-    status: 'accepted' | 'declined'
+    status: 'accepted' | 'declined',
+    message?: string | null
   ): Promise<PublicInvitationResult> {
     return withTransaction(async (client) => {
       const current = await invitationRepository.findByIdForUpdate(invitationId, client);
@@ -434,17 +435,35 @@ export const invitationService = {
         );
       }
 
+      // `undefined` significa "não enviado": mantém a mensagem anterior.
+      // `null` significa "campo vazio": limpa a mensagem anterior.
+      const nextMessage = message === undefined ? current.guestMessage : message;
+
       if (current.rsvpStatus === status) {
+        const invitation =
+          nextMessage === current.guestMessage
+            ? current
+            : await invitationRepository.setGuestMessage(current.id, nextMessage, client);
+
+        if (!invitation) {
+          throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
+        }
+
         return {
           event,
-          invitation: current,
+          invitation,
           access,
           rsvpDeadlinePassed: false,
           newCapability: null,
         };
       }
 
-      const updated = await invitationRepository.respond(current.id, status, client);
+      const updated = await invitationRepository.respond(
+        current.id,
+        status,
+        nextMessage,
+        client
+      );
 
       if (!updated) {
         throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
@@ -463,6 +482,9 @@ export const invitationService = {
           invitationId: updated.id,
           kind: status === 'accepted' ? 'rsvp_accepted' : 'rsvp_declined',
           guestName: updated.guestName,
+          metadata: updated.guestMessage
+            ? { guest_message: updated.guestMessage }
+            : undefined,
         },
         client
       );
