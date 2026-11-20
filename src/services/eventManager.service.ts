@@ -306,8 +306,8 @@ export const eventManagerService = {
           {
             eventId,
             name: input.team_name.trim(),
-            category: 'outra',
-            description: null,
+            category: input.team_category ?? 'outra',
+            description: input.team_description?.trim() || null,
             createdByHostId: event.hostId,
           },
           client

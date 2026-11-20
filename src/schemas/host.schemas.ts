@@ -12,6 +12,7 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
   TASK_STATUS_FILTERS,
+  TEAM_CATEGORIES,
 } from '../types/team.types';
 import { RSVP_STATUSES, SEND_STATUSES } from '../types/invitation.types';
 
@@ -318,6 +319,8 @@ const coverUrlSchema = z
 const addEventManagerSchema = z
   .object({
     team_name: z.string().trim().min(2).max(80),
+    team_category: z.enum(TEAM_CATEGORIES).optional(),
+    team_description: z.string().trim().max(500).nullable().optional(),
     display_name: z.string().trim().min(1).max(120).nullable().optional(),
     email: z.email('Email inválido.').max(320).nullable().optional(),
     phone: z.string().trim().min(9).max(30).nullable().optional(),
