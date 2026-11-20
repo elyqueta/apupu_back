@@ -369,3 +369,62 @@ mantém-se como ponto de extensão.
   e `host_phone`/`host_avatar_url` apenas do perfil de uma conta
   verificada e ativa. Nunca são expostos `birth_date`, preferências ou
   outros dados do perfil.
+
+## 26. Caixa de entrada — resposta com destino (Bloco 5, Parte F)
+
+- Escolhida a opção (b): a resposta do anfitrião **não** fica sem
+  destino.
+- A resposta é guardada em `invitations.message_answer` com
+  `message_answered_at`, devolvida no DTO público
+  (`guest.message_answer`) e enfileirada por e-mail ao convidado
+  (`invitation_reply` → `resposta_mensagem`).
+- Se a fila de e-mail estiver indisponível, a resposta continua visível
+  no convite: a escrita da resposta e o enfileiramento usam a mesma
+  transação, mas uma falha da fila é registada e não anula a resposta.
+- A leitura pelo anfitrião é guardada em `message_read_at` para
+  alimentar os filtros `read`/`unread`. A caixa de entrada aceita ainda
+  `event_id` para a secção por evento e a página global `/mensagens`.
+
+## 27. Validade dos links (correcção ao plano)
+
+- **Link do gestor:** regra antiga inalterada — 1 semana por omissão,
+  configurável pelo anfitrião, máximo de 1 dia depois do fim do evento.
+  `linkValidityService.resolve()` continua a ser a única fonte desta
+  regra e `generateToken()` não foi alterado.
+- **Link do convite:** máximo de 30 dias depois do fim do evento
+  (`linkValidityService.maximumInvitationFor`); a nova rota
+  `PATCH /host/events/:eventId/invitations/:invitationId/link` aceita
+  uma data futura dentro desse limite. O default continua a ser fim do
+  evento + 1 dia.
+- O gestor pode trocar o próprio código sem conta, através de
+  `POST /host/manager/access-code` com a sessão de gestão; a rota
+  devolve o novo código em claro uma vez e revoga as sessões antigas
+  do evento.
+
+## 28. Super admin e Bloco 6
+
+- O documento `apupu_front/docs/bloco-6-landing-e-super-admin.md` é a
+  fonte principal e prevalece sobre a Parte E do Plano Bloco 5.
+- Landing e painel admin do frontend ficam com o utilizador; o backend
+  implementa apenas as rotas `/admin` documentadas no
+  `PLANO-BLOCO-6.md`.
+- O papel `super_admin` é `hosts.is_super_admin`; a promoção é feita
+  apenas por SQL, sem UI, sem valor real em configs e sem rota de
+  atribuição/remoção. O DTO da sessão (`HostDto`) expõe
+  `is_super_admin` para o guard do frontend.
+- O super admin não pode suspender a própria conta, retirar o próprio
+  papel nem revogar as próprias sessões por esta via.
+- Todas as acções admin, incluindo listagens, são registadas em
+  `admin_audit_log` (append-only).
+
+## 29. Cancelamento de eventos (Bloco 5, Parte H e Bloco 6)
+
+- OTP obrigatório no anfitrião e no super admin, com finalidade
+  `event_cancel` em `registration_verifications.purpose`; o código
+  nunca é devolvido na API, apenas enfileirado na outbox cifrada.
+- Motivo opcional no anfitrião; obrigatório (mínimo 10 caracteres) no
+  super admin.
+- Todas as escritas ligadas ao evento respondem `event_cancelled`
+  (409) com o texto pt-PT "Este evento foi cancelado. Já não é possível
+  fazer alterações.", incluindo rotas cujo `eventId` só existe dentro
+  de outro recurso.
