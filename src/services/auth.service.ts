@@ -2,6 +2,7 @@ import { env } from '../config/env';
 import { withTransaction } from '../database/pool';
 import { PoolClient } from 'pg';
 import {
+  BadRequestError,
   ConflictError,
   LockedError,
   TooManyRequestsError,
@@ -44,6 +45,7 @@ import {
 import { AuditContext, auditService } from './audit.service';
 import {
   enqueueEmailVerification,
+  enqueueEventCancelOtp,
   enqueueHostWelcome,
   enqueuePasswordReset,
   enqueueRegistrationOtp,
@@ -191,6 +193,113 @@ async function issueOtpRegistration(
   });
 
   return { status: 'accepted', expiresAt, resendAvailableAt, code };
+}
+
+/** Resumo devolvido ao pedido de OTP de cancelamento (sem código). */
+export interface CancelOtpRequestResult {
+  expiresAt: Date;
+  resendAvailableAt: Date;
+}
+
+type CancelOtpOutcome = 'valid' | 'invalid' | 'attempts_exceeded';
+
+/**
+ * Emite um OTP para confirmar o cancelamento de um evento.
+ *
+ * Usa a mesma janela de reenvio/tentativas do registo, mas com
+ * finalidade `event_cancel`. O código nunca é devolvido: segue apenas
+ * na outbox de email, cifrado até ser renderizado.
+ */
+export async function requestEventCancelOtp(email: string): Promise<CancelOtpRequestResult> {
+  const latest = await registrationVerificationRepository.findLatestActiveForEmail(
+    email,
+    undefined,
+    'event_cancel'
+  );
+  const resendAvailableAt = latest
+    ? new Date(latest.createdAt.getTime() + env.REGISTRATION_OTP_RESEND_SECONDS * 1000)
+    : new Date();
+
+  if (latest && resendAvailableAt.getTime() > Date.now()) {
+    throw new TooManyRequestsError(
+      'Aguarda antes de pedir um novo código.',
+      'otp_resend_too_soon'
+    );
+  }
+
+  const code = generateOtpCode();
+  const expiresAt = tokenExpiry(env.REGISTRATION_OTP_TTL_MINUTES);
+
+  await withTransaction(async (client) => {
+    await registrationVerificationRepository.consumePendingForEmail(
+      email,
+      client,
+      'event_cancel'
+    );
+    await registrationVerificationRepository.create(
+      email,
+      hashOtpCode(email, code),
+      expiresAt,
+      client,
+      'event_cancel'
+    );
+    await enqueueEventCancelOtp(email, code, client);
+  });
+
+  return { expiresAt, resendAvailableAt };
+}
+
+/**
+ * Verifica e consome um OTP de cancelamento.
+ *
+ * Falhas são devolvidas como valor para que o incremento de tentativas
+ * não seja anulado por um rollback (o mesmo padrão do OTP de registo).
+ */
+async function verifyEventCancelOtp(email: string, code: string): Promise<CancelOtpOutcome> {
+  return withTransaction(async (client) => {
+    const verification =
+      await registrationVerificationRepository.findLatestActiveForEmailForUpdate(
+        email,
+        client,
+        'event_cancel'
+      );
+
+    if (!verification || verification.attempts >= env.REGISTRATION_OTP_MAX_ATTEMPTS) {
+      return 'attempts_exceeded';
+    }
+
+    if (!hashesMatch(verification.codeHash, hashOtpCode(email, code))) {
+      const attempts = await registrationVerificationRepository.registerFailedAttempt(
+        verification.id,
+        client
+      );
+      if (attempts >= env.REGISTRATION_OTP_MAX_ATTEMPTS) {
+        await registrationVerificationRepository.consumePendingForEmail(
+          email,
+          client,
+          'event_cancel'
+        );
+      }
+      return 'invalid';
+    }
+
+    await registrationVerificationRepository.consumeCode(verification.id, client);
+    return 'valid';
+  });
+}
+
+/** Lança o erro de API adequado quando o OTP de cancelamento falha. */
+export async function assertEventCancelOtp(email: string, code: string): Promise<void> {
+  const outcome = await verifyEventCancelOtp(email, code);
+
+  if (outcome !== 'valid') {
+    throw new BadRequestError(
+      outcome === 'attempts_exceeded'
+        ? 'Demasiadas tentativas. Pede um novo código.'
+        : 'Código inválido ou expirado.',
+      'admin_otp_invalid'
+    );
+  }
 }
 
 async function createAccountSession(

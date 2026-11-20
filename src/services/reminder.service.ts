@@ -185,11 +185,39 @@ export async function enqueueDeclineNotification(
   );
 }
 
+/** Notifica o convidado de que o anfitrião respondeu à sua mensagem. */
+export async function enqueueInvitationReply(
+  invitation: Invitation,
+  answer: string,
+  client?: PoolClient
+): Promise<void> {
+  await emailDeliveryRepository.enqueue(
+    {
+      eventId: invitation.eventId,
+      invitationId: invitation.id,
+      hostId: null,
+      messageType: 'invitation_reply',
+      reminderKind: null,
+      recipientEmail: invitation.guestEmail,
+      scheduledFor: new Date(),
+      idempotencyKey: `invitation_reply:${invitation.id}:${randomUUID()}`,
+      payload: { answer },
+    },
+    client
+  );
+}
+
 /** Comunica o cancelamento do evento aos convidados que não recusaram. */
+export interface EventCancellationNotice {
+  cancelledBy: 'anfitriao' | 'plataforma';
+  reason?: string | null;
+}
+
 export async function enqueueEventCancelled(
   event: Event,
   invitations: Invitation[],
-  client?: PoolClient
+  client?: PoolClient,
+  notice: EventCancellationNotice = { cancelledBy: 'anfitriao' }
 ): Promise<void> {
   for (const invitation of invitations) {
     if (invitation.rsvpStatus === 'declined') continue;
@@ -202,7 +230,11 @@ export async function enqueueEventCancelled(
         reminderKind: null,
         recipientEmail: invitation.guestEmail,
         scheduledFor: new Date(),
-        idempotencyKey: `event_cancelled:${invitation.id}`,
+        idempotencyKey: `event_cancelled:${invitation.id}:${notice.cancelledBy}:${Date.now()}`,
+        payload: {
+          cancelledBy: notice.cancelledBy,
+          reason: notice.reason?.trim() || undefined,
+        },
       },
       client
     );
@@ -261,6 +293,35 @@ export async function enqueueRegistrationOtp(
       scheduledFor: new Date(),
       idempotencyKey: `registration_otp:${email}:${randomUUID()}`,
       tokenEncrypted: encryptToken(code),
+    },
+    client
+  );
+}
+
+/**
+ * Enfileira o OTP que autoriza o cancelamento de um evento.
+ *
+ * Reutiliza o tipo `registration_otp` da outbox (o código continua
+ * cifrado) mas o `payload` identifica a finalidade para o renderizador
+ * escolher o texto correcto.
+ */
+export async function enqueueEventCancelOtp(
+  email: string,
+  code: string,
+  client?: PoolClient
+): Promise<void> {
+  await emailDeliveryRepository.enqueue(
+    {
+      eventId: null,
+      invitationId: null,
+      hostId: null,
+      messageType: 'registration_otp',
+      reminderKind: null,
+      recipientEmail: email,
+      scheduledFor: new Date(),
+      idempotencyKey: `event_cancel_otp:${email}:${randomUUID()}`,
+      tokenEncrypted: encryptToken(code),
+      payload: { purpose: 'event_cancel' },
     },
     client
   );

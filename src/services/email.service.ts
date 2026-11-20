@@ -365,6 +365,17 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
     case 'registration_otp': {
       const code = hostToken(context);
 
+      if (payloadString(context, 'purpose') === 'event_cancel') {
+        return {
+          to: context.recipientEmail,
+          code: 'cancelamento_codigo',
+          vars: {
+            codigo: code,
+            expiraEm: `${env.REGISTRATION_OTP_TTL_MINUTES} minutos`,
+          },
+        };
+      }
+
       return {
         to: context.recipientEmail,
         code: 'verificacao_codigo',
@@ -556,6 +567,20 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
       };
     }
 
+    case 'invitation_reply': {
+      const event = requireEventSummary(context);
+
+      return {
+        to: context.recipientEmail,
+        code: 'resposta_mensagem',
+        vars: eventVars(context, event, {
+          nome: context.guestName ?? undefined,
+          convidado: context.guestName ?? undefined,
+          resposta: payloadString(context, 'answer'),
+        }),
+      };
+    }
+
     case 'event_cancelled': {
       const event = requireEventSummary(context);
 
@@ -565,6 +590,11 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         vars: eventVars(context, event, {
           nome: context.guestName ?? undefined,
           convidado: context.guestName ?? undefined,
+          canceladoPor:
+            payloadString(context, 'cancelledBy') === 'plataforma'
+              ? 'plataforma'
+              : 'anfitriao',
+          motivo: payloadString(context, 'reason'),
         }),
       };
     }

@@ -171,3 +171,30 @@ export const authEmailLimiter = rateLimit({
   keyGenerator: (req) => `${req.ip ?? 'unknown'}:${requestEmail(req)}`,
   handler: limitHandler,
 });
+
+/**
+ * Limites dedicados das acções administrativas e dos OTP de
+ * cancelamento. A chave usa a conta autenticada quando existe, para
+ * que a quota não seja contornada pela troca de IP.
+ */
+function adminKey(req: Request): string {
+  return `admin:${req.hostAccount?.id ?? req.ip ?? 'unknown'}`;
+}
+
+export const adminOtpLimiter = rateLimit({
+  windowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
+  limit: env.AUTH_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: adminKey,
+  handler: limitHandler,
+});
+
+export const adminActionLimiter = rateLimit({
+  windowMs: env.WRITE_RATE_LIMIT_WINDOW_MS,
+  limit: env.WRITE_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: adminKey,
+  handler: limitHandler,
+});

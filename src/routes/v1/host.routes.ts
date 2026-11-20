@@ -23,6 +23,7 @@ import {
   activityIdParamsSchema,
   coverUrlSchema,
 } from '../../schemas/host.schemas';
+import { invitationLinkSchema } from '../../schemas/invitation.schemas';
 
 const router = Router();
 
@@ -493,6 +494,46 @@ router.patch(
   requireEventHost,
   validate({ body: updateInvitationSchema }),
   asyncHandler(invitationController.update)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/invitations/{invitationId}/link:
+ *   patch:
+ *     tags: [Convidados]
+ *     summary: Altera a validade do link do convite
+ *     description: >
+ *       Data futura, no máximo fim do evento + 30 dias. Não altera a
+ *       regra do link de gestão (1 semana / máx. fim + 1 dia).
+ *     security:
+ *       - hostSession: []
+ *       - accountSession: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [expires_at]
+ *             properties:
+ *               expires_at: { type: string, format: date-time }
+ *     responses:
+ *       200: { description: Convite com a nova validade. }
+ *       422:
+ *         description: Data inválida ou além do máximo permitido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.patch(
+  '/events/:eventId/invitations/:invitationId/link',
+  validate({ params: invitationIdParamsSchema }),
+  asyncHandler(hostAuth),
+  writeLimiter,
+  requireHostCsrf,
+  requireEventHost,
+  validate({ body: invitationLinkSchema }),
+  asyncHandler(invitationController.updateLink)
 );
 
 router.delete(

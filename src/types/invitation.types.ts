@@ -17,6 +17,10 @@ export interface Invitation {
   tableName: string | null;
   /** Mensagem opcional deixada pelo convidado ao responder (texto simples). */
   guestMessage: string | null;
+  /** Resposta do anfitrião, visível ao convidado no convite público. */
+  messageAnswer: string | null;
+  messageAnsweredAt: Date | null;
+  messageReadAt: Date | null;
   /** Fim da validade do link individual (fim do evento + 1 dia por defeito). */
   linkExpiresAt: Date | null;
   tokenHash: string;
@@ -50,6 +54,8 @@ export interface UpdateInvitationInput {
   tokenHash?: string;
   /** Novo token cifrado, para reconstruir o link depois da alteração. */
   tokenEncrypted?: string;
+  /** Nova validade do link individual (máx. fim do evento + 30 dias). */
+  linkExpiresAt?: Date;
   /** Limpa a reivindicação do link antigo. */
   resetClaim?: boolean;
 }

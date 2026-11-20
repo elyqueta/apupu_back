@@ -20,6 +20,9 @@ interface InvitationRow {
   guest_phone: string | null;
   table_name: string | null;
   guest_message: string | null;
+  message_answer: string | null;
+  message_answered_at: Date | null;
+  message_read_at: Date | null;
   link_expires_at: Date;
   token_hash: string;
   token_encrypted: string;
@@ -45,6 +48,9 @@ function toInvitation(row: InvitationRow): Invitation {
     guestPhone: row.guest_phone,
     tableName: row.table_name,
     guestMessage: row.guest_message,
+    messageAnswer: row.message_answer,
+    messageAnsweredAt: row.message_answered_at,
+    messageReadAt: row.message_read_at,
     linkExpiresAt: row.link_expires_at,
     tokenHash: row.token_hash,
     tokenEncrypted: row.token_encrypted,
@@ -64,6 +70,7 @@ function toInvitation(row: InvitationRow): Invitation {
 
 const SELECT_COLUMNS = `
   id, event_id, guest_name, guest_email, guest_phone, table_name, guest_message,
+  message_answer, message_answered_at, message_read_at,
   link_expires_at, token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
   rsvp_status, rsvp_responded_at, rsvp_version,
   send_status, send_count, last_sent_at, created_at, updated_at
@@ -320,6 +327,131 @@ export const invitationRepository = {
       items: result.rows.map(toInvitation),
       total: Number(countResult.rows[0]?.total ?? '0'),
     };
+  },
+
+  /**
+   * Caixa de entrada global do anfitrião: mensagens deixadas por
+   * convidados nos eventos que possui ou gere.
+   */
+  async listInbox(filters: {
+    hostId: string;
+    managerEmail?: string | null;
+    eventId?: string;
+    q?: string;
+    read?: 'read' | 'unread';
+    answered?: 'answered' | 'unanswered';
+    from?: Date;
+    to?: Date;
+    limit: number;
+    offset: number;
+  }): Promise<{ items: InvitationWithEvent[]; total: number }> {
+    const values: unknown[] = [filters.hostId];
+    const conditions: string[] = [];
+
+    const push = (sql: string, value: unknown): void => {
+      values.push(value);
+      conditions.push(sql.replace('?', `$${values.length}`));
+    };
+
+    // O workspace inclui eventos próprios e eventos geridos com email
+    // verificado. Ambas as vias têm de entrar na caixa de entrada.
+    if (filters.managerEmail) {
+      values.push(filters.managerEmail);
+      conditions.push(`(e.host_id = $1 OR EXISTS (
+        SELECT 1 FROM event_managers m
+         WHERE m.event_id = i.event_id
+           AND m.email = $${values.length}::citext
+           AND m.revoked_at IS NULL
+      ))`);
+    } else {
+      conditions.push('e.host_id = $1');
+    }
+
+    if (filters.eventId) push('i.event_id = ?', filters.eventId);
+    // Só mensagens efectivamente deixadas pelo convidado.
+    conditions.push('i.guest_message IS NOT NULL');
+
+    if (filters.q) {
+      const term = `%${escapeLike(filters.q)}%`;
+      const params = Array.from({ length: 4 }, () => {
+        values.push(term);
+        return `$${values.length}`;
+      });
+      conditions.push(
+        `(i.guest_name ILIKE ${params[0]} OR i.guest_email::text ILIKE ${params[1]}` +
+          ` OR i.guest_message ILIKE ${params[2]} OR e.title ILIKE ${params[3]})`
+      );
+    }
+    if (filters.read === 'read') conditions.push('i.message_read_at IS NOT NULL');
+    if (filters.read === 'unread') conditions.push('i.message_read_at IS NULL');
+    if (filters.answered === 'answered') conditions.push('i.message_answered_at IS NOT NULL');
+    if (filters.answered === 'unanswered') conditions.push('i.message_answered_at IS NULL');
+    if (filters.from) push('i.rsvp_responded_at >= ?', filters.from);
+    if (filters.to) push('i.rsvp_responded_at <= ?', filters.to);
+
+    const where = conditions.join(' AND ');
+    const [count, list] = await Promise.all([
+      query<{ total: string }>(
+        `SELECT count(*)::text AS total
+           FROM invitations i JOIN events e ON e.id = i.event_id
+          WHERE ${where}`,
+        values
+      ),
+      query<InvitationWithEventRow>(
+        `SELECT ${SELECT_COLUMNS},
+                e.title AS event_title, e.starts_at AS event_starts_at, e.status AS event_status
+           FROM invitations i JOIN events e ON e.id = i.event_id
+          WHERE ${where}
+          ORDER BY i.rsvp_responded_at DESC NULLS LAST, i.id DESC
+          LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, filters.limit, filters.offset]
+      ),
+    ]);
+
+    return {
+      items: list.rows.map(toInvitationWithEvent),
+      total: Number(count.rows[0]?.total ?? '0'),
+    };
+  },
+
+  /** Marca (ou desmarca) a leitura de uma mensagem. */
+  async setMessageRead(
+    id: string,
+    read: boolean,
+    client?: PoolClient
+  ): Promise<Invitation | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `UPDATE invitations
+          SET message_read_at = CASE WHEN $2 THEN now() ELSE NULL END,
+              updated_at = now()
+        WHERE id = $1
+        RETURNING ${SELECT_COLUMNS}`,
+      [id, read]
+    );
+    const row = result.rows[0];
+    return row ? toInvitation(row) : null;
+  },
+
+  /** Guarda a resposta do anfitrião e a marca como lida. */
+  async setMessageAnswer(
+    id: string,
+    answer: string,
+    client?: PoolClient
+  ): Promise<Invitation | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `UPDATE invitations
+          SET message_answer = $2,
+              message_answered_at = now(),
+              message_read_at = COALESCE(message_read_at, now()),
+              updated_at = now()
+        WHERE id = $1
+        RETURNING ${SELECT_COLUMNS}`,
+      [id, answer]
+    );
+    const row = result.rows[0];
+    return row ? toInvitation(row) : null;
   },
 
   /**
@@ -661,6 +793,10 @@ export const invitationRepository = {
       values.push(changes.tokenEncrypted);
       set.push(`token_encrypted = $${values.length}`);
     }
+    if ('linkExpiresAt' in changes) {
+      values.push(changes.linkExpiresAt);
+      set.push(`link_expires_at = $${values.length}`);
+    }
     if (changes.resetClaim) {
       set.push('claim_hash = NULL', 'claimed_at = NULL', 'claim_revoked_at = NULL');
     }
@@ -767,5 +903,13 @@ export const invitationRepository = {
     const runner = client ?? pool;
     const result = await runner.query('DELETE FROM invitations WHERE id = $1', [id]);
     return (result.rowCount ?? 0) > 0;
+  },
+
+  /** Total de convites enviados (para a visão geral do admin). */
+  async countAll(): Promise<number> {
+    const result = await query<{ total: string }>(
+      'SELECT count(*)::text AS total FROM invitations'
+    );
+    return Number(result.rows[0]?.total ?? '0');
   },
 };

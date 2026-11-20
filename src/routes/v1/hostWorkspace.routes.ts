@@ -3,6 +3,7 @@ import { activityController } from '../../controllers/activity.controller';
 import { authController } from '../../controllers/auth.controller';
 import { eventManagerController } from '../../controllers/eventManager.controller';
 import { guestInvitationController } from '../../controllers/guestInvitation.controller';
+import { inboxController } from '../../controllers/inbox.controller';
 import { hostEventController } from '../../controllers/hostEvent.controller';
 import { hostGuestController } from '../../controllers/hostGuest.controller';
 import { notificationController } from '../../controllers/notification.controller';
@@ -26,6 +27,7 @@ import { uploadAvatar } from '../../middlewares/uploadAvatar';
 import { uploadProfileCover } from '../../middlewares/uploadProfileCover';
 import { validate } from '../../middlewares/validate';
 import { registerRequestCodeSchema } from '../../schemas/auth.schemas';
+import { hostCancelSchema } from '../../schemas/admin.schemas';
 import { createEventSchema, eventIdParamsSchema } from '../../schemas/event.schemas';
 import {
   addEventManagerSchema,
@@ -52,6 +54,12 @@ import {
   updateProfileSchema,
   updateTaskSchema,
 } from '../../schemas/host.schemas';
+import {
+  inboxAnswerSchema,
+  inboxIdParamsSchema,
+  inboxQuerySchema,
+  inboxReadSchema,
+} from '../../schemas/inbox.schemas';
 import {
   addTeamMembersSchema,
   createTeamSchema,
@@ -119,6 +127,32 @@ router.post(
   asyncHandler(managerSessionAuth),
   validate({ body: registerRequestCodeSchema }),
   asyncHandler(authController.requestManagerRegistrationCode)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/manager/access-code:
+ *   post:
+ *     tags: [Gestão]
+ *     summary: Gestor troca o próprio código de acesso
+ *     description: >
+ *       Usa a sessão de gestão (sem conta). Devolve o novo código em
+ *       claro uma única vez e revoga as sessões antigas do evento.
+ *     security:
+ *       - hostSession: []
+ *     responses:
+ *       200: { description: Novo link e código. }
+ *       401:
+ *         description: Sessão de gestão inválida.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/manager/access-code',
+  writeLimiter,
+  asyncHandler(managerSessionAuth),
+  asyncHandler(eventManagerController.regenerateOwnAccess)
 );
 
 /**
@@ -287,6 +321,16 @@ router.post(
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/HostEnvelope' }
+ *       401:
+ *         description: Sessão ausente ou expirada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       403:
+ *         description: Token CSRF inválido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.delete(
   '/profile/avatar',
@@ -837,6 +881,163 @@ router.post(
  *           application/json:
  *             schema: { $ref: '#/components/schemas/DashboardEnvelope' }
  */
+/**
+ * @openapi
+ * /api/v1/host/events/{eventId}/cancel/otp:
+ *   post:
+ *     tags: [Gestão]
+ *     summary: Envia o OTP que autoriza o cancelamento do evento
+ *     description: >
+ *       O código vai apenas para o email da conta, cifrado na outbox.
+ *       Nunca é devolvido na resposta. Válido por 10 minutos.
+ *     security:
+ *       - accountSession: []
+ *     responses:
+ *       200: { description: Código enviado. }
+ *       429:
+ *         description: Reenvio demasiado cedo.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *
+ * /api/v1/host/events/{eventId}/cancel:
+ *   post:
+ *     tags: [Gestão]
+ *     summary: Cancela o evento (motivo opcional, OTP obrigatório)
+ *     security:
+ *       - accountSession: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [otp]
+ *             properties:
+ *               otp: { type: string, pattern: '^[0-9]{6}$' }
+ *               reason: { type: string, nullable: true }
+ *     responses:
+ *       200: { description: Evento cancelado. }
+ *       409:
+ *         description: Evento já cancelado (`event_cancelled`).
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/events/:eventId/cancel/otp',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(hostEventController.requestCancelOtp)
+);
+
+router.post(
+  '/events/:eventId/cancel',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ body: hostCancelSchema }),
+  asyncHandler(hostEventController.cancel)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/inbox:
+ *   get:
+ *     tags: [Convidados]
+ *     summary: Mensagens deixadas pelos convidados nos eventos da conta
+ *     description: >
+ *       Filtros: `q`, `event_id`, `read=read|unread`,
+ *       `answered=answered|unanswered`, `from`, `to` e paginação.
+ *       Inclui eventos próprios e geridos
+ *       (email verificado).
+ *     security:
+ *       - accountSession: []
+ *     responses:
+ *       200: { description: Lista paginada de mensagens. }
+ *       401:
+ *         description: Sessão ausente ou expirada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *
+ * /api/v1/host/inbox/{invitationId}/read:
+ *   post:
+ *     tags: [Convidados]
+ *     summary: Marca uma mensagem como lida ou não lida
+ *     security:
+ *       - accountSession: []
+ *     responses:
+ *       200: { description: Estado de leitura actualizado. }
+ *       401:
+ *         description: Sessão ausente ou expirada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       404:
+ *         description: Mensagem não encontrada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *
+ * /api/v1/host/inbox/{invitationId}/answer:
+ *   post:
+ *     tags: [Convidados]
+ *     summary: Responde a uma mensagem
+ *     description: >
+ *       A resposta fica guardada no convite, aparece no convite público
+ *       e é enviada por e-mail ao convidado quando a fila estiver
+ *       disponível.
+ *     security:
+ *       - accountSession: []
+ *     responses:
+ *       200: { description: Resposta guardada. }
+ *       401:
+ *         description: Sessão ausente ou expirada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       404:
+ *         description: Mensagem não encontrada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       422:
+ *         description: Resposta vazia ou demasiado longa.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.get(
+  '/inbox',
+  asyncHandler(hostAccountAuth),
+  validate({ query: inboxQuerySchema }),
+  asyncHandler(inboxController.list)
+);
+
+router.post(
+  '/inbox/:invitationId/read',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ params: inboxIdParamsSchema }),
+  validate({ body: inboxReadSchema }),
+  asyncHandler(inboxController.setRead)
+);
+
+router.post(
+  '/inbox/:invitationId/answer',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ params: inboxIdParamsSchema }),
+  validate({ body: inboxAnswerSchema }),
+  asyncHandler(inboxController.answer)
+);
+
 router.get('/dashboard', asyncHandler(hostAccountAuth), asyncHandler(hostEventController.dashboard));
 
 /**

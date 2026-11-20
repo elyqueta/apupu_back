@@ -1,6 +1,7 @@
 import { NotFoundError, ValidationError } from '../errors';
 import { withTransaction } from '../database/pool';
 import { activityRepository } from '../repositories/activity.repository';
+import { adminAuditRepository } from '../repositories/adminAudit.repository';
 import { eventRepository, InsertEventData } from '../repositories/event.repository';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
@@ -272,6 +273,69 @@ export const eventService = {
    * - Cancelar enfileira a comunicação de cancelamento.
    * - Alterar data/fuso cancela e reconstrói apenas lembretes futuros.
    */
+  /**
+   * Cancela um evento de forma atómica, com auditoria e notificações.
+   *
+   * Tanto o anfitrião como o super admin passam por aqui; `actor` é o
+   * `hostId` de quem executou a acção e `reason` o motivo opcional/obrigatório
+   * conforme o papel.
+   */
+  async cancel(
+    eventId: string,
+    actor: { hostId: string; role: 'anfitriao' | 'plataforma' },
+    reason?: string | null
+  ): Promise<Event> {
+    return withTransaction(async (client) => {
+      const current = await eventRepository.findByIdForUpdate(eventId, client);
+
+      if (!current) {
+        throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+      }
+
+      if (current.status === 'cancelled') {
+        return current;
+      }
+
+      const trimmedReason = reason?.trim() || null;
+      const updated = await eventRepository.update(
+        eventId,
+        {
+          status: 'cancelled',
+          cancelledAt: new Date(),
+          cancelledReason: trimmedReason,
+          cancelledBy: actor.hostId,
+        },
+        client
+      );
+
+      if (!updated) {
+        throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+      }
+
+      await cancelMessagesForEvent(updated.id, client);
+
+      const invitations = await invitationRepository.listByEvent(updated.id, client);
+      await enqueueEventCancelled(updated, invitations, client, {
+        cancelledBy: actor.role,
+        reason: trimmedReason,
+      });
+
+      await adminAuditRepository.record(
+        {
+          adminId: actor.hostId,
+          action: actor.role === 'plataforma' ? 'admin_event_cancelled' : 'event_cancelled',
+          targetType: 'event',
+          targetId: eventId,
+          reason: trimmedReason,
+          metadata: { cancelledBy: actor.role },
+        },
+        client
+      );
+
+      return updated;
+    });
+  },
+
   async update(eventId: string, input: UpdateEventBody): Promise<Event> {
     if ('template_id' in input) {
       await assertTemplateActive(input.template_id);

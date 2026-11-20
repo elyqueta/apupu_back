@@ -21,6 +21,10 @@ export interface InvitationDto {
   table_name: string | null;
   /** Mensagem opcional deixada ao responder (texto simples, até 500 caracteres). */
   guest_message: string | null;
+  /** Resposta do anfitrião (visível também no convite público). */
+  message_answer: string | null;
+  message_answered_at: string | null;
+  message_read_at: string | null;
   rsvp_status: string;
   rsvp_responded_at: string | null;
   send_status: string;
@@ -82,6 +86,9 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     guest_phone: invitation.guestPhone,
     table_name: invitation.tableName,
     guest_message: invitation.guestMessage,
+    message_answer: invitation.messageAnswer,
+    message_answered_at: iso(invitation.messageAnsweredAt),
+    message_read_at: iso(invitation.messageReadAt),
     rsvp_status: invitation.rsvpStatus,
     rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     send_status: invitation.sendStatus,
@@ -205,6 +212,9 @@ export interface PublicInvitationDto {
     rsvp_responded_at: string | null;
     /** Texto simples deixado pelo próprio convidado ao responder. */
     message: string | null;
+    /** Resposta do anfitrião à mensagem (Parte F). */
+    message_answer: string | null;
+    message_answered_at: string | null;
   };
   rsvp_deadline_passed: boolean;
 }
@@ -226,6 +236,8 @@ export function toPublicInvitationDto(
       rsvp_status: invitation.rsvpStatus,
       rsvp_responded_at: iso(invitation.rsvpRespondedAt),
       message: invitation.guestMessage,
+      message_answer: invitation.messageAnswer,
+      message_answered_at: iso(invitation.messageAnsweredAt),
     },
     rsvp_deadline_passed: rsvpDeadlinePassed,
   };

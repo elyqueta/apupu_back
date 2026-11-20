@@ -48,4 +48,12 @@ export const rsvpSchema = z
   })
   .strict();
 
+/** Nova validade do link individual do convite (máx. fim do evento + 30 dias). */
+export const invitationLinkSchema = z
+  .object({
+    expires_at: z.coerce.date({ error: 'Indica uma data válida.' }),
+  })
+  .strict();
+
+export type InvitationLinkBody = z.infer<typeof invitationLinkSchema>;
 export type RsvpBody = z.infer<typeof rsvpSchema>;

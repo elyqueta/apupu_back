@@ -455,6 +455,50 @@ export const eventManagerService = {
     return { manager: updated, link: links.manageEvent(material.token), code, status };
   },
 
+  /**
+   * Troca do código feita pelo próprio gestor, a partir da sessão de
+   * gestão. O gestor não precisa de conta e não conhece o `hostId`.
+   */
+  async regenerateOwnAccess(
+    eventId: string,
+    managerId: string
+  ): Promise<ResendManagerResult> {
+    const event = await eventRepository.findById(eventId);
+    if (!event) throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+
+    const manager = await eventManagerRepository.findActiveById(managerId);
+    if (!manager || manager.eventId !== eventId) {
+      throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
+    }
+
+    const material = generateManageToken();
+    const code = generateAccessCode();
+    const linkExpiresAt = await linkValidityService.resolve(event, null);
+
+    const updated = await eventManagerRepository.rotateToken(managerId, {
+      tokenHash: material.hash,
+      tokenExpiresAt: linkExpiresAt,
+      accessCodeHash: hashAccessCode(code, managerId),
+      linkExpiresAt,
+      resetFailures: true,
+    });
+    if (!updated) throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
+
+    // A sessão atual deixa de ser válida: o gestor entra com o novo link
+    // e código. As sessões antigas do evento são revogadas.
+    await hostSessionRepository.revokeAllForEvent(eventId);
+
+    const status = await deliverManagerInvite(
+      event,
+      updated,
+      material.token,
+      code,
+      `manager_invite:${eventId}:${managerId}:self-rotate:${randomUUID()}`
+    );
+
+    return { manager: updated, link: links.manageEvent(material.token), code, status };
+  },
+
   async revokeLink(
     hostId: string,
     eventId: string,
