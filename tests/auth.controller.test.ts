@@ -113,10 +113,12 @@ describe('authController.register', () => {
     const expiresAt = new Date('2026-11-16T04:00:00.000Z');
     const json = vi.fn();
     const cookie = vi.fn();
+    const clearCookie = vi.fn();
     const response = {
       status: vi.fn(() => ({ json })),
       json,
       cookie,
+      clearCookie,
     } as unknown as Response;
     const host: HostWithProfile = {
       id: 'host-id',

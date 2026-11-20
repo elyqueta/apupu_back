@@ -131,12 +131,37 @@ function authPath(): string {
   return env.NODE_ENV === 'development' ? '/' : '/api/v1';
 }
 
+/**
+ * Caminhos já usados pelo cookie de conta ao longo do tempo.
+ *
+ * Até `f414b99` o cookie era sempre escrito com `Path=/api/v1`. A partir daí
+ * passou a ser `Path=/` em desenvolvimento (para o SSR ver a sessão no refresh
+ * da SPA). Como o browser envia primeiro os cookies com `Path` mais longo e o
+ * `cookie-parser` guarda apenas o primeiro valor de cada nome, um cookie antigo
+ * com `Path=/api/v1` continuava a ganhar ao novo. Resultado: o login Google
+ * criava a sessão na BD, mas `/api/v1/auth/session` lia o token antigo e
+ * devolvia `host_session_invalid`.
+ */
+const AUTH_COOKIE_PATHS = ['/', '/api/v1'] as const;
+
+/** Apaga todas as variantes históricas antes de escrever/limpar a sessão. */
+function clearAuthCookiesOnAllPaths(res: Response): void {
+  for (const path of AUTH_COOKIE_PATHS) {
+    res.clearCookie(env.AUTH_COOKIE_NAME, { path });
+    res.clearCookie(env.AUTH_CSRF_COOKIE_NAME, { path });
+  }
+}
+
 export function readAuthSession(req: Request): string | null {
   const value: unknown = req.cookies?.[env.AUTH_COOKIE_NAME];
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 export function setAuthSession(res: Response, sessionToken: string): void {
+  // Primeiro removemos o legado; caso contrário o cookie antigo com
+  // `Path=/api/v1` continuaria a ser o primeiro enviado pelo browser.
+  clearAuthCookiesOnAllPaths(res);
+
   const maxAgeMs = env.AUTH_SESSION_TTL_MINUTES * 60 * 1000;
 
   res.cookie(
@@ -152,6 +177,5 @@ export function setAuthSession(res: Response, sessionToken: string): void {
 }
 
 export function clearAuthSession(res: Response): void {
-  res.clearCookie(env.AUTH_COOKIE_NAME, { path: authPath() });
-  res.clearCookie(env.AUTH_CSRF_COOKIE_NAME, { path: '/api/v1' });
+  clearAuthCookiesOnAllPaths(res);
 }
