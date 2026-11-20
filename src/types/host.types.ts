@@ -34,6 +34,8 @@ export interface HostAccount {
   email: string;
   passwordHash: string;
   emailVerifiedAt: Date | null;
+  /** Papel `super_admin` do Bloco 6; promoção apenas por SQL. */
+  isSuperAdmin: boolean;
   status: HostStatus;
   failedLoginAttempts: number;
   lockedUntil: Date | null;

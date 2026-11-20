@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import { asyncHandler } from '../../middlewares/asyncHandler';
+import { requireActiveEvent } from '../../middlewares/requireActiveEvent';
+import adminRoutes from './admin.routes';
 import authRoutes from './auth.routes';
 import eventsRoutes from './events.routes';
 import hostRoutes from './host.routes';
@@ -17,6 +20,12 @@ import templatesRoutes from './templates.routes';
  */
 const router = Router();
 
+// Bloqueia escritas em eventos cancelados antes de qualquer router de
+// domínio. Rotas sem evento resolvido (perfil, auth, criação de evento)
+// seguem o fluxo normal.
+router.use(asyncHandler(requireActiveEvent()));
+
+router.use('/admin', adminRoutes);
 router.use('/templates', templatesRoutes);
 router.use('/auth', authRoutes);
 router.use('/events', eventsRoutes);

@@ -10,11 +10,23 @@ import {
   UpdateHostProfileInput,
 } from '../types/host.types';
 
+/** Item da lista global exposta ao painel admin (sem dados sensíveis). */
+export interface AdminUserListItem {
+  id: string;
+  email: string;
+  status: HostStatus;
+  is_super_admin: boolean;
+  email_verified_at: string | null;
+  created_at: string;
+  display_name: string | null;
+}
+
 interface HostRow {
   id: string;
   email: string;
   password_hash: string;
   email_verified_at: Date | null;
+  is_super_admin: boolean;
   status: HostStatus;
   failed_login_attempts: number;
   locked_until: Date | null;
@@ -59,6 +71,7 @@ function toHost(row: HostRow): HostWithProfile {
     email: row.email,
     passwordHash: row.password_hash,
     emailVerifiedAt: row.email_verified_at,
+    isSuperAdmin: row.is_super_admin,
     status: row.status,
     failedLoginAttempts: row.failed_login_attempts,
     lockedUntil: row.locked_until,
@@ -70,7 +83,8 @@ function toHost(row: HostRow): HostWithProfile {
 }
 
 const SELECT_COLUMNS = `
-  h.id, h.email::text AS email, h.password_hash, h.email_verified_at, h.status,
+  h.id, h.email::text AS email, h.password_hash, h.email_verified_at,
+  h.is_super_admin, h.status,
   h.failed_login_attempts, h.locked_until, h.last_login_at, h.created_at, h.updated_at,
   p.display_name, p.phone, p.birth_date::text AS birth_date, p.locale, p.timezone,
   p.avatar_url, p.avatar_hash, p.avatar_public_id,
@@ -200,6 +214,14 @@ export const hostRepository = {
     );
   },
 
+  async setStatus(id: string, status: HostStatus, client?: PoolClient): Promise<void> {
+    const runner = client ?? pool;
+    await runner.query(
+      `UPDATE hosts SET status = $2, updated_at = now() WHERE id = $1`,
+      [id, status]
+    );
+  },
+
   async registerSuccessfulLogin(id: string): Promise<void> {
     await query(
       `UPDATE hosts
@@ -279,5 +301,63 @@ export const hostRepository = {
     const row = result.rows[0];
     if (!row) throw new Error('Perfil de anfitrião não encontrado.');
     return toHost(row).profile;
+  },
+
+  /** Lista global de contas para o painel admin. */
+  async listForAdmin(filters: {
+    q?: string;
+    role?: 'admin' | 'host';
+    status?: HostStatus;
+    from?: Date;
+    order: 'asc' | 'desc';
+    limit: number;
+    offset: number;
+  }): Promise<{ items: AdminUserListItem[]; total: number }> {
+    const values: unknown[] = [];
+    const conditions: string[] = [];
+
+    const push = (sql: string, value: unknown): void => {
+      values.push(value);
+      conditions.push(sql.replace('?', `$${values.length}`));
+    };
+
+    if (filters.q) {
+      push('(h.email::text ILIKE ? OR p.display_name ILIKE ?)', `%${filters.q}%`);
+    }
+    if (filters.role) push('h.is_super_admin = ?', filters.role === 'admin');
+    if (filters.status) push('h.status = ?', filters.status);
+    if (filters.from) push('h.created_at >= ?', filters.from);
+
+    const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+    const direction = filters.order === 'asc' ? 'ASC' : 'DESC';
+
+    const [count, list] = await Promise.all([
+      query<{ total: string }>(
+        `SELECT count(*)::text AS total FROM hosts h JOIN host_profiles p ON p.host_id = h.id ${where}`,
+        values
+      ),
+      query<HostRow>(
+        `SELECT ${SELECT_COLUMNS} ${FROM_HOSTS}${where}
+          ORDER BY h.created_at ${direction}, h.id ${direction}
+          LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, filters.limit, filters.offset]
+      ),
+    ]);
+
+    return {
+      items: list.rows.map((row) => {
+        const host = toHost(row);
+        return {
+          id: host.id,
+          email: host.email,
+          status: host.status,
+          is_super_admin: host.isSuperAdmin,
+          email_verified_at: host.emailVerifiedAt?.toISOString() ?? null,
+          created_at: host.createdAt.toISOString(),
+          display_name: host.profile.displayName,
+        };
+      }),
+      total: Number(count.rows[0]?.total ?? '0'),
+    };
   },
 };
