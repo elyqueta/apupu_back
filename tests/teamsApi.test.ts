@@ -177,6 +177,36 @@ describe.skipIf(!connectionString)('equipas, membros e tarefas (integração)', 
     expect(rows[1]).toMatchObject({ email: EMAIL_MANAGER, is_host: false, role: 'gestor' });
   });
 
+  it('expõe apenas o contacto público seguro do anfitrião', async () => {
+    const { hostRepository } = await import('../src/repositories/host.repository');
+    const phone = '+244923456789';
+    const avatarUrl = 'https://res.cloudinary.com/demo/image/upload/avatar.jpg';
+
+    await pool.query(
+      `UPDATE host_profiles
+          SET phone = $2, avatar_url = $3, birth_date = '1990-01-01'
+        WHERE host_id = $1`,
+      [HOST_A, phone, avatarUrl]
+    );
+
+    const contact = await hostRepository.findPublicContactByEventId(EVENT_A);
+    expect(contact).toEqual({
+      name: 'Anfitriã A',
+      email: EMAIL_A,
+      phone,
+      avatarUrl,
+    });
+    expect(contact).not.toHaveProperty('birthDate');
+
+    const withoutProfile = await hostRepository.findPublicContactByEventId(EVENT_B);
+    expect(withoutProfile).toEqual({
+      name: 'Anfitrião B',
+      email: EMAIL_B,
+      phone: null,
+      avatarUrl: null,
+    });
+  });
+
   it('um membro só vê os membros das suas equipas e não pode gerir equipas', async () => {
     const added = await teamMemberService.add(scopeA, teamCozinha, {
       emails: ['guest1@exemplo.pt', EMAIL_OUTSIDER],

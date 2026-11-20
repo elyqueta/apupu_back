@@ -4,6 +4,7 @@ import {
   CreateHostInput,
   HostLocale,
   HostProfile,
+  HostPublicContact,
   HostStatus,
   HostWithProfile,
   UpdateHostProfileInput,
@@ -136,6 +137,43 @@ export const hostRepository = {
       [email]
     );
     return result.rows[0]?.exists ?? false;
+  },
+
+  /**
+   * Dados de contacto para a página pública do convite.
+   *
+   * Nome e email vêm sempre do evento; telefone e avatar só do perfil
+   * de uma conta verificada e ativa com o mesmo email. Uma conta sem
+   * verificação, suspensa ou inexistente não expõe mais nada.
+   */
+  async findPublicContactByEventId(eventId: string): Promise<HostPublicContact | null> {
+    const result = await query<{
+      host_name: string;
+      host_email: string;
+      phone: string | null;
+      avatar_url: string | null;
+    }>(
+      `SELECT e.host_name, e.host_email, p.phone, p.avatar_url
+         FROM events e
+         LEFT JOIN hosts h
+           ON h.email = e.host_email
+          AND h.email_verified_at IS NOT NULL
+          AND h.status = 'active'
+         LEFT JOIN host_profiles p ON p.host_id = h.id
+        WHERE e.id = $1
+        LIMIT 1`,
+      [eventId]
+    );
+
+    const row = result.rows[0];
+    if (!row) return null;
+
+    return {
+      name: row.host_name,
+      email: row.host_email,
+      phone: row.phone,
+      avatarUrl: row.avatar_url,
+    };
   },
 
   async setEmailVerified(id: string, client?: PoolClient): Promise<void> {

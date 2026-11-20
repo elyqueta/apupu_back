@@ -1,5 +1,6 @@
 import { logger } from '../config/logger';
 import { Event } from '../types/event.types';
+import { HostPublicContact } from '../types/host.types';
 import { AccountInvitation, Invitation, InvitationWithEvent } from '../types/invitation.types';
 import { EmailDelivery } from '../types/emailDelivery.types';
 import { EventTemplate } from '../types/template.types';
@@ -213,10 +214,11 @@ export function toPublicInvitationDto(
   event: Event,
   invitation: Invitation,
   rsvpDeadlinePassed: boolean,
-  emailHasAccount: boolean
+  emailHasAccount: boolean,
+  hostContact: HostPublicContact
 ): PublicInvitationDto {
   return {
-    event: toPublicEventDto(event),
+    event: toPublicEventDto(event, hostContact),
     guest: {
       name: invitation.guestName,
       email: invitation.guestEmail,

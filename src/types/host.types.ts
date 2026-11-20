@@ -43,6 +43,20 @@ export interface HostWithProfile extends HostAccount {
   profile: HostProfile;
 }
 
+/**
+ * Contacto seguro para a página pública do convite.
+ *
+ * Nunca inclui `birth_date`, localização, preferências nem qualquer
+ * outro dado do perfil: só nome/email do evento e telefone/avatar do
+ * perfil verificado.
+ */
+export interface HostPublicContact {
+  name: string;
+  email: string;
+  phone: string | null;
+  avatarUrl: string | null;
+}
+
 export interface CreateHostInput {
   email: string;
   passwordHash: string;

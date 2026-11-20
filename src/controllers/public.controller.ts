@@ -54,14 +54,24 @@ async function present(
   invitation: Invitation,
   access: GuestAccess
 ): Promise<PublicPresentation> {
-  const emailHasAccount = await hostRepository.emailExists(invitation.guestEmail);
+  const [emailHasAccount, contact] = await Promise.all([
+    hostRepository.emailExists(invitation.guestEmail),
+    hostRepository.findPublicContactByEventId(event.id),
+  ]);
+  const hostContact = contact ?? {
+    name: event.hostName,
+    email: event.hostEmail,
+    phone: null,
+    avatarUrl: null,
+  };
 
   return {
     ...toPublicInvitationDto(
       event,
       invitation,
       isRsvpDeadlinePassed(event),
-      emailHasAccount
+      emailHasAccount,
+      hostContact
     ),
     csrf_token: csrfTokenFor(access.secret),
   };

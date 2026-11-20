@@ -3,11 +3,19 @@ import { logger } from '../src/config/logger';
 import { toEventDto, toPublicEventDto } from '../src/dto/event.dto';
 import { toInvitationDto, toPublicInvitationDto } from '../src/dto/invitation.dto';
 import { Event } from '../src/types/event.types';
+import { HostPublicContact } from '../src/types/host.types';
 import { Invitation } from '../src/types/invitation.types';
 import { encryptToken } from '../src/utils/crypto.util';
 import { links } from '../src/utils/links.util';
 
 const INVITE_TOKEN = 'convite-token-de-teste-1234567890';
+
+const hostContact: HostPublicContact = {
+  name: 'Ana',
+  email: 'ana@exemplo.ao',
+  phone: '+244923456789',
+  avatarUrl: 'https://res.cloudinary.com/demo/image/upload/avatar.jpg',
+};
 
 const event: Event = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -75,11 +83,17 @@ describe('DTOs', () => {
     expect(dto).not.toHaveProperty('manage_token_hash');
   });
 
-  it('a vista pública do evento não expõe o email do anfitrião nem estatísticas', () => {
-    const dto = toPublicEventDto(event);
+  it('a vista pública do evento expõe só o contacto mínimo do anfitrião', () => {
+    const dto = toPublicEventDto(event, hostContact);
+    const serialized = JSON.stringify(dto);
 
-    expect(dto).not.toHaveProperty('host_email');
+    expect(dto.host_name).toBe('Ana');
+    expect(dto.host_email).toBe('ana@exemplo.ao');
+    expect(dto.host_phone).toBe('+244923456789');
+    expect(dto.host_avatar_url).toBe(hostContact.avatarUrl);
+    expect(serialized).not.toContain('birth_date');
     expect(dto).not.toHaveProperty('stats');
+    expect(dto).not.toHaveProperty('template_id');
     expect(dto.title).toBe('Casamento da Ana');
   });
 
@@ -134,7 +148,7 @@ describe('DTOs', () => {
   });
 
   it('a vista pública do convite só mostra os dados do próprio convidado', () => {
-    const dto = toPublicInvitationDto(event, invitation, false, true);
+    const dto = toPublicInvitationDto(event, invitation, false, true, hostContact);
     const serialized = JSON.stringify(dto);
 
     expect(dto.guest.name).toBe('João');
@@ -142,6 +156,9 @@ describe('DTOs', () => {
     expect(dto.guest.email_has_account).toBe(true);
     expect(dto.guest.rsvp_status).toBe('pending');
     expect(dto.guest.message).toBeNull();
+    expect(dto.event.host_email).toBe(hostContact.email);
+    expect(dto.event.host_phone).toBe(hostContact.phone);
+    expect(serialized).not.toContain('birth_date');
     expect(dto).not.toHaveProperty('invitations');
     expect(dto).not.toHaveProperty('invitation_url');
     expect(serialized).not.toContain(invitation.tokenHash);

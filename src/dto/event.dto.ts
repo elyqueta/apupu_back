@@ -1,4 +1,5 @@
 import { Event, EventStats } from '../types/event.types';
+import { HostPublicContact } from '../types/host.types';
 
 /**
  * DTOs explícitos.
@@ -63,7 +64,12 @@ export interface EventDto {
 export type PublicEventDto = Omit<
   EventDto,
   'host_email' | 'template_id' | 'created_at' | 'updated_at' | 'stats' | 'access_role'
->;
+> & {
+  /** Contacto controlado: email é sempre visível; telefone/avatar só se preenchidos. */
+  host_email: string;
+  host_phone: string | null;
+  host_avatar_url: string | null;
+};
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -132,14 +138,20 @@ export function toEventDto(
 }
 
 /**
- * Vista pública: sem email do anfitrião, sem segredos, sem
- * estatísticas de RSVP de terceiros.
+ * Vista pública: contacto mínimo do anfitrião, sem segredos, sem
+ * estatísticas de RSVP de terceiros e sem outros dados do perfil.
  */
-export function toPublicEventDto(event: Event): PublicEventDto {
+export function toPublicEventDto(
+  event: Event,
+  hostContact: HostPublicContact
+): PublicEventDto {
   return {
     id: event.id,
     title: event.title,
-    host_name: event.hostName,
+    host_name: hostContact.name,
+    host_email: hostContact.email,
+    host_phone: hostContact.phone,
+    host_avatar_url: hostContact.avatarUrl,
     category: event.category,
     starts_at: iso(event.startsAt),
     ends_at: iso(event.endsAt),

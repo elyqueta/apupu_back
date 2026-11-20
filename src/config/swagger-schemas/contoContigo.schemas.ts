@@ -224,6 +224,22 @@ export const contoContigoSchemas = {
       id: { type: 'string', format: 'uuid' },
       title: { type: 'string' },
       host_name: { type: 'string' },
+      host_email: {
+        type: 'string',
+        format: 'email',
+        description: 'Email do anfitrião, exposto por defeito para contacto.',
+      },
+      host_phone: {
+        type: 'string',
+        nullable: true,
+        description: 'Telefone do perfil verificado; `null` quando não preenchido.',
+      },
+      host_avatar_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description: 'Avatar do perfil verificado; `null` quando não preenchido.',
+      },
       starts_at: { type: 'string', format: 'date-time' },
       ends_at: { type: 'string', format: 'date-time', nullable: true },
       timezone: { type: 'string', example: 'Africa/Luanda' },

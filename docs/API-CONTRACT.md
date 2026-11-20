@@ -1937,6 +1937,9 @@ O token do link nunca é devolvido.
     "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
     "title": "Casamento da Ana e do Paulo",
     "host_name": "Ana",
+    "host_email": "ana@exemplo.ao",
+    "host_phone": "+244923456789",
+    "host_avatar_url": "https://res.cloudinary.com/demo/image/upload/avatar.jpg",
     "category": "wedding",
     "starts_at": "2027-08-15T17:00:00.000Z",
     "ends_at": "2027-08-16T01:00:00.000Z",
@@ -1972,6 +1975,12 @@ Inclui apenas os dados do próprio convidado. Nunca inclui
 `guest_phone`, `table_name` nem dados de outros convidados.
 `email_has_account` permite ao frontend sugerir entrar ou criar conta
 para abrir o convite em qualquer navegador.
+
+O `event` expõe apenas o contacto mínimo do anfitrião: `host_name` e
+`host_email` vêm do próprio evento e estão sempre presentes;
+`host_phone` e `host_avatar_url` vêm do perfil de uma conta verificada
+e ativa e são `null` quando não preenchidos. Nunca são expostos
+`birth_date`, preferências ou outros dados do perfil.
 
 ### `TeamInvitePreview` e `TeamInviteAccept`
 
