@@ -303,6 +303,21 @@ export const errorResponses = {
     'activity_not_found',
     'Actividade não encontrada.'
   ),
+  AdminForbidden: errorResponse(
+    'Área reservada ao super admin.',
+    'admin_forbidden',
+    'Não tens permissão para aceder a esta área.'
+  ),
+  UserNotFound: errorResponse(
+    'Conta inexistente.',
+    'user_not_found',
+    'Utilizador não encontrado.'
+  ),
+  ReportNotFound: errorResponse(
+    'Relatório semanal inexistente ou ainda não gerado.',
+    'report_not_found',
+    'Relatório não encontrado.'
+  ),
 } as const;
 
 type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
@@ -746,6 +761,43 @@ export const operationErrorResponses: Record<
     429: 'RateLimited',
   },
   'get /api/v1/templates': {
+    429: 'RateLimited',
+  },
+  'get /api/v1/admin/users': {
+    401: 'HostSessionInvalid',
+    403: 'AdminForbidden',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'get /api/v1/admin/users/{userId}': {
+    401: 'HostSessionInvalid',
+    403: 'AdminForbidden',
+    404: 'UserNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'get /api/v1/admin/users/{userId}/report': {
+    401: 'HostSessionInvalid',
+    403: 'AdminForbidden',
+    404: 'UserNotFound',
+    422: 'ValidationFailed',
+    429: 'RateLimited',
+  },
+  'get /api/v1/admin/reports/all': {
+    401: 'HostSessionInvalid',
+    403: 'AdminForbidden',
+    429: 'RateLimited',
+  },
+  'get /api/v1/admin/reports/weekly': {
+    401: 'HostSessionInvalid',
+    403: 'AdminForbidden',
+    429: 'RateLimited',
+  },
+  'get /api/v1/admin/reports/weekly/{reportId}/download': {
+    401: 'HostSessionInvalid',
+    403: 'AdminForbidden',
+    404: 'ReportNotFound',
+    422: 'ValidationFailed',
     429: 'RateLimited',
   },
 };
