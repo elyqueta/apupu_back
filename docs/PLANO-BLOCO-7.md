@@ -12,8 +12,8 @@ Fornecer as APIs para (1) mensagens de apoio enviadas por formulário público e
 
 | Ficheiro | Conteúdo |
 |---|---|
-| `migrations/1739900000030_support-messages.js` | `support_messages` (`id uuid`, `name`, `email`, `message`, `status` com `open`/`resolved`, `resolved_at`, `resolved_by uuid`, `created_at`, `updated_at`), índice por `status, created_at DESC`. |
-| `migrations/1739900000031_newsletter-subscriptions.js` | `newsletter_subscriptions` (`id uuid`, `email`, `created_at`), índice único em `lower(email)` para idempotência; `down` remove a tabela. |
+| `migrations/1739900000023_support-messages.js` | `support_messages` (`id uuid`, `name`, `email`, `message`, `status` com `open`/`resolved`, `resolved_at`, `resolved_by uuid`, `created_at`, `updated_at`), índice por `status, created_at DESC`. |
+| `migrations/1739900000024_newsletter-subscriptions.js` | `newsletter_subscriptions` (`id uuid`, `email`, `created_at`), índice único em `lower(email)` para idempotência; `down` remove a tabela. |
 
 Sem dados reais, sem segredos.
 

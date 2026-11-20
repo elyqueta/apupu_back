@@ -65,6 +65,8 @@ O aceite público do convite (`/public/invitations/*`) continua sem conta.
 | `403` | `admin_forbidden` | Área reservada ao super admin |
 | `403` | `admin_self_action` | O super admin não pode agir sobre a própria conta/sessões |
 | `404` | `message_not_found` | Mensagem da caixa de entrada inexistente ou fora do workspace |
+| `404` | `support_message_not_found` | Mensagem de apoio inexistente |
+| `404` | `newsletter_subscription_not_found` | Subscrição de novidades inexistente |
 | `404` | `invitation_not_found` | Token inválido, convite revogado ou reclamado por outro navegador (resposta sempre igual) |
 | `404` | `manage_link_invalid` | Link de gestão inválido, expirado ou já rodado |
 | `404` | `event_not_found` / `invitation_not_found` / `task_not_found` / `manager_not_found` / `notification_not_found` / `activity_not_found` | Recurso de gestão inexistente ou não pertencente à conta |
@@ -2064,6 +2066,105 @@ Todos os erros usam o envelope `error` descrito em
 [Convenções](#convenções). `fields` só aparece em `422` de validação e
 `request_id` aparece sempre.
 
+## Apoio e novidades (Bloco 7)
+
+### Formulários públicos
+
+As duas rotas não exigem sessão, cookie nem `X-CSRF-Token`: não existe
+capacidade nem sessão nestes formulários, pelo que o abuso é travado por
+um limite próprio por IP (baldes separados; ver [Rate limit](#rate-limit)).
+O corpo é validado com Zod e tem de ser estritamente um objeto JSON.
+
+| Método | Rota | Corpo | Limites |
+|---|---|---|---|
+| `POST` | `/api/v1/public/support` | `{ "name", "email", "message" }` | nome 2–120, email válido até 254, mensagem 10–2000 caracteres |
+| `POST` | `/api/v1/public/newsletter` | `{ "email" }` | email válido até 254 caracteres |
+
+O email é normalizado (sem espaços nas extremidades, minúsculas) antes
+de chegar ao serviço. Campos extra são rejeitados com `422
+validation_failed` e `fields`. O limite global `/api/v1` aplica-se
+igualmente.
+
+`POST /api/v1/public/support` — resposta `201`; só devolve o
+identificador e a data de criação, sem dados de contacto adicionais:
+
+```json
+{ "data": { "id": "3f2c1d0e-8b7a-4c6d-9e5f-1a2b3c4d5e6f", "created_at": "2026-11-20T10:00:00.000Z" } }
+```
+
+`POST /api/v1/public/newsletter` — resposta `201`, idempotente:
+`INSERT ... ON CONFLICT (lower(email)) DO NOTHING`. A mesma resposta é
+devolvida quer o email já exista quer seja novo, sem revelar o estado da
+lista e sem envio de email de confirmação:
+
+```json
+{ "data": { "subscribed": true } }
+```
+
+Erros: `400 invalid_json`, `422 validation_failed`, `429 rate_limited`,
+`500 internal_error`. Falhas de base de dados não são expostas ao
+cliente.
+
+### Gestão administrativa
+
+Todas as rotas correm depois de `hostAccountAuth` + `requireSuperAdmin`
+(`403 admin_forbidden` sem o papel). Escritas exigem `X-CSRF-Token`
+(`403 csrf_invalid`) e todas as rotas usam `adminActionLimiter` com chave
+pela conta autenticada. Listagens e detalhe também são auditados em
+`admin_audit_log`, sem conteúdo de mensagens nem emails na metadata.
+
+| Método | Rota | Filtros / corpo | Sucesso |
+|---|---|---|---|
+| `GET` | `/api/v1/admin/support` | `q`, `status=open\|resolved\|all`, `from`, `to`, `page`, `page_size` | `200 { data: [SupportMessage], pagination }` |
+| `GET` | `/api/v1/admin/support/:messageId` | — | `200 { data: SupportMessage }` |
+| `POST` | `/api/v1/admin/support/:messageId/resolve` | sem corpo | `200 { data: SupportMessage }` |
+| `GET` | `/api/v1/admin/newsletter` | `q`, `from`, `to`, `page`, `page_size` | `200 { data: [NewsletterSubscription], pagination }` |
+| `GET` | `/api/v1/admin/newsletter/export` | `q`, `from`, `to` | `200` CSV |
+| `DELETE` | `/api/v1/admin/newsletter/:subscriptionId` | sem corpo | `200 { data: { removed: true } }` |
+
+`q` pesquisa nome/email/mensagem (`support`) ou email (`newsletter`) com
+`ILIKE` e escaping de `%`, `_` e `\`. `from`/`to` filtram `created_at`.
+A ordenação é `created_at DESC, id DESC`. `page` começa em 1 e
+`page_size` vai até 100, com a `pagination` descrita em
+[Convenções](#convenções).
+
+`resolve` é idempotente: repetir o pedido devolve o mesmo
+`resolved_at`/`resolved_by` e não cria uma nova acção de negócio. A
+remoção de uma subscrição inexistente devolve `404
+newsletter_subscription_not_found`; um `messageId` inexistente devolve
+`404 support_message_not_found`.
+
+A exportação usa os mesmos filtros da lista, sem paginação, e responde:
+
+- `Content-Type: text/csv; charset=utf-8`;
+- `Content-Disposition: attachment; filename="newsletter.csv"`;
+- cabeçalho exacto `email,created_at` e linhas terminadas em CRLF;
+- células que começam por `=`, `+`, `-` ou `@` são prefixadas com `'`
+  (mesmo após espaços iniciais) e aspas duplas são duplicadas.
+
+DTOs (todos em `snake_case`):
+
+```json
+{
+  "id": "3f2c1d0e-8b7a-4c6d-9e5f-1a2b3c4d5e6f",
+  "name": "Ana Silva",
+  "email": "ana@exemplo.pt",
+  "message": "Olá, preciso de ajuda com o convite.",
+  "status": "open",
+  "created_at": "2026-11-20T10:00:00.000Z",
+  "resolved_at": null,
+  "resolved_by": null
+}
+```
+
+```json
+{
+  "id": "3f2c1d0e-8b7a-4c6d-9e5f-1a2b3c4d5e6f",
+  "email": "ana@exemplo.pt",
+  "created_at": "2026-11-20T10:00:00.000Z"
+}
+```
+
 ## Templates
 
 `GET /api/v1/templates` — lista apenas templates activos, com os campos
@@ -2096,6 +2197,10 @@ Todos os ambientes aplicam `/api/v1`:
 - Global: `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX`.
 - Endpoints públicos com token: `PUBLIC_RATE_LIMIT_WINDOW_MS` /
   `PUBLIC_RATE_LIMIT_MAX`.
+- Formulários públicos de apoio e novidades: os mesmos
+  `PUBLIC_RATE_LIMIT_WINDOW_MS` / `PUBLIC_RATE_LIMIT_MAX`, mas com chave
+  por IP e balde separado para cada formulário (`public-support:<ip>` e
+  `public-newsletter:<ip>`). Não exigem CSRF.
 - Troca do segredo de gestão: `HOST_SESSION_RATE_LIMIT_WINDOW_MS` /
   `HOST_SESSION_RATE_LIMIT_MAX`.
 - Autenticação (`register`, `register/request-code`,
@@ -2548,6 +2653,14 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `POST` | `/api/v1/public/invitations/{token}/claim` | `404 invitation_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/public/invitations/{token}` | `404 invitation_not_found`; `429 rate_limited` |
 | `PUT` | `/api/v1/public/invitations/{token}/rsvp` | `403 csrf_invalid`; `404 invitation_not_found`; `409`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/public/support` | `400 invalid_json`; `422 validation_failed`; `429 rate_limited` |
+| `POST` | `/api/v1/public/newsletter` | `400 invalid_json`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/admin/support` | `401 host_session_invalid`; `403 admin_forbidden`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/admin/support/{messageId}` | `401 host_session_invalid`; `403 admin_forbidden`; `404 support_message_not_found`; `429 rate_limited` |
+| `POST` | `/api/v1/admin/support/{messageId}/resolve` | `401 host_session_invalid`; `403 csrf_invalid`/`admin_forbidden`; `404 support_message_not_found`; `429 rate_limited` |
+| `GET` | `/api/v1/admin/newsletter` | `401 host_session_invalid`; `403 admin_forbidden`; `422 validation_failed`; `429 rate_limited` |
+| `GET` | `/api/v1/admin/newsletter/export` | `401 host_session_invalid`; `403 admin_forbidden`; `422 validation_failed`; `429 rate_limited` |
+| `DELETE` | `/api/v1/admin/newsletter/{subscriptionId}` | `401 host_session_invalid`; `403 csrf_invalid`/`admin_forbidden`; `404 newsletter_subscription_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/templates` | `429 rate_limited` |
 
 Além disso, qualquer rota pode devolver `400 invalid_json` quando o
@@ -2578,7 +2691,8 @@ Acções registadas nesta fase:
 - `manager_added`, `manager_removed`, `manager_invite_resent`,
   `manager_link_used`;
 - `event_cover_updated`, `event_cover_removed`;
-- `activity_deleted`.
+- `activity_deleted`;
+- `support_message_resolved`, `newsletter_subscription_removed`.
 
 Regras:
 
@@ -2612,6 +2726,13 @@ Depois do cancelamento, todas as escritas ligadas ao evento respondem
 `409 event_cancelled`, incluindo rotas em que o `eventId` só existe
 dentro de outro recurso (tarefa, equipa, convite ou mensagem). Leituras
 e o próprio cancelamento continuam disponíveis.
+
+### Apoio e novidades (público)
+
+| Método | Rota | Sucesso | Corpo |
+|---|---|---|---|
+| `POST` | `/api/v1/public/support` | `201` | `{ "data": { "id": string, "created_at": string } }` |
+| `POST` | `/api/v1/public/newsletter` | `201` | `{ "data": { "subscribed": true } }` |
 
 ### Caixa de entrada de mensagens
 
@@ -2653,6 +2774,12 @@ não existe rota para atribuir ou remover o papel.
 | `POST` | `/api/v1/admin/users/:userId/reactivate` | `{ data: { id, email, status } }` |
 | `POST` | `/api/v1/admin/users/:userId/revoke-sessions` | `{ data: { revoked } }` |
 | `GET` | `/api/v1/admin/audit` | `{ data: [...], pagination }` (`q`, `action`, `from`, `to`, `order`) |
+| `GET` | `/api/v1/admin/support` | `{ data: [SupportMessage], pagination }` (`q`, `status`, `from`, `to`, `page`, `page_size`) |
+| `GET` | `/api/v1/admin/support/:messageId` | `{ data: SupportMessage }` |
+| `POST` | `/api/v1/admin/support/:messageId/resolve` | `{ data: SupportMessage }` (idempotente) |
+| `GET` | `/api/v1/admin/newsletter` | `{ data: [NewsletterSubscription], pagination }` (`q`, `from`, `to`, `page`, `page_size`) |
+| `GET` | `/api/v1/admin/newsletter/export` | CSV `email,created_at` com `newsletter.csv` |
+| `DELETE` | `/api/v1/admin/newsletter/:subscriptionId` | `{ data: { removed: true } }` |
 
 O super admin não pode suspender a própria conta, revogar as próprias
 sessões nem actuar sobre outro super admin: `403 admin_self_action`.
