@@ -36,15 +36,17 @@ exports.up = (pgm) => {
     `^https://res\\.cloudinary\\.com/${cloudName}/image/upload/` +
     `(?:v[0-9]+/)?${escapeRegExp(folder)}/([^/?#]+)$`;
 
-  pgm.sql(
-    `
-      UPDATE host_profiles p
-         SET avatar_public_id = regexp_replace((regexp_match(p.avatar_url, {pattern}))[1], '\\.[^.]+$', '')
-       WHERE p.avatar_public_id IS NULL
-         AND p.avatar_url ~ {pattern};
-    `,
-    { pattern }
-  );
+  // `pgm.sql(sql, args)` aplica `literal()` a strings (aspas duplas), o que
+  // transformaria o regex num identificador. Como cloud/pasta já foram
+  // validados acima, interpolamos como literal SQL com aspas simples.
+  const sqlPattern = pattern.replace(/'/g, "''");
+
+  pgm.sql(`
+    UPDATE host_profiles p
+       SET avatar_public_id = regexp_replace((regexp_match(p.avatar_url, '${sqlPattern}'))[1], '\\.[^.]+$', '')
+     WHERE p.avatar_public_id IS NULL
+       AND p.avatar_url ~ '${sqlPattern}';
+  `);
 };
 
 exports.down = (pgm) => {

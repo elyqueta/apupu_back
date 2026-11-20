@@ -200,9 +200,10 @@ export function cleanupDependenciesForTest(options: {
   removeAsset?: (publicId: string) => Promise<void>;
 }): CleanupDependencies {
   return {
-    query: async () => ({ rows: options.referenced.map((public_id) => ({ public_id })) }),
-    listAssets: async (folder) => options.assets[folder] ?? [],
-    removeAsset: options.removeAsset ?? (async () => undefined),
+    query: () => Promise.resolve({ rows: options.referenced.map((public_id) => ({ public_id })) }),
+    listAssets: (folder: string): Promise<CloudinaryAsset[]> =>
+      Promise.resolve(options.assets[folder] ?? []),
+    removeAsset: options.removeAsset ?? ((): Promise<void> => Promise.resolve()),
   };
 }
 
