@@ -6,6 +6,7 @@ vi.mock('../src/database/pool', () => ({
 
 vi.mock('../src/repositories/invitation.repository', () => ({
   invitationRepository: {
+    findByTokenHash: vi.fn(),
     findById: vi.fn(),
     findByIdForUpdate: vi.fn(),
     update: vi.fn(),
@@ -66,6 +67,7 @@ function makeInvitation(overrides: Partial<Invitation> = {}): Invitation {
     guestPhone: '+244900000000',
     tableName: null,
     guestMessage: null,
+    linkExpiresAt: new Date('2027-08-17T01:00:00Z'),
     tokenHash: 'hash-secreto',
     tokenEncrypted: 'token-cifrado',
     claimHash: null,
@@ -221,6 +223,24 @@ describe('invitationService.update', () => {
   });
 });
 
+describe('invitationService.claim', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('devolve o 404 genérico quando o link expirou', async () => {
+    vi.mocked(invitationRepository.findByTokenHash).mockResolvedValue(
+      makeInvitation({ linkExpiresAt: new Date('2020-01-01T00:00:00Z') })
+    );
+
+    await expect(
+      invitationService.claim('token-com-pelo-menos-vinte-caracteres', null, null)
+    ).rejects.toMatchObject({ code: 'invitation_not_found', statusCode: 404 });
+
+    expect(eventRepository.findById).not.toHaveBeenCalled();
+  });
+});
+
 describe('invitationService.respond', () => {
   const access = {
     kind: 'account' as const,
@@ -235,6 +255,19 @@ describe('invitationService.respond', () => {
       status: 'scheduled',
       rsvpDeadline: null,
     } as never);
+  });
+
+  it('recusa o RSVP quando o link expirou', async () => {
+    vi.mocked(invitationRepository.findByIdForUpdate).mockResolvedValue(
+      makeInvitation({ linkExpiresAt: new Date('2020-01-01T00:00:00Z') })
+    );
+
+    await expect(
+      invitationService.respond(eventId, invitationId, access, 'accepted')
+    ).rejects.toMatchObject({ code: 'invitation_not_found', statusCode: 404 });
+
+    expect(invitationRepository.respond).not.toHaveBeenCalled();
+    expect(activityRepository.create).not.toHaveBeenCalled();
   });
 
   it('guarda a mensagem e inclui-a nos metadados da notificação', async () => {

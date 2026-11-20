@@ -209,9 +209,9 @@ export const contoContigoSchemas = {
         format: 'date-time',
         nullable: true,
         description:
-          'Expiração do link de partilha. Hoje é sempre `null`: o token do ' +
-          'convite não expira e só deixa de ser válido quando o convite é ' +
-          'revogado. O campo fica reservado para rotação futura.',
+          'Fim da validade do link de partilha: por defeito, fim do evento ' +
+          '+ 1 dia, no fuso do evento. Depois dessa data o link devolve o ' +
+          'mesmo 404 genérico de um link inválido.',
       },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
@@ -513,8 +513,9 @@ export const contoContigoSchemas = {
         format: 'date-time',
         nullable: true,
         description:
-          'Hoje é sempre `null`: o token do convite não expira e só é ' +
-          'invalidado pela revogação (que remove o convite da lista).',
+          'Fim da validade do próprio link: por defeito, fim do evento ' +
+          '+ 1 dia. Convites expirados devolvem o mesmo 404 genérico ' +
+          'de um link inválido.',
       },
       created_at: { type: 'string', format: 'date-time' },
       event: { $ref: '#/components/schemas/GuestEventSummary' },

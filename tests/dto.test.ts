@@ -49,6 +49,7 @@ const invitation: Invitation = {
   guestEmail: 'joao@exemplo.ao',
   guestPhone: null,
   guestMessage: null,
+  linkExpiresAt: new Date('2027-08-17T01:00:00Z'),
   tokenHash: 'hash-secreto',
   tokenEncrypted: encryptToken(INVITE_TOKEN),
   claimHash: 'claim-secreto',
@@ -99,7 +100,7 @@ describe('DTOs', () => {
 
     expect(dto.invitation_url).toBe(links.invitation(INVITE_TOKEN));
     expect(dto.invitation_url).toContain('/convite/');
-    expect(dto.invitation_url_expires_at).toBeNull();
+    expect(dto.invitation_url_expires_at).toBe('2027-08-17T01:00:00.000Z');
     expect(dto.opened_at).toBe('2026-01-02T00:00:00.000Z');
   });
 
@@ -116,7 +117,7 @@ describe('DTOs', () => {
     });
 
     expect(dto.invitation_url).toBeNull();
-    expect(dto.invitation_url_expires_at).toBeNull();
+    expect(dto.invitation_url_expires_at).toBe('2027-08-17T01:00:00.000Z');
   });
 
   it('um token que não pode ser decifrado não derruba a listagem', () => {

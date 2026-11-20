@@ -13,6 +13,7 @@ import { decryptToken, encryptToken } from '../utils/crypto.util';
 import { isUniqueViolation } from '../utils/db.util';
 import { generateToken, hashesMatch, hashToken } from '../utils/token.util';
 import { accountOwnsInvitation, AccountIdentity } from './guestAccess.service';
+import { linkValidityService } from './linkValidity.service';
 import {
   cancelMessagesForInvitation,
   enqueueDeclineNotification,
@@ -46,6 +47,14 @@ function assertGuestEmailIsNotHost(event: Event, email: string): void {
 
 export function isRsvpDeadlinePassed(event: Event): boolean {
   return event.rsvpDeadline !== null && event.rsvpDeadline.getTime() <= Date.now();
+}
+
+/**
+ * Link expirado produz exactamente o mesmo 404 de um link inválido:
+ * o convidado nunca deve conseguir distinguir o motivo.
+ */
+export function isInvitationLinkExpired(invitation: Invitation): boolean {
+  return invitation.linkExpiresAt !== null && invitation.linkExpiresAt.getTime() <= Date.now();
 }
 
 async function findOwnedInvitation(
@@ -99,6 +108,7 @@ export const invitationService = {
     }
 
     const token = generateToken();
+    const linkExpiresAt = await linkValidityService.maximumFor(event);
 
     try {
       return await withTransaction(async (client) => {
@@ -109,6 +119,7 @@ export const invitationService = {
             guestEmail: input.email,
             guestPhone: input.phone ?? null,
             tableName: input.table_name ?? null,
+            linkExpiresAt,
             tokenHash: hashToken(token),
             tokenEncrypted: encryptToken(token),
           },
@@ -303,7 +314,7 @@ export const invitationService = {
   ): Promise<PublicInvitationResult> {
     const invitation = await invitationRepository.findByTokenHash(hashToken(token));
 
-    if (!invitation || invitation.claimRevokedAt) {
+    if (!invitation || invitation.claimRevokedAt || isInvitationLinkExpired(invitation)) {
       throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
     }
 
@@ -357,6 +368,10 @@ export const invitationService = {
     // Outro navegador reclamou entre a leitura e o UPDATE.
     const refreshed = await invitationRepository.findById(invitation.id);
 
+    if (refreshed && isInvitationLinkExpired(refreshed)) {
+      throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');
+    }
+
     if (
       refreshed?.claimHash &&
       capability &&
@@ -409,6 +424,7 @@ export const invitationService = {
         !current ||
         current.eventId !== eventId ||
         current.claimRevokedAt ||
+        isInvitationLinkExpired(current) ||
         !invitationMatchesAccess(current, access)
       ) {
         throw new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found');

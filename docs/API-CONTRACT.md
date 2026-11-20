@@ -687,7 +687,7 @@ resumo do evento:
       "last_sent_at": "2026-11-15T03:24:52.807Z",
       "opened_at": "2026-11-16T01:00:00.000Z",
       "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
-      "invitation_url_expires_at": null,
+      "invitation_url_expires_at": "2027-08-17T01:00:00.000Z",
       "created_at": "2026-11-15T03:24:30.000Z",
       "updated_at": "2026-11-16T01:00:00.000Z",
       "event": {
@@ -715,7 +715,7 @@ próprio convite com um resumo público do evento:
       "rsvp_responded_at": null,
       "table_name": "Mesa 3",
       "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
-      "invitation_url_expires_at": null,
+      "invitation_url_expires_at": "2027-08-17T01:00:00.000Z",
       "created_at": "2026-11-01T10:00:00.000Z",
       "event": {
         "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",
@@ -762,8 +762,8 @@ Regras de "Meus convites":
   contribuições/banca, notas privadas, `host_email`, `message`, `rules`
   nem estatísticas.
 - `invitation_url` é o mesmo link do email, apontando para
-  `<APP_BASE_URL>/convite/<token>`; o convidado pode abri-lo. Não expira
-  nesta fase (`invitation_url_expires_at` é `null`).
+  `<APP_BASE_URL>/convite/<token>`; o convidado pode abri-lo até
+  `invitation_url_expires_at` (por defeito, fim do evento + 1 dia).
 
 `GET /api/v1/host/activity` — `200`; inclui `event_title`:
 
@@ -1505,6 +1505,12 @@ em `guests.{index}.email`, e adicionar ou alterar um convite devolve
 
 ## Fluxo do convidado
 
+Todas as rotas públicas de um convite (`GET`, `POST .../claim` e
+`PUT .../rsvp`) devolvem o mesmo `404 invitation_not_found` quando o
+token não existe, o convite foi revogado ou o link expirou. A data de
+expiração é `invitation_url_expires_at` nas respostas de gestão; por
+defeito é o fim do evento + 1 dia, calculado no fuso do evento.
+
 ### Reclamar o convite
 
 `POST /api/v1/public/invitations/{token}/claim`
@@ -1755,7 +1761,7 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
   "last_sent_at": null,
   "opened_at": null,
   "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
-  "invitation_url_expires_at": null,
+  "invitation_url_expires_at": "2027-08-17T01:00:00.000Z",
   "created_at": "2026-11-15T03:24:30.000Z",
   "updated_at": "2026-11-15T03:24:30.000Z"
 }
@@ -1770,15 +1776,17 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
 | `table_name` | string \| null | Visível apenas ao anfitrião |
 | `guest_message` | string \| null | Mensagem opcional do convidado ao responder; texto simples até 500 caracteres |
 | `invitation_url` | string \| null | URL absoluto para o anfitrião partilhar (WhatsApp, etc.); `null` quando o convite foi revogado. Só existe nas respostas de gestão |
-| `invitation_url_expires_at` | string \| null | Hoje é sempre `null`: o link não expira e só é invalidado pela revogação |
+| `invitation_url_expires_at` | string \| null | Fim da validade do link; por defeito, fim do evento + 1 dia no fuso do evento |
 
 Semântica do link de partilha:
 
 - É o **mesmo token** enviado no email do convite e aponta para
   `<APP_BASE_URL>/convite/<token>` (nunca para a API diretamente).
-- Não expira e não é de uso único. O primeiro navegador que o abre
+- Não é de uso único, mas expira: o primeiro navegador que o abre
   reivindica o convite (cookie `apupu_guest`); a partir daí, outro
-  navegador sem esse cookie recebe `404 invitation_not_found`.
+  navegador sem esse cookie recebe `404 invitation_not_found`. Um link
+  expirado, revogado ou inexistente devolve sempre o mesmo `404`
+  genérico — a API nunca revela o motivo.
 - O anfitrião deve partilhar o URL, **não** o abrir: ao abri-lo, o
   próprio navegador do anfitrião passa a ser o reclamante.
 - `POST .../invitations/{id}/resend` mantém o mesmo token/link.
@@ -1818,7 +1826,7 @@ o próprio convite e um resumo público do evento:
   "rsvp_responded_at": null,
   "table_name": "Mesa 3",
   "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
-  "invitation_url_expires_at": null,
+  "invitation_url_expires_at": "2027-08-17T01:00:00.000Z",
   "created_at": "2026-11-01T10:00:00.000Z",
   "event": {
     "id": "2bbc2ed1-4b27-48f7-80f2-d3b05ca37cec",

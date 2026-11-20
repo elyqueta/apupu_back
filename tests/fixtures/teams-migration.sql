@@ -72,6 +72,14 @@ INSERT INTO events (
    'Sem Conta', 'legado-com-gestor@exemplo.pt', now() + interval '15 days', NULL,
    'scheduled', NULL, 'venue', 'Espaço Fixture');
 
+-- Convite anterior às migrações 16 e 17: serve para validar o backfill
+-- da mensagem e da validade do link (evento sem `ends_at`).
+INSERT INTO invitations (
+  id, event_id, guest_name, guest_email, token_hash, token_encrypted
+) VALUES
+  ('99999999-0000-4000-8000-000000000001', 'cccccccc-0000-4000-8000-000000000001',
+   'Convidado Legado', 'convidado-legado@exemplo.pt', 'legacy-invite-hash', 'x');
+
 INSERT INTO event_managers (id, event_id, email, revoked_at) VALUES
   ('bbbbbbbb-0000-4000-8000-000000000001', 'cccccccc-0000-4000-8000-000000000001',
    'fixture-gestor@exemplo.pt', NULL),

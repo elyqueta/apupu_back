@@ -76,6 +76,7 @@ const invitation: AccountInvitation = {
   guestPhone: '+244900000000',
   tableName: 'Mesa 3',
   guestMessage: null,
+  linkExpiresAt: new Date('2027-08-17T01:00:00Z'),
   tokenHash: 'hash-secreto',
   tokenEncrypted: encryptToken(INVITE_TOKEN),
   claimHash: null,
@@ -141,7 +142,7 @@ describe('GET /api/v1/host/invitations (Meus convites)', () => {
       rsvp_responded_at: NOW.toISOString(),
       table_name: 'Mesa 3',
       invitation_url: links.invitation(INVITE_TOKEN),
-      invitation_url_expires_at: null,
+      invitation_url_expires_at: '2027-08-17T01:00:00.000Z',
       created_at: NOW.toISOString(),
       event: {
         id: invitation.eventId,

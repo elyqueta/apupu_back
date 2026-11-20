@@ -1,6 +1,6 @@
 import { query } from '../database/pool';
 import { ValidationError } from '../errors';
-import { EventRecord } from '../types/event.types';
+import { Event } from '../types/event.types';
 
 const DEFAULT_LINK_DAYS = 7;
 
@@ -11,7 +11,7 @@ const DEFAULT_LINK_DAYS = 7;
  * evento: sem `ends_at`, o evento termina no fim do dia de `starts_at`
  * nesse fuso. Nunca é possível ultrapassar esse limite + 1 dia.
  */
-async function maximumExpiry(event: EventRecord): Promise<Date> {
+async function maximumExpiry(event: Pick<Event, 'startsAt' | 'endsAt' | 'timezone'>): Promise<Date> {
   const result = await query<{ maximum_expiry: Date }>(
     `SELECT CASE
         WHEN $2::timestamptz IS NOT NULL THEN $2::timestamptz + interval '1 day'
@@ -30,7 +30,7 @@ async function maximumExpiry(event: EventRecord): Promise<Date> {
 }
 
 export const linkValidityService = {
-  async maximumFor(event: EventRecord): Promise<Date> {
+  async maximumFor(event: Pick<Event, 'startsAt' | 'endsAt' | 'timezone'>): Promise<Date> {
     return maximumExpiry(event);
   },
 
@@ -38,7 +38,10 @@ export const linkValidityService = {
    * Resolve a data pedida. `null` usa o defeito de 7 dias. O valor
    * final é sempre limitado ao máximo permitido para o evento.
    */
-  async resolve(event: EventRecord, requested?: Date | null): Promise<Date> {
+  async resolve(
+    event: Pick<Event, 'startsAt' | 'endsAt' | 'timezone'>,
+    requested?: Date | null
+  ): Promise<Date> {
     const maximum = await maximumExpiry(event);
     const now = Date.now();
     const fallback = new Date(Math.min(now + DEFAULT_LINK_DAYS * 86_400_000, maximum.getTime()));

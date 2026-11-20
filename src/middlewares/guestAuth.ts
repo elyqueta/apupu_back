@@ -3,6 +3,7 @@ import { NotFoundError } from '../errors';
 import { eventRepository } from '../repositories/event.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
 import { accountOwnsInvitation, resolveAccountIdentity } from '../services/guestAccess.service';
+import { isInvitationLinkExpired } from '../services/invitation.service';
 import { readGuestSession } from '../utils/cookie.util';
 import { hashesMatch, hashToken } from '../utils/token.util';
 
@@ -37,7 +38,7 @@ export async function guestAuth(
 
     const invitation = await invitationRepository.findByTokenHash(hashToken(token));
 
-    if (!invitation || invitation.claimRevokedAt) {
+    if (!invitation || invitation.claimRevokedAt || isInvitationLinkExpired(invitation)) {
       next(new NotFoundError(INVITATION_NOT_FOUND, 'invitation_not_found'));
       return;
     }

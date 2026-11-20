@@ -40,8 +40,8 @@ export interface InvitationDto {
    */
   invitation_url: string | null;
   /**
-   * Fim da validade do link. Hoje é sempre `null`: o token do convite
-   * não expira e só deixa de ser válido quando o convite é revogado.
+   * Fim da validade do link de partilha: por defeito, fim do evento + 1 dia.
+   * Depois dessa data o link devolve o mesmo 404 genérico de um link inválido.
    */
   invitation_url_expires_at: string | null;
   created_at: string;
@@ -88,7 +88,7 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     last_sent_at: iso(invitation.lastSentAt),
     opened_at: iso(invitation.claimedAt),
     invitation_url: invitationUrl(invitation),
-    invitation_url_expires_at: null,
+    invitation_url_expires_at: iso(invitation.linkExpiresAt),
     created_at: invitation.createdAt.toISOString(),
     updated_at: invitation.updatedAt.toISOString(),
   };
@@ -158,7 +158,7 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
     rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     table_name: invitation.tableName,
     invitation_url: invitationUrl(invitation),
-    invitation_url_expires_at: null,
+    invitation_url_expires_at: iso(invitation.linkExpiresAt),
     created_at: invitation.createdAt.toISOString(),
     event: {
       id: invitation.eventId,

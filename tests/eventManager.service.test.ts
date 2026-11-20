@@ -56,6 +56,7 @@ vi.mock('../src/services/manageLink.service', () => ({
 
 vi.mock('../src/services/linkValidity.service', () => ({
   linkValidityService: {
+    maximumFor: vi.fn(async () => new Date('2027-08-17T01:00:00Z')),
     resolve: vi.fn(async () => new Date('2027-01-01T00:00:00Z')),
   },
 }));
@@ -158,6 +159,7 @@ describe('eventManagerService.add', () => {
       guestPhone: data.guestPhone,
       tableName: data.tableName,
       guestMessage: null,
+      linkExpiresAt: data.linkExpiresAt,
       tokenHash: data.tokenHash,
       tokenEncrypted: data.tokenEncrypted,
       claimHash: null,

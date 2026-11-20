@@ -17,6 +17,8 @@ export interface Invitation {
   tableName: string | null;
   /** Mensagem opcional deixada pelo convidado ao responder (texto simples). */
   guestMessage: string | null;
+  /** Fim da validade do link individual (fim do evento + 1 dia por defeito). */
+  linkExpiresAt: Date | null;
   tokenHash: string;
   tokenEncrypted: string;
   claimHash: string | null;

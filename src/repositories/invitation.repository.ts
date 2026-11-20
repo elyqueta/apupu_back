@@ -20,6 +20,7 @@ interface InvitationRow {
   guest_phone: string | null;
   table_name: string | null;
   guest_message: string | null;
+  link_expires_at: Date;
   token_hash: string;
   token_encrypted: string;
   claim_hash: string | null;
@@ -44,6 +45,7 @@ function toInvitation(row: InvitationRow): Invitation {
     guestPhone: row.guest_phone,
     tableName: row.table_name,
     guestMessage: row.guest_message,
+    linkExpiresAt: row.link_expires_at,
     tokenHash: row.token_hash,
     tokenEncrypted: row.token_encrypted,
     claimHash: row.claim_hash,
@@ -62,7 +64,7 @@ function toInvitation(row: InvitationRow): Invitation {
 
 const SELECT_COLUMNS = `
   id, event_id, guest_name, guest_email, guest_phone, table_name, guest_message,
-  token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
+  link_expires_at, token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
   rsvp_status, rsvp_responded_at, rsvp_version,
   send_status, send_count, last_sent_at, created_at, updated_at
 `;
@@ -125,6 +127,8 @@ export interface InsertInvitationData {
   guestEmail: string;
   guestPhone: string | null;
   tableName: string | null;
+  /** Calculado pelos serviços com `linkValidityService.maximumFor(event)`. */
+  linkExpiresAt: Date;
   tokenHash: string;
   tokenEncrypted: string;
 }
@@ -178,9 +182,9 @@ export const invitationRepository = {
     const result = await runner.query<InvitationRow>(
       `INSERT INTO invitations (
          event_id, guest_name, guest_email, guest_phone, table_name,
-         token_hash, token_encrypted
+         link_expires_at, token_hash, token_encrypted
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING ${SELECT_COLUMNS}`,
       [
         data.eventId,
@@ -188,6 +192,7 @@ export const invitationRepository = {
         data.guestEmail,
         data.guestPhone,
         data.tableName,
+        data.linkExpiresAt,
         data.tokenHash,
         data.tokenEncrypted,
       ]

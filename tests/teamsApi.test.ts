@@ -122,14 +122,14 @@ describe.skipIf(!connectionString)('equipas, membros e tarefas (integração)', 
 
     await pool.query(
       `INSERT INTO invitations (
-         event_id, guest_name, guest_email, token_hash, token_encrypted
+         event_id, guest_name, guest_email, token_hash, token_encrypted, link_expires_at
        ) VALUES
-         ($1, 'Convidado Um', 'guest1@exemplo.pt', 'api-inv-1', 'x'),
-         ($1, 'Convidado Um Duplicado', 'GUEST1@exemplo.pt', 'api-inv-1b', 'x'),
-         ($1, 'Convidado Dois', 'guest2@exemplo.pt', 'api-inv-2', 'x'),
-         ($1, 'Convidado Sem Email', '', 'api-inv-3', 'x'),
-         ($2, 'Convidado A2', 'guest4@exemplo.pt', 'api-inv-4', 'x'),
-         ($3, 'Convidado B', 'guestb@exemplo.pt', 'api-inv-b', 'x')`,
+         ($1, 'Convidado Um', 'guest1@exemplo.pt', 'api-inv-1', 'x', now() + interval '1 day'),
+         ($1, 'Convidado Um Duplicado', 'GUEST1@exemplo.pt', 'api-inv-1b', 'x', now() + interval '1 day'),
+         ($1, 'Convidado Dois', 'guest2@exemplo.pt', 'api-inv-2', 'x', now() + interval '1 day'),
+         ($1, 'Convidado Sem Email', '', 'api-inv-3', 'x', now() + interval '1 day'),
+         ($2, 'Convidado A2', 'guest4@exemplo.pt', 'api-inv-4', 'x', now() + interval '1 day'),
+         ($3, 'Convidado B', 'guestb@exemplo.pt', 'api-inv-b', 'x', now() + interval '1 day')`,
       [EVENT_A, EVENT_A2, EVENT_B]
     );
 

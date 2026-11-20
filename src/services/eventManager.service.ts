@@ -113,6 +113,7 @@ async function ensureManagerIsGuest(
   if (existing) return null;
 
   const token = generateToken();
+  const linkExpiresAt = await linkValidityService.maximumFor(event);
   const invitation = await invitationRepository.create(
     {
       eventId: event.id,
@@ -120,6 +121,7 @@ async function ensureManagerIsGuest(
       guestEmail: email,
       guestPhone: null,
       tableName: null,
+      linkExpiresAt,
       tokenHash: hashToken(token),
       tokenEncrypted: encryptToken(token),
     },
