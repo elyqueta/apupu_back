@@ -15,6 +15,10 @@ export interface Invitation {
   guestEmail: string;
   guestPhone: string | null;
   tableName: string | null;
+  /** Mensagem opcional deixada pelo convidado ao responder (texto simples). */
+  guestMessage: string | null;
+  /** Fim da validade do link individual (fim do evento + 1 dia por defeito). */
+  linkExpiresAt: Date | null;
   tokenHash: string;
   tokenEncrypted: string;
   claimHash: string | null;
@@ -78,4 +82,6 @@ export interface AccountInvitation extends Invitation {
 
 export interface RsvpInput {
   status: Exclude<RsvpStatus, 'pending'>;
+  /** Texto simples, já sanitizado; `null` limpa uma mensagem anterior. */
+  message?: string | null;
 }

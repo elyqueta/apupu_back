@@ -7,6 +7,7 @@ import { eventRepository } from '../repositories/event.repository';
 import { hostRepository } from '../repositories/host.repository';
 import { hostSessionRepository } from '../repositories/hostSession.repository';
 import { EventAccessRole, EventRecord } from '../types/event.types';
+import { EventManager } from '../types/eventManager.types';
 import { HostSession } from '../types/hostSession.types';
 import { csrfTokenFor, generateToken, hashToken } from '../utils/token.util';
 import { ManageEmailStatus, manageLinkService } from './manageLink.service';
@@ -21,14 +22,19 @@ function isManageTokenValid(event: EventRecord): boolean {
   return true;
 }
 
-function isManagerTokenValid(manager: {
+export function isManagerLinkValid(manager: {
   revokedAt: Date | null;
   tokenExpiresAt: Date | null;
+  linkRevokedAt: Date | null;
+  linkExpiresAt: Date | null;
+  accessLockedUntil: Date | null;
 }): boolean {
-  if (manager.revokedAt) return false;
-  if (manager.tokenExpiresAt && manager.tokenExpiresAt.getTime() <= Date.now()) {
+  if (manager.revokedAt || manager.linkRevokedAt) return false;
+  if (manager.accessLockedUntil && manager.accessLockedUntil.getTime() > Date.now()) {
     return false;
   }
+  if (manager.linkExpiresAt && manager.linkExpiresAt.getTime() <= Date.now()) return false;
+  if (manager.tokenExpiresAt && manager.tokenExpiresAt.getTime() <= Date.now()) return false;
   return true;
 }
 
@@ -38,8 +44,8 @@ export interface CreatedHostSession {
   csrfToken: string;
   event: EventRecord;
   role: EventAccessRole;
-  /** Email associado ao link (anfitrião ou gestor). */
-  email: string;
+  /** Email associado ao link (anfitrião ou gestor); nulo se só telefone. */
+  email: string | null;
   /** `true` quando esse email já tem conta registada. */
   emailHasAccount: boolean;
   /**
@@ -72,10 +78,18 @@ export const hostSessionService = {
 
     const manager = await eventManagerRepository.findByTokenHash(manageTokenHash);
 
-    if (!manager || !isManagerTokenValid(manager)) {
+    if (!manager || !isManagerLinkValid(manager)) {
       throw new NotFoundError(INVALID_MANAGE_LINK, 'manage_link_invalid');
     }
 
+    return this.createManagerSession(manager);
+  },
+
+  /**
+   * Cria a sessão curta de um gestor já autenticado (link ou link+código).
+   * Mantém um único ponto de emissão de cookie/CSRF para os dois fluxos.
+   */
+  async createManagerSession(manager: EventManager): Promise<CreatedHostSession> {
     const event = await eventRepository.findById(manager.eventId);
 
     if (!event) {
@@ -195,7 +209,7 @@ export const hostSessionService = {
 
       const manager = await eventManagerRepository.findActiveById(session.managerId);
 
-      if (!manager) return null;
+      if (!manager || !isManagerLinkValid(manager)) return null;
 
       const event = await eventRepository.findById(session.eventId);
 

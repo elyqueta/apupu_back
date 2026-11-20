@@ -12,7 +12,8 @@ interface TeamMemberRow {
   id: string;
   team_id: string;
   host_id: string | null;
-  email: string;
+  email: string | null;
+  phone: string | null;
   display_name: string | null;
   role: TeamMemberRole;
   status: TeamMemberStatus;
@@ -33,6 +34,7 @@ function toMember(row: TeamMemberRow): TeamMemberWithStats {
     teamId: row.team_id,
     hostId: row.host_id,
     email: row.email,
+    phone: row.phone,
     displayName: row.display_name,
     role: row.role,
     status: row.status,
@@ -49,7 +51,7 @@ function toMember(row: TeamMemberRow): TeamMemberWithStats {
 }
 
 const SELECT_MEMBER = `
-  m.id, m.team_id, m.host_id, m.email, m.display_name, m.role,
+  m.id, m.team_id, m.host_id, m.email, m.phone, m.display_name, m.role,
   m.status, m.origin, m.is_host, m.invited_by_host_id, m.joined_at,
   m.removed_at, m.created_at, m.updated_at,
   COALESCE(open.open_task_count, 0)::int AS open_task_count,
@@ -60,8 +62,11 @@ const SELECT_MEMBER = `
       SELECT 1
         FROM event_managers em
        WHERE em.event_id = e.id
-         AND em.email = m.email
          AND em.revoked_at IS NULL
+         AND (
+           (m.email IS NOT NULL AND em.email = m.email)
+           OR (m.phone IS NOT NULL AND em.phone = m.phone)
+         )
     )
     ELSE true
   END AS has_event_access
@@ -83,7 +88,8 @@ const FROM_MEMBER = `
 export interface CreateTeamMemberData {
   teamId: string;
   hostId: string | null;
-  email: string;
+  email: string | null;
+  phone: string | null;
   displayName: string | null;
   role: TeamMemberRole;
   status: TeamMemberStatus;
@@ -106,15 +112,16 @@ export const teamMemberRepository = {
     const runner = client ?? pool;
     const result = await runner.query<{ id: string }>(
       `INSERT INTO team_members (
-         team_id, host_id, email, display_name, role, status, origin,
+         team_id, host_id, email, phone, display_name, role, status, origin,
          is_host, invited_by_host_id, joined_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id`,
       [
         data.teamId,
         data.hostId,
         data.email,
+        data.phone,
         data.displayName,
         data.role,
         data.status,
@@ -171,6 +178,44 @@ export const teamMemberRepository = {
           AND m.email = $2::citext
           AND m.removed_at IS NULL`,
       [teamId, email]
+    );
+
+    const row = result.rows[0];
+    return row ? toMember(row) : null;
+  },
+
+  async findActiveByTeamAndPhone(
+    teamId: string,
+    phone: string,
+    client?: PoolClient
+  ): Promise<TeamMemberWithStats | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<TeamMemberRow>(
+      `SELECT ${SELECT_MEMBER} ${FROM_MEMBER}
+        WHERE m.team_id = $1
+          AND m.phone = $2
+          AND m.removed_at IS NULL`,
+      [teamId, phone]
+    );
+
+    const row = result.rows[0];
+    return row ? toMember(row) : null;
+  },
+
+  async findRemovedByTeamAndPhone(
+    teamId: string,
+    phone: string,
+    client?: PoolClient
+  ): Promise<TeamMemberWithStats | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<TeamMemberRow>(
+      `SELECT ${SELECT_MEMBER} ${FROM_MEMBER}
+        WHERE m.team_id = $1
+          AND m.phone = $2
+          AND m.removed_at IS NOT NULL
+        ORDER BY m.removed_at DESC
+        LIMIT 1`,
+      [teamId, phone]
     );
 
     const row = result.rows[0];
@@ -283,7 +328,7 @@ export const teamMemberRepository = {
     if (filters.q) {
       values.push(`%${filters.q}%`);
       conditions.push(
-        `(m.display_name ILIKE $${values.length} OR m.email ILIKE $${values.length})`
+        `(m.display_name ILIKE $${values.length} OR m.email ILIKE $${values.length} OR m.phone ILIKE $${values.length})`
       );
     }
 
@@ -333,6 +378,8 @@ export const teamMemberRepository = {
     id: string,
     data: {
       hostId: string | null;
+      email: string | null;
+      phone: string | null;
       displayName: string | null;
       status: TeamMemberStatus;
       invitedByHostId: string | null;
@@ -345,15 +392,19 @@ export const teamMemberRepository = {
       `UPDATE team_members
           SET removed_at = NULL,
               host_id = $2,
-              display_name = $3,
-              status = $4,
-              invited_by_host_id = $5,
-              joined_at = $6,
+              email = $3,
+              phone = $4,
+              display_name = $5,
+              status = $6,
+              invited_by_host_id = $7,
+              joined_at = $8,
               updated_at = now()
         WHERE id = $1`,
       [
         id,
         data.hostId,
+        data.email,
+        data.phone,
         data.displayName,
         data.status,
         data.invitedByHostId,
@@ -389,6 +440,31 @@ export const teamMemberRepository = {
     );
 
     return this.findById(id, client);
+  },
+
+  /**
+   * Liga à conta recém-criada todos os membros de equipa com o mesmo
+   * email verificado. As permissões e a equipa mantêm-se; apenas deixa
+   * de existir um membro "sem conta" com o mesmo contacto.
+   */
+  async linkAccountByEmail(
+    hostId: string,
+    email: string,
+    client?: PoolClient
+  ): Promise<number> {
+    const runner = client ?? pool;
+    const result = await runner.query(
+      `UPDATE team_members
+          SET host_id = $2,
+              status = 'ativo',
+              joined_at = COALESCE(joined_at, now()),
+              updated_at = now()
+        WHERE email = $1::citext
+          AND removed_at IS NULL
+          AND status <> 'ativo'`,
+      [email, hostId]
+    );
+    return result.rowCount ?? 0;
   },
 
   async softRemove(id: string, client?: PoolClient): Promise<boolean> {

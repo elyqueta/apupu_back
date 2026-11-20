@@ -105,6 +105,8 @@ const invitation: Invitation = {
   guestEmail: 'ana@exemplo.ao',
   guestPhone: '+244 923 456 789',
   tableName: 'Mesa 1',
+  guestMessage: null,
+  linkExpiresAt: new Date('2027-08-17T01:00:00Z'),
   tokenHash: 'hash',
   tokenEncrypted: encryptToken('token-de-teste'),
   claimHash: null,

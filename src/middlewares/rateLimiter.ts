@@ -81,6 +81,21 @@ export const hostSessionLimiter = rateLimit({
 });
 
 /**
+ * Limite adicional por IP para a entrada com link + código.
+ *
+ * Complementa as regras por link (5 falhas bloqueiam, 15 revogam) e
+ * impede que um mesmo endereço rode códigos contra vários links.
+ */
+export const manageAccessLimiter = rateLimit({
+  windowMs: env.HOST_SESSION_RATE_LIMIT_WINDOW_MS,
+  limit: env.HOST_SESSION_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => `manage-access:${req.ip ?? 'unknown'}`,
+  handler: limitHandler,
+});
+
+/**
  * Chave do limite de escritas.
  *
  * É aplicado depois da autenticação, por isso prefere a identidade

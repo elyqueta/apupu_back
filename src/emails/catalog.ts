@@ -378,6 +378,10 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
       paragraphs: [
         `${hostName(vars)} adicionou-te como gestor do evento ${eventName(vars)}.`,
         'Usa esta ligação para ver os convidados e ajudar a gerir o evento.',
+        vars.codigo
+          ? `O teu código de acesso é ${vars.codigo}. Introduz-o depois de abrir a ligação.`
+          : 'O código de acesso foi gerado no painel do anfitrião.',
+        'O código também pode ser partilhado em separado; a ligação, não.',
         'Podes adicionar convidados e editar as informações do evento. Cancelar o evento, alterar o estado ou gerir convites existentes continua reservado ao anfitrião.',
         'Não partilhes esta ligação com os convidados.',
       ],

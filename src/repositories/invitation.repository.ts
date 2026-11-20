@@ -10,6 +10,7 @@ import {
   UpdateInvitationInput,
 } from '../types/invitation.types';
 import { TeamGuestCandidate } from '../types/team.types';
+import { escapeLike } from '../utils/like.util';
 
 interface InvitationRow {
   id: string;
@@ -18,6 +19,8 @@ interface InvitationRow {
   guest_email: string;
   guest_phone: string | null;
   table_name: string | null;
+  guest_message: string | null;
+  link_expires_at: Date;
   token_hash: string;
   token_encrypted: string;
   claim_hash: string | null;
@@ -41,6 +44,8 @@ function toInvitation(row: InvitationRow): Invitation {
     guestEmail: row.guest_email,
     guestPhone: row.guest_phone,
     tableName: row.table_name,
+    guestMessage: row.guest_message,
+    linkExpiresAt: row.link_expires_at,
     tokenHash: row.token_hash,
     tokenEncrypted: row.token_encrypted,
     claimHash: row.claim_hash,
@@ -58,8 +63,8 @@ function toInvitation(row: InvitationRow): Invitation {
 }
 
 const SELECT_COLUMNS = `
-  id, event_id, guest_name, guest_email, guest_phone, table_name,
-  token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
+  id, event_id, guest_name, guest_email, guest_phone, table_name, guest_message,
+  link_expires_at, token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
   rsvp_status, rsvp_responded_at, rsvp_version,
   send_status, send_count, last_sent_at, created_at, updated_at
 `;
@@ -122,6 +127,8 @@ export interface InsertInvitationData {
   guestEmail: string;
   guestPhone: string | null;
   tableName: string | null;
+  /** Calculado pelos serviços com `linkValidityService.maximumFor(event)`. */
+  linkExpiresAt: Date;
   tokenHash: string;
   tokenEncrypted: string;
 }
@@ -175,9 +182,9 @@ export const invitationRepository = {
     const result = await runner.query<InvitationRow>(
       `INSERT INTO invitations (
          event_id, guest_name, guest_email, guest_phone, table_name,
-         token_hash, token_encrypted
+         link_expires_at, token_hash, token_encrypted
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING ${SELECT_COLUMNS}`,
       [
         data.eventId,
@@ -185,6 +192,7 @@ export const invitationRepository = {
         data.guestEmail,
         data.guestPhone,
         data.tableName,
+        data.linkExpiresAt,
         data.tokenHash,
         data.tokenEncrypted,
       ]
@@ -261,11 +269,14 @@ export const invitationRepository = {
    */
   async findLatestGuestNameByEmail(email: string): Promise<string | null> {
     const result = await query<{ guest_name: string }>(
-      `SELECT guest_name
-         FROM invitations
-        WHERE lower(guest_email) = lower($1)
-          AND claim_revoked_at IS NULL
-        ORDER BY created_at DESC, id DESC
+      `SELECT i.guest_name
+         FROM invitations i
+         JOIN events e ON e.id = i.event_id
+        WHERE lower(i.guest_email) = lower($1)
+          AND i.claimed_at IS NOT NULL
+          AND i.claim_revoked_at IS NULL
+          AND COALESCE(e.ends_at, e.starts_at) > now() - interval '30 days'
+        ORDER BY i.created_at DESC, i.id DESC
         LIMIT 1`,
       [email]
     );
@@ -399,9 +410,11 @@ export const invitationRepository = {
       conditions.push(`i.send_status = $${values.length}`);
     }
     if (filters.q) {
-      values.push(`%${filters.q}%`);
+      values.push(`%${escapeLike(filters.q)}%`);
       conditions.push(
-        `(i.guest_name ILIKE $${values.length} OR i.guest_email ILIKE $${values.length})`
+        `(i.guest_name ILIKE $${values.length} ESCAPE '\\' OR ` +
+          `i.guest_email ILIKE $${values.length} ESCAPE '\\' OR ` +
+          `i.guest_phone ILIKE $${values.length} ESCAPE '\\')`
       );
     }
 
@@ -451,8 +464,11 @@ export const invitationRepository = {
     let qCondition = '';
 
     if (filters.q) {
-      values.push(`%${filters.q}%`);
-      qCondition = `AND (i.guest_name ILIKE $${values.length} OR i.guest_email ILIKE $${values.length})`;
+      values.push(`%${escapeLike(filters.q)}%`);
+      qCondition =
+        `AND (i.guest_name ILIKE $${values.length} ESCAPE '\\' OR ` +
+        `i.guest_email ILIKE $${values.length} ESCAPE '\\' OR ` +
+        `i.guest_phone ILIKE $${values.length} ESCAPE '\\')`;
     }
 
     const dedupeKey = `CASE WHEN btrim(i.guest_email) = '' THEN i.id::text ELSE lower(i.guest_email) END`;
@@ -672,12 +688,14 @@ export const invitationRepository = {
   async respond(
     id: string,
     status: Exclude<RsvpStatus, 'pending'>,
+    message: string | null,
     client?: PoolClient
   ): Promise<Invitation | null> {
     const runner = client ?? pool;
     const result = await runner.query<InvitationRow>(
       `UPDATE invitations
           SET rsvp_status = $2,
+              guest_message = $3,
               rsvp_responded_at = now(),
               rsvp_version = CASE
                 WHEN rsvp_status = $2 THEN rsvp_version
@@ -686,7 +704,30 @@ export const invitationRepository = {
               updated_at = now()
         WHERE id = $1
         RETURNING ${SELECT_COLUMNS}`,
-      [id, status]
+      [id, status, message]
+    );
+
+    const row = result.rows[0];
+    return row ? toInvitation(row) : null;
+  },
+
+  /**
+   * Atualiza apenas a mensagem quando o estado da resposta não mudou.
+   * Não altera `rsvp_responded_at` nem a versão, para não duplicar
+   * notificações nem fazer parecer que o convidado respondeu de novo.
+   */
+  async setGuestMessage(
+    id: string,
+    message: string | null,
+    client?: PoolClient
+  ): Promise<Invitation | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `UPDATE invitations
+          SET guest_message = $2, updated_at = now()
+        WHERE id = $1
+        RETURNING ${SELECT_COLUMNS}`,
+      [id, message]
     );
 
     const row = result.rows[0];

@@ -7,7 +7,8 @@ import {
 export interface TeamMemberDto {
   id: string;
   team_id: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
   display_name: string | null;
   role: string;
   status: string;
@@ -25,6 +26,7 @@ export function toTeamMemberDto(member: TeamMemberWithStats): TeamMemberDto {
     id: member.id,
     team_id: member.teamId,
     email: member.email,
+    phone: member.phone,
     display_name: member.displayName,
     role: member.role,
     status: member.status,
@@ -40,17 +42,22 @@ export function toTeamMemberDto(member: TeamMemberWithStats): TeamMemberDto {
 export interface UpdateMemberRoleDto {
   member: TeamMemberDto;
   event_manager_id: string | null;
+  access_code?: string;
+  access_link?: string;
 }
 
 export function toUpdateMemberRoleDto(result: UpdateMemberRoleResult): UpdateMemberRoleDto {
   return {
     member: toTeamMemberDto(result.member),
     event_manager_id: result.eventManagerId,
+    ...(result.accessCode ? { access_code: result.accessCode } : {}),
+    ...(result.accessLink ? { access_link: result.accessLink } : {}),
   };
 }
 
 export interface TeamMemberAddRowDto {
-  email: string;
+  email: string | null;
+  phone?: string | null;
   member_id: string | null;
   status: string;
   reason?: string;
@@ -65,6 +72,7 @@ export interface AddTeamMembersDto {
 function toAddRow(row: TeamMemberAddResult): TeamMemberAddRowDto {
   return {
     email: row.email,
+    phone: row.phone ?? null,
     member_id: row.memberId,
     status: row.status,
     reason: row.reason,

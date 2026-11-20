@@ -167,6 +167,12 @@ export const contoContigoSchemas = {
       guest_email: { type: 'string', format: 'email' },
       guest_phone: { type: 'string', nullable: true },
       table_name: { type: 'string', nullable: true },
+      guest_message: {
+        type: 'string',
+        nullable: true,
+        maxLength: 500,
+        description: 'Mensagem opcional deixada pelo convidado ao responder.',
+      },
       rsvp_status: {
         type: 'string',
         enum: ['pending', 'accepted', 'declined'],
@@ -203,9 +209,9 @@ export const contoContigoSchemas = {
         format: 'date-time',
         nullable: true,
         description:
-          'Expiração do link de partilha. Hoje é sempre `null`: o token do ' +
-          'convite não expira e só deixa de ser válido quando o convite é ' +
-          'revogado. O campo fica reservado para rotação futura.',
+          'Fim da validade do link de partilha: por defeito, fim do evento ' +
+          '+ 1 dia, no fuso do evento. Depois dessa data o link devolve o ' +
+          'mesmo 404 genérico de um link inválido.',
       },
       created_at: { type: 'string', format: 'date-time' },
       updated_at: { type: 'string', format: 'date-time' },
@@ -218,6 +224,22 @@ export const contoContigoSchemas = {
       id: { type: 'string', format: 'uuid' },
       title: { type: 'string' },
       host_name: { type: 'string' },
+      host_email: {
+        type: 'string',
+        format: 'email',
+        description: 'Email do anfitrião, exposto por defeito para contacto.',
+      },
+      host_phone: {
+        type: 'string',
+        nullable: true,
+        description: 'Telefone do perfil verificado; `null` quando não preenchido.',
+      },
+      host_avatar_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description: 'Avatar do perfil verificado; `null` quando não preenchido.',
+      },
       starts_at: { type: 'string', format: 'date-time' },
       ends_at: { type: 'string', format: 'date-time', nullable: true },
       timezone: { type: 'string', example: 'Africa/Luanda' },
@@ -270,6 +292,12 @@ export const contoContigoSchemas = {
             type: 'string',
             format: 'date-time',
             nullable: true,
+          },
+          message: {
+            type: 'string',
+            nullable: true,
+            maxLength: 500,
+            description: 'Mensagem deixada pelo próprio convidado ao responder.',
           },
         },
       },
@@ -501,8 +529,9 @@ export const contoContigoSchemas = {
         format: 'date-time',
         nullable: true,
         description:
-          'Hoje é sempre `null`: o token do convite não expira e só é ' +
-          'invalidado pela revogação (que remove o convite da lista).',
+          'Fim da validade do próprio link: por defeito, fim do evento ' +
+          '+ 1 dia. Convites expirados devolvem o mesmo 404 genérico ' +
+          'de um link inválido.',
       },
       created_at: { type: 'string', format: 'date-time' },
       event: { $ref: '#/components/schemas/GuestEventSummary' },

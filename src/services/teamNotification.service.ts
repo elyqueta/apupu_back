@@ -58,8 +58,9 @@ export function formatDueDate(value: string | null | undefined): string | undefi
 export function memberDisplayName(member: {
   displayName?: string | null;
   email?: string | null;
+  phone?: string | null;
 }): string {
-  return member.displayName?.trim() || member.email?.trim() || 'um membro da equipa';
+  return member.displayName?.trim() || member.email?.trim() || member.phone?.trim() || 'um membro da equipa';
 }
 
 /** Contexto de tarefa usado pelas mensagens. */

@@ -213,11 +213,16 @@ describe.skipIf(!connectionString)(
         [EVENT, EMAIL_OWNER, HOST_OWNER]
       );
 
-      await pool.query(`INSERT INTO event_managers (id, event_id, email) VALUES ($1, $2, $3)`, [
-        MANAGER_ID,
-        EVENT,
-        EMAIL_MANAGER,
-      ]);
+      await pool.query(
+        `WITH new_team AS (
+           INSERT INTO teams (event_id, name, category, description, deleted_at)
+           VALUES ($2, 'Equipa do Gestor Correções', 'outra', 'Equipa criada para testes.', now())
+           RETURNING id
+         )
+         INSERT INTO event_managers (id, event_id, team_id, email)
+         SELECT $1, $2, id, $3 FROM new_team`,
+        [MANAGER_ID, EVENT, EMAIL_MANAGER]
+      );
 
       teamId = (
         await teamService.create(scopeOwner, {

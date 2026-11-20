@@ -110,20 +110,26 @@ describe.skipIf(!connectionString)('equipas, membros e tarefas (integração)', 
     );
 
     await pool.query(
-      `INSERT INTO event_managers (id, event_id, email) VALUES ($1, $2, $3)`,
+      `WITH new_team AS (
+         INSERT INTO teams (event_id, name, category, description, deleted_at)
+         VALUES ($2, 'Equipa do Gestor API', 'outra', 'Equipa criada para testes.', now())
+         RETURNING id
+       )
+       INSERT INTO event_managers (id, event_id, team_id, email)
+       SELECT $1, $2, id, $3 FROM new_team`,
       [MANAGER_ID, EVENT_A, EMAIL_MANAGER]
     );
 
     await pool.query(
       `INSERT INTO invitations (
-         event_id, guest_name, guest_email, token_hash, token_encrypted
+         event_id, guest_name, guest_email, token_hash, token_encrypted, link_expires_at
        ) VALUES
-         ($1, 'Convidado Um', 'guest1@exemplo.pt', 'api-inv-1', 'x'),
-         ($1, 'Convidado Um Duplicado', 'GUEST1@exemplo.pt', 'api-inv-1b', 'x'),
-         ($1, 'Convidado Dois', 'guest2@exemplo.pt', 'api-inv-2', 'x'),
-         ($1, 'Convidado Sem Email', '', 'api-inv-3', 'x'),
-         ($2, 'Convidado A2', 'guest4@exemplo.pt', 'api-inv-4', 'x'),
-         ($3, 'Convidado B', 'guestb@exemplo.pt', 'api-inv-b', 'x')`,
+         ($1, 'Convidado Um', 'guest1@exemplo.pt', 'api-inv-1', 'x', now() + interval '1 day'),
+         ($1, 'Convidado Um Duplicado', 'GUEST1@exemplo.pt', 'api-inv-1b', 'x', now() + interval '1 day'),
+         ($1, 'Convidado Dois', 'guest2@exemplo.pt', 'api-inv-2', 'x', now() + interval '1 day'),
+         ($1, 'Convidado Sem Email', '', 'api-inv-3', 'x', now() + interval '1 day'),
+         ($2, 'Convidado A2', 'guest4@exemplo.pt', 'api-inv-4', 'x', now() + interval '1 day'),
+         ($3, 'Convidado B', 'guestb@exemplo.pt', 'api-inv-b', 'x', now() + interval '1 day')`,
       [EVENT_A, EVENT_A2, EVENT_B]
     );
 
@@ -169,6 +175,36 @@ describe.skipIf(!connectionString)('equipas, membros e tarefas (integração)', 
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ email: EMAIL_A, is_host: true, role: 'gestor' });
     expect(rows[1]).toMatchObject({ email: EMAIL_MANAGER, is_host: false, role: 'gestor' });
+  });
+
+  it('expõe apenas o contacto público seguro do anfitrião', async () => {
+    const { hostRepository } = await import('../src/repositories/host.repository');
+    const phone = '+244923456789';
+    const avatarUrl = 'https://res.cloudinary.com/demo/image/upload/avatar.jpg';
+
+    await pool.query(
+      `UPDATE host_profiles
+          SET phone = $2, avatar_url = $3, birth_date = '1990-01-01'
+        WHERE host_id = $1`,
+      [HOST_A, phone, avatarUrl]
+    );
+
+    const contact = await hostRepository.findPublicContactByEventId(EVENT_A);
+    expect(contact).toEqual({
+      name: 'Anfitriã A',
+      email: EMAIL_A,
+      phone,
+      avatarUrl,
+    });
+    expect(contact).not.toHaveProperty('birthDate');
+
+    const withoutProfile = await hostRepository.findPublicContactByEventId(EVENT_B);
+    expect(withoutProfile).toEqual({
+      name: 'Anfitrião B',
+      email: EMAIL_B,
+      phone: null,
+      avatarUrl: null,
+    });
   });
 
   it('um membro só vê os membros das suas equipas e não pode gerir equipas', async () => {

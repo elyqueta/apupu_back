@@ -18,7 +18,9 @@ describe('crypto.util', () => {
   it('rejeita payload adulterado', () => {
     const encrypted = encryptToken('token-secreto');
     const parts = encrypted.split('.');
-    const tampered = `${parts[0]}.${parts[1]}.${parts[2]?.slice(0, -2)}AA`;
+    const tag = parts[1] ?? '';
+    const first = tag.slice(0, 1);
+    const tampered = `${parts[0]}.${first === 'A' ? 'B' : 'A'}${tag.slice(1)}.${parts[2]}`;
 
     expect(() => decryptToken(tampered)).toThrow();
   });

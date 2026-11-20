@@ -100,15 +100,28 @@ export const teamInviteTokenParamsSchema = z.object({
     .max(200, 'Token de convite inválido.'),
 });
 
+const teamMemberContactSchema = z
+  .object({
+    email: z.email('Email inválido.').max(320).nullable().optional(),
+    phone: z.string().trim().min(9).max(30).nullable().optional(),
+    display_name: z.string().trim().min(1).max(120).nullable().optional(),
+  })
+  .strict()
+  .refine((value) => Boolean(value.email || value.phone), {
+    message: 'Indique um email ou telefone.',
+  });
+
 export const addTeamMembersSchema = z
   .object({
-    emails: z
-      .array(z.email('Email inválido.').max(320), {
-        error: 'Indique a lista de emails a adicionar.',
-      })
-      .min(1, 'Indique pelo menos um email.'),
+    /** Formato novo: uma pessoa de cada vez, com email e/ou telefone. */
+    members: z.array(teamMemberContactSchema).max(50).optional(),
+    /** Formato legado mantido para clients antigos. */
+    emails: z.array(z.email('Email inválido.').max(320)).max(50).optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => Boolean(value.members?.length || value.emails?.length), {
+    message: 'Indique pelo menos uma pessoa.',
+  });
 
 export const updateTeamMemberRoleSchema = z
   .object({

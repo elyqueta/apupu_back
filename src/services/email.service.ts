@@ -350,6 +350,7 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         code: 'manager_invite',
         vars: eventVars(context, event, {
           url: links.manageEvent(hostToken(context)),
+          codigo: payloadString(context, 'access_code'),
         }),
       };
     }

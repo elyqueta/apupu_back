@@ -13,6 +13,7 @@ vi.mock('../src/repositories/invitation.repository', () => ({
 }));
 
 import app from '../src/app';
+import { invitationRepository } from '../src/repositories/invitation.repository';
 
 describe('app', () => {
   it('serve o spec OpenAPI em desenvolvimento', async () => {
@@ -113,6 +114,40 @@ describe('app', () => {
   it('devolve o mesmo 404 genérico para token público inexistente', async () => {
     const response = await request(app).get(
       '/api/v1/public/invitations/token-que-nao-existe-123456'
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('invitation_not_found');
+    expect(response.body.error.message).toBe('Convite não encontrado.');
+  });
+
+  it('devolve o mesmo 404 genérico para um link expirado', async () => {
+    vi.mocked(invitationRepository.findByTokenHash).mockResolvedValueOnce({
+      id: '00000000-0000-4000-8000-000000000001',
+      eventId: '00000000-0000-4000-8000-000000000002',
+      guestName: 'João',
+      guestEmail: 'joao@exemplo.ao',
+      guestPhone: null,
+      tableName: null,
+      guestMessage: null,
+      linkExpiresAt: new Date('2020-01-01T00:00:00Z'),
+      tokenHash: 'hash',
+      tokenEncrypted: 'cifrado',
+      claimHash: null,
+      claimedAt: null,
+      claimRevokedAt: null,
+      rsvpStatus: 'pending',
+      rsvpRespondedAt: null,
+      rsvpVersion: 0,
+      sendStatus: 'pending',
+      sendCount: 0,
+      lastSentAt: null,
+      createdAt: new Date('2019-12-01T00:00:00Z'),
+      updatedAt: new Date('2019-12-01T00:00:00Z'),
+    });
+
+    const response = await request(app).get(
+      '/api/v1/public/invitations/token-expirado-com-pelo-menos-20'
     );
 
     expect(response.status).toBe(404);

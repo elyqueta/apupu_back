@@ -18,6 +18,7 @@ import { encryptToken } from '../utils/crypto.util';
 import { generateToken, hashToken } from '../utils/token.util';
 import { CreateEventBody, UpdateEventBody } from '../schemas/event.schemas';
 import { generateManageToken, manageLinkService } from './manageLink.service';
+import { linkValidityService } from './linkValidity.service';
 import {
   cancelMessagesForEvent,
   enqueueEventCancelled,
@@ -209,6 +210,7 @@ export const eventService = {
     const created = await withTransaction(async (client) => {
       const event = await eventRepository.create(data, client);
       const invitations: Invitation[] = [];
+      const linkExpiresAt = await linkValidityService.maximumFor(event);
 
       for (const guest of input.guests) {
         const token = generateToken();
@@ -219,6 +221,7 @@ export const eventService = {
             guestEmail: guest.email,
             guestPhone: normalizeOptional(guest.phone),
             tableName: normalizeOptional(guest.table_name),
+            linkExpiresAt,
             tokenHash: hashToken(token),
             tokenEncrypted: encryptToken(token),
           },

@@ -31,6 +31,7 @@ const EVENT_2 = "cccccccc-0000-4000-8000-000000000002";
 const EVENT_3 = "cccccccc-0000-4000-8000-000000000003";
 const EVENT_4 = "cccccccc-0000-4000-8000-000000000004";
 const EVENT_5 = "cccccccc-0000-4000-8000-000000000005";
+const LEGACY_INVITATION = "99999999-0000-4000-8000-000000000001";
 const MANAGER_ACTIVE = "bbbbbbbb-0000-4000-8000-000000000001";
 const MANAGER_REVOKED = "bbbbbbbb-0000-4000-8000-000000000002";
 const TASK_MANAGER_DONE = "aaaaaaaa-0000-4000-8000-000000000001";
@@ -467,6 +468,27 @@ describe.skipIf(!connectionString)("migração de equipas", () => {
       expect(notifications).toContain("role_changed");
       expect(notifications).not.toContain("member_removed");
       expect(notifications).not.toContain("team_invite");
+    });
+
+    it("preenche a validade do link de convites antigos", async () => {
+      const { rows } = await pool.query<{
+        link_expires_at: Date | null;
+        matches_rule: boolean;
+      }>(
+        `SELECT i.link_expires_at,
+                i.link_expires_at = (
+                  ((date_trunc('day', e.starts_at AT TIME ZONE e.timezone) + interval '1 day')
+                    AT TIME ZONE e.timezone) + interval '1 day'
+                ) AS matches_rule
+           FROM invitations i
+           JOIN events e ON e.id = i.event_id
+          WHERE i.id = $1`,
+        [LEGACY_INVITATION],
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].link_expires_at).not.toBeNull();
+      expect(rows[0].matches_rule).toBe(true);
     });
   });
 

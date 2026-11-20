@@ -1,5 +1,6 @@
 import { logger } from '../config/logger';
 import { Event } from '../types/event.types';
+import { HostPublicContact } from '../types/host.types';
 import { AccountInvitation, Invitation, InvitationWithEvent } from '../types/invitation.types';
 import { EmailDelivery } from '../types/emailDelivery.types';
 import { EventTemplate } from '../types/template.types';
@@ -18,6 +19,8 @@ export interface InvitationDto {
   guest_email: string;
   guest_phone: string | null;
   table_name: string | null;
+  /** Mensagem opcional deixada ao responder (texto simples, até 500 caracteres). */
+  guest_message: string | null;
   rsvp_status: string;
   rsvp_responded_at: string | null;
   send_status: string;
@@ -38,8 +41,8 @@ export interface InvitationDto {
    */
   invitation_url: string | null;
   /**
-   * Fim da validade do link. Hoje é sempre `null`: o token do convite
-   * não expira e só deixa de ser válido quando o convite é revogado.
+   * Fim da validade do link de partilha: por defeito, fim do evento + 1 dia.
+   * Depois dessa data o link devolve o mesmo 404 genérico de um link inválido.
    */
   invitation_url_expires_at: string | null;
   created_at: string;
@@ -78,6 +81,7 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     guest_email: invitation.guestEmail,
     guest_phone: invitation.guestPhone,
     table_name: invitation.tableName,
+    guest_message: invitation.guestMessage,
     rsvp_status: invitation.rsvpStatus,
     rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     send_status: invitation.sendStatus,
@@ -85,7 +89,7 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     last_sent_at: iso(invitation.lastSentAt),
     opened_at: iso(invitation.claimedAt),
     invitation_url: invitationUrl(invitation),
-    invitation_url_expires_at: null,
+    invitation_url_expires_at: iso(invitation.linkExpiresAt),
     created_at: invitation.createdAt.toISOString(),
     updated_at: invitation.updatedAt.toISOString(),
   };
@@ -155,7 +159,7 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
     rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     table_name: invitation.tableName,
     invitation_url: invitationUrl(invitation),
-    invitation_url_expires_at: null,
+    invitation_url_expires_at: iso(invitation.linkExpiresAt),
     created_at: invitation.createdAt.toISOString(),
     event: {
       id: invitation.eventId,
@@ -199,6 +203,8 @@ export interface PublicInvitationDto {
     email_has_account: boolean;
     rsvp_status: string;
     rsvp_responded_at: string | null;
+    /** Texto simples deixado pelo próprio convidado ao responder. */
+    message: string | null;
   };
   rsvp_deadline_passed: boolean;
 }
@@ -208,16 +214,18 @@ export function toPublicInvitationDto(
   event: Event,
   invitation: Invitation,
   rsvpDeadlinePassed: boolean,
-  emailHasAccount: boolean
+  emailHasAccount: boolean,
+  hostContact: HostPublicContact
 ): PublicInvitationDto {
   return {
-    event: toPublicEventDto(event),
+    event: toPublicEventDto(event, hostContact),
     guest: {
       name: invitation.guestName,
       email: invitation.guestEmail,
       email_has_account: emailHasAccount,
       rsvp_status: invitation.rsvpStatus,
       rsvp_responded_at: iso(invitation.rsvpRespondedAt),
+      message: invitation.guestMessage,
     },
     rsvp_deadline_passed: rsvpDeadlinePassed,
   };

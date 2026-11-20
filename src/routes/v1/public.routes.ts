@@ -115,6 +115,11 @@ router.get(
  *             required: [status]
  *             properties:
  *               status: { type: string, enum: [accepted, declined] }
+ *               message:
+ *                 type: string
+ *                 nullable: true
+ *                 maxLength: 500
+ *                 description: Mensagem opcional do convidado para o anfitrião.
  *     responses:
  *       200:
  *         description: Resposta registada.

@@ -255,9 +255,10 @@ mantém-se como ponto de extensão.
 - A `Invitation` devolvida ao anfitrião (lista por evento, lista global
   e detalhe) inclui `invitation_url` (URL absoluto para
   `<APP_BASE_URL>/convite/<token>`) e `invitation_url_expires_at`.
-- É o mesmo token do email; não é de uso único e não expira. O primeiro
-  navegador que abre o link reivindica o convite com um cookie; os
-  restantes precisam desse cookie.
+- É o mesmo token do email e não é de uso único. O primeiro navegador
+  que abre o link reivindica o convite com um cookie; os restantes
+  precisam desse cookie. Desde o Bloco 4 o link expira (por defeito no
+  fim do evento + 1 dia); ver a secção 25.
 - O anfitrião deve copiar/partilhar o URL, não o abrir — ao abri-lo,
   reivindica o convite para o seu próprio navegador.
 - `resend` mantém o token; `revoke` invalida-o para sempre e a API passa
@@ -340,3 +341,23 @@ mantém-se como ponto de extensão.
   noutro navegador; ambos os acessos coexistem.
 - Sem conta correspondente, a resposta continua a ser o `404`
   genérico.
+
+## 25. Bloco 4 — convite público
+
+- O convidado pode deixar uma mensagem opcional ao responder (`message`,
+  até 500 caracteres). A API remove marcações HTML e caracteres de
+  controlo, guarda texto simples em `invitations.guest_message` e
+  devolve-o em `guest.message` (público), `guest_message` (gestão) e nos
+  metadados da atividade/notificação de RSVP.
+- Ausência do campo mantém a mensagem anterior; `null` limpa-a. Alterar
+  só a mensagem não incrementa `rsvp_version` nem duplica notificações.
+- `invitations.link_expires_at` tem por defeito o fim do evento + 1 dia,
+  calculado com a mesma regra fuso-horária de
+  `linkValidityService.maximumFor`. Não se usa `resolve()` porque ele
+  limita a 7 dias. Não há configuração do anfitrião neste bloco.
+- Token inválido, convite revogado e link expirado devolvem sempre o
+  mesmo `404 invitation_not_found` nas rotas `GET`, `claim` e `rsvp`.
+- A página pública recebe `host_email` e `host_name` do próprio evento,
+  e `host_phone`/`host_avatar_url` apenas do perfil de uma conta
+  verificada e ativa. Nunca são expostos `birth_date`, preferências ou
+  outros dados do perfil.
