@@ -31,6 +31,10 @@ export const AUDIT_ACTIONS = [
   'event_cover_updated',
   'event_cover_removed',
   'activity_deleted',
+  // Bloco 7: auditoria das acções administrativas sobre apoio e novidades.
+  // A constraint CHECK de host_audit_log é alargada na migração 0023.
+  'support_message_resolved',
+  'newsletter_subscription_removed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
