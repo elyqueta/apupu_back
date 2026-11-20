@@ -57,6 +57,14 @@ semanal não escreve em `admin_audit_log` porque `admin_id` é FK para
 `@openapi`, com schemas `AdminUser`, `AdminUserDetail` e `AdminWeeklyReport`
 e respostas de erro com envelope JSON.
 
+## Correcção pós-implementação
+
+`teamsForUser()` contava os membros com `tm.deleted_at IS NULL`, mas a coluna
+de remoção lógica de `team_members` é `removed_at` (`deleted_at` pertence a
+`teams`). O detalhe do utilizador e o PDF falhavam com `42703`. A query usa
+agora `tm.removed_at IS NULL`; `tests/adminProfileRepository.test.ts` valida a
+SQL e o mapeamento sem depender de base de dados.
+
 ## Agendamento
 
 - `startAdminReportScheduler()` corre na API e no worker, verificando a cada
@@ -73,7 +81,7 @@ e respostas de erro com envelope JSON.
 - `npm run typecheck` ✅
 - `npm run lint` ✅
 - `npm run build` ✅
-- `npm test -- --run` ✅ — **35 ficheiros / 310 testes passados** (6 ficheiros
+- `npm test -- --run` ✅ — **36 ficheiros / 312 testes passados** (6 ficheiros
   e 89 testes ignorados pela configuração existente).
 - Migração 0025 aplicada na base de desenvolvimento, revertida (`down`) e
   aplicada de novo (`up`) com sucesso.

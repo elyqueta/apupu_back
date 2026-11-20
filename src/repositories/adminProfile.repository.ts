@@ -99,7 +99,7 @@ export const adminProfileRepository = {
     }>(
       `SELECT t.id::text, t.name,
               (SELECT count(*)::text FROM team_members tm
-                WHERE tm.team_id = t.id AND tm.deleted_at IS NULL) AS member_count,
+                WHERE tm.team_id = t.id AND tm.removed_at IS NULL) AS member_count,
               e.title AS event_title
          FROM teams t
          JOIN events e ON e.id = t.event_id
