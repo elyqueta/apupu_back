@@ -334,6 +334,7 @@ export const teamMemberService = {
       const manager = await eventManagerRepository.ensureActiveForEmail(
         access.team.eventId,
         member.email,
+        access.team.id,
         client
       );
 

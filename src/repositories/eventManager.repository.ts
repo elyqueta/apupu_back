@@ -216,19 +216,20 @@ export const eventManagerRepository = {
   async ensureActiveForEmail(
     eventId: string,
     email: string,
+    teamId: string,
     client?: PoolClient
   ): Promise<EventManager> {
     const runner = client ?? pool;
     const result = await runner.query<EventManagerRow>(
       `WITH upserted AS (
-         INSERT INTO event_managers (event_id, email)
-         VALUES ($1, $2)
+         INSERT INTO event_managers (event_id, team_id, email)
+         VALUES ($1, $3, $2)
          ON CONFLICT (event_id, email)
-         DO UPDATE SET revoked_at = NULL, updated_at = now()
+         DO UPDATE SET team_id = $3, revoked_at = NULL, updated_at = now()
          RETURNING *
        )
        SELECT ${SELECT_WITH_ACCOUNT} FROM upserted m`,
-      [eventId, email]
+      [eventId, email, teamId]
     );
 
     const row = result.rows[0];

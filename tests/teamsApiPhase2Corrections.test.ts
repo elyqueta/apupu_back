@@ -173,10 +173,25 @@ describe.skipIf(!connectionString)('correções da Fase 2 (integração)', () =>
     );
 
     await pool.query(
-      `INSERT INTO event_managers (id, event_id, email) VALUES
-         ($1, $2, $3),
-         ($4, $5, $6)`,
-      [MANAGER_1, EVENT_1, EMAIL_MANAGER, MANAGER_2, EVENT_1B, EMAIL_MANAGER_2]
+      `WITH new_team AS (
+         INSERT INTO teams (event_id, name, category, description, deleted_at)
+         VALUES ($2, 'Equipa do Gestor Um', 'outra', 'Equipa criada para testes.', now())
+         RETURNING id
+       )
+       INSERT INTO event_managers (id, event_id, team_id, email)
+       SELECT $1, $2, id, $3 FROM new_team`,
+      [MANAGER_1, EVENT_1, EMAIL_MANAGER]
+    );
+
+    await pool.query(
+      `WITH new_team AS (
+         INSERT INTO teams (event_id, name, category, description, deleted_at)
+         VALUES ($2, 'Equipa do Gestor Dois', 'outra', 'Equipa criada para testes.', now())
+         RETURNING id
+       )
+       INSERT INTO event_managers (id, event_id, team_id, email)
+       SELECT $1, $2, id, $3 FROM new_team`,
+      [MANAGER_2, EVENT_1B, EMAIL_MANAGER_2]
     );
 
     teamAlpha = await createTeam(EVENT_1, 'Alpha');
