@@ -20,6 +20,9 @@ import {
   isGoogleOAuthConfigured,
   typedPassport,
 } from './config/passport.config';
+import { auditContext } from './services/audit.service';
+import { authService } from './services/auth.service';
+import { setAuthSession } from './utils/cookie.util';
 import v1Routes from './routes/v1';
 
 const app: Application = express();
@@ -74,8 +77,13 @@ app.get('/auth/google', authIpLimiter, (req: Request, res: Response, next: NextF
 /**
  * Callback do Google.
  *
- * GET /auth/google/callback?code=... -> valida o código, obtém o perfil
- * e devolve os dados do utilizador em JSON (sem sessão/token opaco).
+ * GET /auth/google/callback?code=... -> valida o código, cria a sessão de
+ * conta e devolve um cookie HttpOnly (`apupu_auth`). O browser é depois
+ * redirecionado para `${APP_BASE_URL}/login-success`, onde o frontend apenas
+ * confirma a sessão com `GET /api/v1/auth/session` — não vê nem guarda token.
+ *
+ * Em produção este caminho é servido através do rewrite do Vercel, por isso
+ * o cookie fica associado ao domínio do frontend (mesma origem da SPA).
  */
 app.get(
   '/auth/google/callback',
@@ -106,15 +114,22 @@ app.get(
           return;
         }
 
-        // `user` é GoogleProfile (ver src/types/express/index.d.ts).
-        res.status(200).json({
-          provider: user.provider,
-          id: user.id,
-          displayName: user.displayName,
-          name: user.name,
-          emails: user.emails,
-          photos: user.photos,
-        });
+        if (!user.localUserId) {
+          next(new Error('Google autenticado sem conta local associada.'));
+          return;
+        }
+
+        void authService
+          .startGoogleSession(
+            user.localUserId,
+            req.header('user-agent') ?? null,
+            auditContext(req)
+          )
+          .then((session) => {
+            setAuthSession(res, session.sessionToken);
+            res.redirect(303, `${env.APP_BASE_URL.replace(/\/+$/, '')}/login-success`);
+          })
+          .catch(next);
       }
     )(req, res, next);
   }
