@@ -17,6 +17,7 @@ import {
   passwordResetRepository,
 } from '../repositories/hostToken.repository';
 import { registrationVerificationRepository } from '../repositories/registrationVerification.repository';
+import { teamMemberRepository } from '../repositories/teamMember.repository';
 import { HostAuthSession, HostWithProfile } from '../types/host.types';
 import { isUniqueViolation } from '../utils/db.util';
 import {
@@ -111,6 +112,87 @@ function tokenExpiry(minutes: number): Date {
   return new Date(Date.now() + minutes * 60 * 1000);
 }
 
+function displayNameFromEmail(email: string): string {
+  const local = email.split('@')[0] ?? '';
+  const cleaned = local.replace(/[._-]+/g, ' ').trim();
+  return cleaned.length >= 2
+    ? cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+    : email;
+}
+
+/**
+ * Emite um token de registo já verificado. Usado apenas quando o contacto
+ * foi provado por outro meio (convite reclamado ou sessão de gestão).
+ */
+async function issueVerifiedRegistration(
+  email: string,
+  displayName: string,
+  reason: 'known_guest' | 'manager_session',
+  context?: AuditContext
+): Promise<RegistrationCodeResult> {
+  const verificationToken = generateToken();
+  const expiresAt = tokenExpiry(env.REGISTRATION_VERIFICATION_TTL_MINUTES);
+
+  await withTransaction(async (client) => {
+    await registrationVerificationRepository.consumePendingForEmail(email, client);
+    await registrationVerificationRepository.createVerified(
+      email,
+      hashToken(verificationToken),
+      expiresAt,
+      client
+    );
+  });
+
+  await auditService.record({
+    action: 'registration_code_requested',
+    ip: context?.ip ?? null,
+    requestId: context?.requestId ?? null,
+    metadata: { skipped_otp: true, reason },
+  });
+
+  return { status: 'guest', displayName, verificationToken, expiresAt };
+}
+
+/** Fluxo normal: OTP por email, sem atalhos. */
+async function issueOtpRegistration(
+  email: string,
+  context?: AuditContext
+): Promise<RegistrationCodeResult> {
+  const latest = await registrationVerificationRepository.findLatestActiveForEmail(email);
+  const resendAvailableAt = latest
+    ? new Date(latest.createdAt.getTime() + env.REGISTRATION_OTP_RESEND_SECONDS * 1000)
+    : new Date();
+
+  if (latest && resendAvailableAt.getTime() > Date.now()) {
+    throw new TooManyRequestsError(
+      'Aguarda antes de pedir um novo código.',
+      'otp_resend_too_soon'
+    );
+  }
+
+  const code = generateOtpCode();
+  const expiresAt = tokenExpiry(env.REGISTRATION_OTP_TTL_MINUTES);
+
+  await withTransaction(async (client) => {
+    await registrationVerificationRepository.consumePendingForEmail(email, client);
+    await registrationVerificationRepository.create(
+      email,
+      hashOtpCode(email, code),
+      expiresAt,
+      client
+    );
+    await enqueueRegistrationOtp(email, code, client);
+  });
+
+  await auditService.record({
+    action: 'registration_code_requested',
+    ip: context?.ip ?? null,
+    requestId: context?.requestId ?? null,
+  });
+
+  return { status: 'accepted', expiresAt, resendAvailableAt, code };
+}
+
 async function createAccountSession(
   hostId: string,
   userAgent: string | null,
@@ -160,66 +242,40 @@ export const authService = {
     const guestName = await invitationRepository.findLatestGuestNameByEmail(input.email);
 
     if (guestName) {
-      const verificationToken = generateToken();
-      const expiresAt = tokenExpiry(env.REGISTRATION_VERIFICATION_TTL_MINUTES);
-
-      await withTransaction(async (client) => {
-        await registrationVerificationRepository.consumePendingForEmail(input.email, client);
-        await registrationVerificationRepository.createVerified(
-          input.email,
-          hashToken(verificationToken),
-          expiresAt,
-          client
-        );
-      });
-
-      await auditService.record({
-        action: 'registration_code_requested',
-        ip: context?.ip ?? null,
-        requestId: context?.requestId ?? null,
-        metadata: { skipped_otp: true, reason: 'known_guest' },
-      });
-
-      return { status: 'guest', displayName: guestName, verificationToken, expiresAt };
+      return issueVerifiedRegistration(input.email, guestName, 'known_guest', context);
     }
 
-    const latest = await registrationVerificationRepository.findLatestActiveForEmail(
-      input.email
-    );
-    const resendAvailableAt = latest
-      ? new Date(
-          latest.createdAt.getTime() + env.REGISTRATION_OTP_RESEND_SECONDS * 1000
-        )
-      : new Date();
+    return issueOtpRegistration(input.email, context);
+  },
 
-    if (latest && resendAvailableAt.getTime() > Date.now()) {
-      throw new TooManyRequestsError(
-        'Aguarda antes de pedir um novo código.',
-        'otp_resend_too_soon'
-      );
+  /**
+   * Registo sem OTP para quem já provou o contacto ao entrar na gestão
+   * por link + código. Só o mesmo email do gestor dispensa OTP; um
+   * telefone validado não substitui a verificação de um email novo,
+   * porque a conta de anfitrião continua a exigir email.
+   */
+  async requestManagerRegistrationCode(
+    email: string,
+    contact: { email: string | null; phone: string | null; displayName: string | null },
+    context?: AuditContext
+  ): Promise<RegistrationCodeResult> {
+    if (await hostRepository.emailExists(email)) {
+      throw new ConflictError('Este email já está registado.', 'email_already_registered', {
+        email: ['Este email já está registado.'],
+      });
     }
 
-    const code = generateOtpCode();
-    const expiresAt = tokenExpiry(env.REGISTRATION_OTP_TTL_MINUTES);
+    const normalized = email.trim().toLowerCase();
+    const sameEmail =
+      contact.email !== null &&
+      contact.email.trim().toLowerCase() === normalized;
 
-    await withTransaction(async (client) => {
-      await registrationVerificationRepository.consumePendingForEmail(input.email, client);
-      await registrationVerificationRepository.create(
-        input.email,
-        hashOtpCode(input.email, code),
-        expiresAt,
-        client
-      );
-      await enqueueRegistrationOtp(input.email, code, client);
-    });
+    if (sameEmail) {
+      const displayName = contact.displayName?.trim() || displayNameFromEmail(email);
+      return issueVerifiedRegistration(email, displayName, 'manager_session', context);
+    }
 
-    await auditService.record({
-      action: 'registration_code_requested',
-      ip: context?.ip ?? null,
-      requestId: context?.requestId ?? null,
-    });
-
-    return { status: 'accepted', expiresAt, resendAvailableAt, code };
+    return issueOtpRegistration(email, context);
   },
 
   /**
@@ -376,6 +432,7 @@ export const authService = {
 
         await hostRepository.setEmailVerified(created.id, client);
         await eventRepository.claimByHostEmail(created.id, created.email, client);
+        await teamMemberRepository.linkAccountByEmail(created.id, created.email, client);
 
         const verified = await hostRepository.findById(created.id, client);
         if (!verified) throw new Error('Falha ao ler a conta criada.');

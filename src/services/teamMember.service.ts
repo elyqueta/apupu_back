@@ -7,6 +7,7 @@ import {
 } from '../errors';
 import { eventManagerRepository } from '../repositories/eventManager.repository';
 import { hostRepository } from '../repositories/host.repository';
+import { hostSessionRepository } from '../repositories/hostSession.repository';
 import { taskRepository } from '../repositories/task.repository';
 import { teamMemberRepository } from '../repositories/teamMember.repository';
 import {
@@ -23,6 +24,8 @@ import {
   UpdateMemberRoleResult,
 } from '../types/team.types';
 import { buildPaginationMeta, toPageParams } from '../utils/pagination.util';
+import { normalizeAngolanPhone } from '../utils/phone.util';
+import { eventManagerService } from './eventManager.service';
 import {
   assertCanManageTeam,
   assertHost,
@@ -52,6 +55,26 @@ const MEMBER_NOT_FOUND = 'Membro não encontrado.';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+interface MemberContact {
+  email: string | null;
+  phone: string | null;
+  displayName: string | null;
+}
+
+function contactKey(contact: MemberContact): string {
+  return contact.email ?? `phone:${contact.phone ?? ''}`;
+}
+
+function sameContact(
+  manager: { email: string | null; phone: string | null },
+  member: { email: string | null; phone: string | null }
+): boolean {
+  if (member.email && manager.email && normalizeEmail(manager.email) === normalizeEmail(member.email)) {
+    return true;
+  }
+  return Boolean(member.phone && manager.phone === member.phone);
 }
 
 /** Nome da conta autenticada usado nas notificações. */
@@ -84,13 +107,14 @@ export const teamMemberService = {
   },
 
   /**
-   * Adiciona até 50 emails por pedido.
+   * Adiciona até 50 pessoas por pedido (formato legado `emails` ainda
+   * aceite). Cada pessoa tem email e/ou telefone; quem só tem telefone
+   * fica `convite_telefone` e não recebe nenhuma notificação automática.
    *
-   * - normaliza (trim + minúsculas) e deduplica;
+   * - normaliza contactos e deduplica por email/telefone;
    * - não deixa a conta adicionar-se a si própria;
    * - emails com conta activa **e verificada** ficam `ativo` e recebem
-   *   notificação + email; os restantes ficam `convite_pendente` e
-   *   recebem o convite pela outbox, salvo bloqueio do remetente;
+   *   notificação + email; os restantes recebem o convite pela outbox;
    * - devolve `{ added, pending, skipped }` com o motivo por linha.
    */
   async add(
@@ -101,11 +125,41 @@ export const teamMemberService = {
     const access = await resolveTeamAccess(teamId, scope);
     assertCanManageTeam(access.role);
 
-    if (input.emails.length > 50) {
+    const contacts: MemberContact[] =
+      input.members?.map((member) => {
+        const email = member.email?.trim() ? normalizeEmail(member.email) : null;
+        const phone = member.phone?.trim() ? normalizeAngolanPhone(member.phone) : null;
+
+        if (member.phone?.trim() && !phone) {
+          throw new ValidationError('Verifique os campos indicados.', {
+            phone: ['Telefone inválido. Use o formato angolano.'],
+          });
+        }
+        if (!email && !phone) {
+          throw new ValidationError('Verifique os campos indicados.', {
+            email: ['Indique um email ou telefone.'],
+            phone: ['Indique um email ou telefone.'],
+          });
+        }
+
+        return {
+          email,
+          phone,
+          displayName: member.display_name?.trim() || null,
+        };
+      }) ??
+      input.emails?.map((email) => ({
+        email: normalizeEmail(email),
+        phone: null,
+        displayName: null,
+      })) ??
+      [];
+
+    if (contacts.length > 50) {
       throw new BadRequestError(
-        'Só pode adicionar até 50 emails por pedido.',
-        'too_many_emails',
-        { emails: ['Envie no máximo 50 emails por pedido.'] }
+        'Só pode adicionar até 50 pessoas por pedido.',
+        'too_many_members',
+        { members: ['Envie no máximo 50 pessoas por pedido.'] }
       );
     }
 
@@ -116,47 +170,50 @@ export const teamMemberService = {
     const pending: TeamMemberAddResult[] = [];
     const skipped: TeamMemberAddResult[] = [];
     const seen = new Set<string>();
-    const emails: string[] = [];
+    const skippedIndexes = new Set<number>();
 
-    for (const raw of input.emails) {
-      const email = normalizeEmail(raw);
+    contacts.forEach((contact, index) => {
+      const key = contactKey(contact);
 
-      if (seen.has(email)) {
+      if (seen.has(key)) {
+        skippedIndexes.add(index);
         skipped.push({
-          email,
+          email: contact.email,
+          phone: contact.phone,
           memberId: null,
-          status: 'convite_pendente',
+          status: contact.email ? 'convite_pendente' : 'convite_telefone',
           reason: 'duplicate_in_request',
         });
-        continue;
+        return;
       }
 
-      seen.add(email);
+      seen.add(key);
 
-      if (self && email === self) {
+      if (self && contact.email === self) {
+        skippedIndexes.add(index);
         skipped.push({
-          email,
+          email: contact.email,
+          phone: contact.phone,
           memberId: null,
           status: 'convite_pendente',
           reason: 'self',
         });
-        continue;
+        return;
       }
-
-      emails.push(email);
-    }
+    });
 
     await withTransaction(async (client) => {
-      for (const email of emails) {
-        const existing = await teamMemberRepository.findActiveByTeamAndEmail(
-          teamId,
-          email,
-          client
-        );
+      for (const [index, contact] of contacts.entries()) {
+        if (skippedIndexes.has(index)) continue;
+
+        const existing = contact.email
+          ? await teamMemberRepository.findActiveByTeamAndEmail(teamId, contact.email, client)
+          : await teamMemberRepository.findActiveByTeamAndPhone(teamId, contact.phone!, client);
 
         if (existing) {
           skipped.push({
-            email,
+            email: existing.email,
+            phone: existing.phone,
             memberId: existing.id,
             status: existing.status,
             reason: 'already_member',
@@ -167,9 +224,13 @@ export const teamMemberService = {
         // O remetente denunciado ("não conheço este convite") fica
         // bloqueado para aquele email. O motivo devolvido é genérico
         // para não revelar a denúncia a quem a recebeu.
-        if (await teamInviteRepository.isBlocked(scope.hostId, email, client)) {
+        if (
+          contact.email &&
+          (await teamInviteRepository.isBlocked(scope.hostId, contact.email, client))
+        ) {
           skipped.push({
-            email,
+            email: contact.email,
+            phone: contact.phone,
             memberId: null,
             status: 'convite_pendente',
             reason: 'invite_not_possible',
@@ -177,15 +238,15 @@ export const teamMemberService = {
           continue;
         }
 
-        const account = await hostRepository.findByEmail(email);
+        const account = contact.email ? await hostRepository.findByEmail(contact.email) : null;
         const activeAccount =
           account && account.status === 'active' && account.emailVerifiedAt ? account : null;
-        const status = activeAccount ? 'ativo' : 'convite_pendente';
-        const removed = await teamMemberRepository.findRemovedByTeamAndEmail(
-          teamId,
-          email,
-          client
-        );
+        const status = activeAccount ? 'ativo' : contact.email ? 'convite_pendente' : 'convite_telefone';
+        const origin = contact.email ? 'email' : 'telefone';
+        const displayName = contact.displayName ?? activeAccount?.profile.displayName ?? null;
+        const removed = contact.email
+          ? await teamMemberRepository.findRemovedByTeamAndEmail(teamId, contact.email, client)
+          : await teamMemberRepository.findRemovedByTeamAndPhone(teamId, contact.phone!, client);
 
         let member: TeamMemberWithStats | null;
 
@@ -194,7 +255,9 @@ export const teamMemberService = {
             removed.id,
             {
               hostId: activeAccount?.id ?? null,
-              displayName: activeAccount?.profile.displayName ?? null,
+              email: contact.email,
+              phone: contact.phone,
+              displayName,
               status,
               invitedByHostId: scope.hostId,
               joinedAt: activeAccount ? new Date() : null,
@@ -206,11 +269,12 @@ export const teamMemberService = {
             {
               teamId,
               hostId: activeAccount?.id ?? null,
-              email,
-              displayName: activeAccount?.profile.displayName ?? null,
+              email: contact.email,
+              phone: contact.phone,
+              displayName,
               role: 'membro',
               status,
-              origin: 'email',
+              origin,
               isHost: false,
               invitedByHostId: scope.hostId,
               joinedAt: activeAccount ? new Date() : null,
@@ -224,7 +288,8 @@ export const teamMemberService = {
         }
 
         const entry: TeamMemberAddResult = {
-          email,
+          email: member.email,
+          phone: member.phone,
           memberId: member.id,
           status: member.status,
         };
@@ -243,7 +308,7 @@ export const teamMemberService = {
           });
 
           added.push(entry);
-        } else {
+        } else if (member.email) {
           // Sem conta ou com email por verificar: fica pendente e recebe
           // apenas o convite por email. Nunca é ativado sem verificar.
           const invite = await createInviteForMember({
@@ -259,6 +324,10 @@ export const teamMemberService = {
           }
 
           pending.push(entry);
+        } else {
+          // Quem só tem telefone recebe o convite por WhatsApp, fora
+          // desta API. Não há envio automático nem notificação in-app.
+          pending.push(entry);
         }
       }
     });
@@ -267,9 +336,9 @@ export const teamMemberService = {
   },
 
   /**
-   * Promover ou despromover exige o anfitrião. Promover cria/reactiva o
-   * acesso ao evento (`event_managers`) na mesma transação; despromover
-   * altera apenas o papel na equipa, sem revogar o acesso ao evento.
+   * Promover ou despromover exige o anfitrião. Promover cria o acesso ao
+   * evento apenas se a equipa não tiver gestor ativo. Despromover revoga
+   * o link e as sessões desse gestor, fechando a lacuna da auditoria.
    */
   async updateRole(
     scope: EventAccessScope,
@@ -304,24 +373,34 @@ export const teamMemberService = {
     const actorEmail = await scopeEmail(scope);
 
     if (input.role === 'membro') {
-      const updated = await teamMemberRepository.updateRole(member.id, 'membro');
+      return withTransaction(async (client) => {
+        const updated = await teamMemberRepository.updateRole(member.id, 'membro', client);
 
-      if (!updated) {
-        throw new NotFoundError(MEMBER_NOT_FOUND, 'team_member_not_found');
-      }
+        if (!updated) {
+          throw new NotFoundError(MEMBER_NOT_FOUND, 'team_member_not_found');
+        }
 
-      // Decisão aprovada: despromover só mexe no papel de equipa. O
-      // acesso ao evento em `event_managers` não é revogado aqui.
-      await notifyRoleChanged({
-        eventId: access.team.eventId,
-        teamId: access.team.id,
-        member: updated,
-        teamName: access.team.name,
-        actorName: actor,
-        actorEmail,
+        const activeManager = await eventManagerRepository.findActiveByTeam(teamId, client);
+
+        if (activeManager && sameContact(activeManager, member)) {
+          const revoked = await eventManagerRepository.revoke(activeManager.id, client);
+          if (revoked) {
+            await hostSessionRepository.revokeAllForManager(activeManager.id, client);
+          }
+        }
+
+        await notifyRoleChanged({
+          eventId: access.team.eventId,
+          teamId: access.team.id,
+          member: updated,
+          teamName: access.team.name,
+          actorName: actor,
+          actorEmail,
+          client,
+        });
+
+        return { member: updated, eventManagerId: null };
       });
-
-      return { member: updated, eventManagerId: null };
     }
 
     return withTransaction(async (client) => {
@@ -331,10 +410,15 @@ export const teamMemberService = {
         throw new NotFoundError(MEMBER_NOT_FOUND, 'team_member_not_found');
       }
 
-      const manager = await eventManagerRepository.ensureActiveForEmail(
+      const accessGrant = await eventManagerService.ensureForMember(
+        scope.hostId,
         access.team.eventId,
-        member.email,
-        access.team.id,
+        teamId,
+        {
+          email: member.email,
+          phone: member.phone,
+          displayName: member.displayName,
+        },
         client
       );
 
@@ -348,7 +432,12 @@ export const teamMemberService = {
         client,
       });
 
-      return { member: updated, eventManagerId: manager.id };
+      return {
+        member: updated,
+        eventManagerId: accessGrant.manager.id,
+        accessCode: accessGrant.code,
+        accessLink: accessGrant.link,
+      };
     });
   },
 

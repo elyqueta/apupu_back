@@ -317,7 +317,26 @@ const coverUrlSchema = z
 
 const addEventManagerSchema = z
   .object({
-    email: z.email('Email inválido.').max(320),
+    team_name: z.string().trim().min(2).max(80),
+    display_name: z.string().trim().min(1).max(120).nullable().optional(),
+    email: z.email('Email inválido.').max(320).nullable().optional(),
+    phone: z.string().trim().min(9).max(30).nullable().optional(),
+    link_expires_at: z.coerce.date().nullable().optional(),
+  })
+  .strict()
+  .refine((value) => Boolean(value.email || value.phone), {
+    message: 'Indique um email ou telefone.',
+  });
+
+const updateManagerLinkSchema = z
+  .object({
+    link_expires_at: z.coerce.date(),
+  })
+  .strict();
+
+const regenerateManagerAccessSchema = z
+  .object({
+    team_name: z.string().trim().min(2).max(80).nullable().optional(),
   })
   .strict();
 
@@ -347,6 +366,8 @@ export {
   coverUrlSchema,
   addEventManagerSchema,
   eventManagerParamsSchema,
+  updateManagerLinkSchema,
+  regenerateManagerAccessSchema,
 };
 
 export type UpdateProfileBody = z.infer<typeof updateProfileSchema>;
@@ -367,3 +388,7 @@ export type NotificationsQuery = z.infer<typeof notificationsQuerySchema>;
 export type UpdateNotificationBody = z.infer<typeof updateNotificationSchema>;
 export type CoverUrlBody = z.infer<typeof coverUrlSchema>;
 export type AddEventManagerBody = z.infer<typeof addEventManagerSchema>;
+export type UpdateManagerLinkBody = z.infer<typeof updateManagerLinkSchema>;
+export type RegenerateManagerAccessBody = z.infer<
+  typeof regenerateManagerAccessSchema
+>;

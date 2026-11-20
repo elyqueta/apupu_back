@@ -9,26 +9,40 @@ import { eventRepository } from '../repositories/event.repository';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { hostSessionRepository } from '../repositories/hostSession.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
+import { teamRepository } from '../repositories/team.repository';
+import {
+  AddEventManagerBody,
+  RegenerateManagerAccessBody,
+  UpdateManagerLinkBody,
+} from '../schemas/host.schemas';
 import { EventRecord } from '../types/event.types';
 import { EventManager, HostEventManager } from '../types/eventManager.types';
+import { TeamWithStats } from '../types/team.types';
 import { Invitation } from '../types/invitation.types';
+import {
+  generateAccessCode,
+  formatAccessCode,
+  hashAccessCode,
+} from '../utils/accessCode.util';
 import { encryptToken } from '../utils/crypto.util';
+import { links } from '../utils/links.util';
+import { normalizeAngolanPhone } from '../utils/phone.util';
 import { generateToken, hashToken } from '../utils/token.util';
 import {
   ManageEmailStatus,
   generateManageToken,
 } from './manageLink.service';
+import { linkValidityService } from './linkValidity.service';
 import { enqueueOnboardingMessages } from './reminder.service';
+
+/** Estado do email de convite, incluindo o caso sem email (só telefone). */
+export type ManagerInviteStatus = ManageEmailStatus | 'not_sent';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/**
- * Nome provisório para o convite criado automaticamente a partir do
- * email do gestor. O gestor não tem nome no modelo, por isso usa-se a
- * parte local do email; o anfitrião pode corrigir depois na lista.
- */
+/** Nome provisório do convite automático criado para um gestor com email. */
 function guestNameFromEmail(email: string): string {
   const local = email.split('@')[0]?.trim() ?? '';
   const cleaned = local.replace(/[._-]+/g, ' ').trim();
@@ -47,18 +61,22 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
- * Enfileira o convite de gestor para envio em segundo plano.
+ * Enfileira o convite de gestor com o link e o código de acesso.
  *
- * O token é guardado cifrado na outbox e nunca é persistido em claro.
- * Uma falha de enfileiramento não desfaz a operação de negócio: o
- * gestor continua criado e o anfitrião pode reenviar.
+ * O link fica cifrado em `token_encrypted` e o código em `payload`,
+ * cifrado em repouso tal como o resto da linha. Uma falha de enfilei-
+ * ramento não desfaz a operação: o anfitrião vê o código no modal e
+ * pode reenviar.
  */
 async function deliverManagerInvite(
   event: EventRecord,
   manager: EventManager,
   token: string,
+  code: string | null,
   idempotencyKey: string
-): Promise<ManageEmailStatus> {
+): Promise<ManagerInviteStatus> {
+  if (!manager.email) return 'not_sent';
+
   try {
     await emailDeliveryRepository.enqueue({
       eventId: event.id,
@@ -70,6 +88,7 @@ async function deliverManagerInvite(
       scheduledFor: new Date(),
       idempotencyKey,
       tokenEncrypted: encryptToken(token),
+      payload: code ? { access_code: formatAccessCode(code) } : {},
     });
 
     return 'queued';
@@ -82,25 +101,14 @@ async function deliverManagerInvite(
   }
 }
 
-/**
- * Garante que o gestor também faz parte da lista de convidados.
- *
- * Um gestor pode não ter conta e só receber o link de gestão; ainda
- * assim deve aparecer como convidado do evento. O convite só é criado
- * quando ainda não existe um para o mesmo email, para não duplicar a
- * lista nem disparar emails repetidos. As mensagens seguem a outbox e
- * ficam canceladas enquanto o evento estiver em rascunho.
- */
+/** Garante que um gestor com email também aparece na lista de convidados. */
 async function ensureManagerIsGuest(
   event: EventRecord,
   email: string,
+  displayName: string | null,
   client: PoolClient
 ): Promise<Invitation | null> {
-  const existing = await invitationRepository.findByEventAndEmail(
-    event.id,
-    email,
-    client
-  );
+  const existing = await invitationRepository.findByEventAndEmail(event.id, email, client);
 
   if (existing) return null;
 
@@ -108,7 +116,7 @@ async function ensureManagerIsGuest(
   const invitation = await invitationRepository.create(
     {
       eventId: event.id,
-      guestName: guestNameFromEmail(email),
+      guestName: displayName ?? guestNameFromEmail(email),
       guestEmail: email,
       guestPhone: null,
       tableName: null,
@@ -135,27 +143,110 @@ async function ensureManagerIsGuest(
 
 export interface AddManagerResult {
   manager: EventManager;
-  status: ManageEmailStatus;
+  team: TeamWithStats;
+  link: string;
+  code: string;
+  status: ManagerInviteStatus;
 }
 
 export interface ResendManagerResult {
   manager: EventManager;
-  status: ManageEmailStatus;
+  link: string;
+  code: string;
+  status: ManagerInviteStatus;
+}
+
+export interface ManagerLinkResult {
+  manager: EventManager;
+}
+
+function normalizeContact(input: AddEventManagerBody): {
+  email: string | null;
+  phone: string | null;
+} {
+  const email = input.email?.trim() ? normalizeEmail(input.email) : null;
+  const phone = input.phone?.trim() ? normalizeAngolanPhone(input.phone) : null;
+
+  if (!email && !phone) {
+    throw new ValidationError('Verifique os campos indicados.', {
+      email: ['Indique um email ou telefone.'],
+      phone: ['Indique um email ou telefone.'],
+    });
+  }
+
+  if (input.phone?.trim() && !phone) {
+    throw new ValidationError('Verifique os campos indicados.', {
+      phone: ['Telefone inválido. Use o formato angolano.'],
+    });
+  }
+
+  return { email, phone };
 }
 
 /**
- * Gestores de evento.
- *
- * O anfitrião (proprietário) adiciona gestores por email. Um gestor
- * pode não ter conta: recebe um link próprio e usa a área de gestão
- * por link. Quando cria conta com o mesmo email verificado, o evento
- * passa também a aparecer no workspace.
- *
- * Todas as mutações são limitadas ao proprietário: o UUID do evento e
- * o id do gestor nunca são autorização por si só.
+ * Gestores de evento. Criar um gestor cria sempre a equipa dele na
+ * mesma transacção: não existe gestor sem equipa por nenhuma rota.
  */
 export const eventManagerService = {
-  /** Gestores activos de todos os eventos do anfitrião. */
+  /**
+   * Promove um membro de equipa a gestor. A equipa já existe, mas a
+   * regra de um gestor ativo por equipa continua a aplicar-se.
+   */
+  async ensureForMember(
+    hostId: string,
+    eventId: string,
+    teamId: string,
+    contact: { email: string | null; phone: string | null; displayName: string | null },
+    client: PoolClient
+  ): Promise<{ manager: EventManager; code: string; link: string }> {
+    const active = await eventManagerRepository.findActiveByTeam(teamId, client);
+
+    if (active) {
+      throw new ConflictError('A equipa já tem um gestor.', 'team_already_has_manager');
+    }
+
+    const event = await eventRepository.findByIdForHost(eventId, hostId);
+
+    if (!event) throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+
+    const material = generateManageToken();
+    const code = generateAccessCode();
+    const linkExpiresAt = await linkValidityService.resolve(event, null);
+
+    const manager = await eventManagerRepository.create(
+      {
+        eventId,
+        teamId,
+        email: contact.email,
+        phone: contact.phone,
+        displayName: contact.displayName,
+        tokenHash: material.hash,
+        tokenExpiresAt: linkExpiresAt,
+        accessCodeHash: hashAccessCode(code, randomUUID()),
+        linkExpiresAt,
+      },
+      client
+    );
+
+    await eventManagerRepository.updateAccessCodeHash(
+      manager.id,
+      hashAccessCode(code, manager.id),
+      client
+    );
+
+    if (contact.email) {
+      await deliverManagerInvite(
+        event,
+        manager,
+        material.token,
+        code,
+        `manager_invite:${eventId}:${manager.id}:promote:${randomUUID()}`
+      );
+    }
+
+    return { manager, code, link: links.manageEvent(material.token) };
+  },
+
   async listAll(hostId: string): Promise<HostEventManager[]> {
     return eventManagerRepository.listActiveByHost(hostId);
   },
@@ -170,73 +261,112 @@ export const eventManagerService = {
     return eventManagerRepository.listActiveByEvent(eventId);
   },
 
-  async add(hostId: string, eventId: string, emailInput: string): Promise<AddManagerResult> {
+  async add(
+    hostId: string,
+    eventId: string,
+    input: AddEventManagerBody
+  ): Promise<AddManagerResult> {
     const event = await eventRepository.findByIdForHost(eventId, hostId);
 
     if (!event) {
       throw new NotFoundError('Evento não encontrado.', 'event_not_found');
     }
 
-    const email = normalizeEmail(emailInput);
+    const { email, phone } = normalizeContact(input);
+    const displayName = input.display_name?.trim() || null;
 
-    if (email === event.hostEmail.trim().toLowerCase()) {
+    if (email && email === event.hostEmail.trim().toLowerCase()) {
       throw new ValidationError('Verifique os campos indicados.', {
         email: ['O anfitrião não pode ser adicionado como gestor.'],
       });
     }
 
     const material = generateManageToken();
+    const code = generateAccessCode();
+    const accessCodeHash = hashAccessCode(code, randomUUID());
+    const linkExpiresAt = await linkValidityService.resolve(event, input.link_expires_at);
 
     let manager: EventManager;
+    let team: TeamWithStats;
 
     try {
-      manager = await withTransaction(async (client) => {
-        const existing = await eventManagerRepository.findByEventAndEmailForUpdate(
-          eventId,
-          email,
+      const result = await withTransaction(async (client) => {
+        const existing = email
+          ? await eventManagerRepository.findByEventAndEmailForUpdate(eventId, email, client)
+          : null;
+
+        if (existing && !existing.revokedAt) {
+          throw new ConflictError(
+            'Este email já é gestor do evento.',
+            'manager_already_exists'
+          );
+        }
+
+        const savedTeam = await teamRepository.create(
+          {
+            eventId,
+            name: input.team_name.trim(),
+            category: 'outra',
+            description: null,
+            createdByHostId: event.hostId,
+          },
           client
         );
 
-        let saved: EventManager;
+        let savedManager: EventManager;
 
         if (existing) {
-          if (!existing.revokedAt) {
-            throw new ConflictError(
-              'Este email já é gestor do evento.',
-              'manager_already_exists'
-            );
-          }
-
           const reactivated = await eventManagerRepository.reactivate(
             existing.id,
             {
+              teamId: savedTeam.id,
+              email,
+              phone,
+              displayName,
               tokenHash: material.hash,
-              tokenExpiresAt: material.expiresAt,
+              tokenExpiresAt: linkExpiresAt,
+              accessCodeHash: hashAccessCode(code, existing.id),
+              linkExpiresAt,
             },
             client
           );
 
-          if (!reactivated) {
-            throw new Error('Falha ao reativar gestor do evento.');
-          }
-
-          saved = reactivated;
+          if (!reactivated) throw new Error('Falha ao reativar gestor do evento.');
+          savedManager = reactivated;
         } else {
-          saved = await eventManagerRepository.create(
+          // O hash do código depende do id; criamos primeiro com um hash
+          // temporário e corrigimos logo a seguir na mesma transacção.
+          savedManager = await eventManagerRepository.create(
             {
               eventId,
+              teamId: savedTeam.id,
               email,
+              phone,
+              displayName,
               tokenHash: material.hash,
-              tokenExpiresAt: material.expiresAt,
+              tokenExpiresAt: linkExpiresAt,
+              accessCodeHash,
+              linkExpiresAt,
             },
+            client
+          );
+
+          await eventManagerRepository.updateAccessCodeHash(
+            savedManager.id,
+            hashAccessCode(code, savedManager.id),
             client
           );
         }
 
-        await ensureManagerIsGuest(event, email, client);
+        if (email) {
+          await ensureManagerIsGuest(event, email, displayName, client);
+        }
 
-        return saved;
+        return { manager: savedManager, team: savedTeam };
       });
+
+      manager = result.manager;
+      team = result.team;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictError(
@@ -251,10 +381,102 @@ export const eventManagerService = {
       event,
       manager,
       material.token,
+      code,
       `manager_invite:${eventId}:${manager.id}:${randomUUID()}`
     );
 
-    return { manager, status };
+    return { manager, team, link: links.manageEvent(material.token), code, status };
+  },
+
+  async updateLink(
+    hostId: string,
+    eventId: string,
+    managerId: string,
+    input: UpdateManagerLinkBody
+  ): Promise<ManagerLinkResult> {
+    const event = await eventRepository.findByIdForHost(eventId, hostId);
+
+    if (!event) throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+
+    const expiresAt = await linkValidityService.resolve(event, input.link_expires_at);
+    const updated = await eventManagerRepository.updateLinkValidity(managerId, expiresAt);
+
+    if (!updated || updated.eventId !== eventId) {
+      throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
+    }
+
+    return { manager: updated };
+  },
+
+  /**
+   * Gera um código novo e roda o link. O código anterior deixa de ser
+   * aceite porque o token antigo também é invalidado.
+   */
+  async regenerateAccess(
+    hostId: string,
+    eventId: string,
+    managerId: string,
+    _input: RegenerateManagerAccessBody = {}
+  ): Promise<ResendManagerResult> {
+    const event = await eventRepository.findByIdForHost(eventId, hostId);
+
+    if (!event) throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+
+    const manager = await eventManagerRepository.findActiveById(managerId);
+
+    if (!manager || manager.eventId !== eventId) {
+      throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
+    }
+
+    const material = generateManageToken();
+    const code = generateAccessCode();
+    const linkExpiresAt = await linkValidityService.resolve(event, null);
+
+    const updated = await eventManagerRepository.rotateToken(managerId, {
+      tokenHash: material.hash,
+      tokenExpiresAt: linkExpiresAt,
+      accessCodeHash: hashAccessCode(code, managerId),
+      linkExpiresAt,
+      resetFailures: true,
+    });
+
+    if (!updated) throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
+
+    const status = await deliverManagerInvite(
+      event,
+      updated,
+      material.token,
+      code,
+      `manager_invite:${eventId}:${managerId}:regenerate:${randomUUID()}`
+    );
+
+    return { manager: updated, link: links.manageEvent(material.token), code, status };
+  },
+
+  async revokeLink(
+    hostId: string,
+    eventId: string,
+    managerId: string
+  ): Promise<ManagerLinkResult> {
+    const event = await eventRepository.findByIdForHost(eventId, hostId);
+
+    if (!event) throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+
+    const manager = await eventManagerRepository.findActiveById(managerId);
+
+    if (!manager || manager.eventId !== eventId) {
+      throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
+    }
+
+    const revoked = await withTransaction(async (client) => {
+      const changed = await eventManagerRepository.revokeLink(managerId, client);
+      if (changed) await hostSessionRepository.revokeAllForManager(managerId, client);
+      return changed;
+    });
+
+    if (!revoked) throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
+
+    return { manager: await eventManagerRepository.findById(managerId) ?? manager };
   },
 
   async remove(hostId: string, eventId: string, managerId: string): Promise<EventManager> {
@@ -272,11 +494,7 @@ export const eventManagerService = {
 
     const removed = await withTransaction(async (client) => {
       const revoked = await eventManagerRepository.revoke(managerId, client);
-
-      if (revoked) {
-        await hostSessionRepository.revokeAllForManager(managerId, client);
-      }
-
+      if (revoked) await hostSessionRepository.revokeAllForManager(managerId, client);
       return revoked;
     });
 
@@ -292,35 +510,6 @@ export const eventManagerService = {
     eventId: string,
     managerId: string
   ): Promise<ResendManagerResult> {
-    const event = await eventRepository.findByIdForHost(eventId, hostId);
-
-    if (!event) {
-      throw new NotFoundError('Evento não encontrado.', 'event_not_found');
-    }
-
-    const manager = await eventManagerRepository.findActiveById(managerId);
-
-    if (!manager || manager.eventId !== eventId) {
-      throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
-    }
-
-    const material = generateManageToken();
-    const updated = await eventManagerRepository.rotateToken(managerId, {
-      tokenHash: material.hash,
-      tokenExpiresAt: material.expiresAt,
-    });
-
-    if (!updated) {
-      throw new NotFoundError('Gestor não encontrado.', 'manager_not_found');
-    }
-
-    const status = await deliverManagerInvite(
-      event,
-      updated,
-      material.token,
-      `manager_invite:${eventId}:${managerId}:resend:${randomUUID()}`
-    );
-
-    return { manager: updated, status };
+    return this.regenerateAccess(hostId, eventId, managerId);
   },
 };

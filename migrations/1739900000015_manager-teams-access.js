@@ -146,6 +146,16 @@ exports.up = (pgm) => {
       ADD CONSTRAINT team_members_contact_check
         CHECK (email IS NOT NULL OR phone IS NOT NULL);
 
+    ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_status_check;
+    ALTER TABLE team_members
+      ADD CONSTRAINT team_members_status_check
+        CHECK (status IN ('ativo', 'convite_pendente', 'convite_telefone'));
+
+    ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_origin_check;
+    ALTER TABLE team_members
+      ADD CONSTRAINT team_members_origin_check
+        CHECK (origin IN ('convidado', 'email', 'telefone'));
+
     DROP INDEX IF EXISTS team_members_team_email_unique;
     CREATE UNIQUE INDEX team_members_team_email_unique
       ON team_members (team_id, email)
@@ -241,6 +251,21 @@ exports.down = (pgm) => {
     CREATE UNIQUE INDEX team_members_team_email_unique
       ON team_members (team_id, email)
       WHERE removed_at IS NULL;
+
+    UPDATE team_members
+       SET status = 'convite_pendente'
+     WHERE status = 'convite_telefone';
+    UPDATE team_members SET origin = 'email' WHERE origin = 'telefone';
+
+    ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_origin_check;
+    ALTER TABLE team_members
+      ADD CONSTRAINT team_members_origin_check
+        CHECK (origin IN ('convidado', 'email'));
+
+    ALTER TABLE team_members DROP CONSTRAINT IF EXISTS team_members_status_check;
+    ALTER TABLE team_members
+      ADD CONSTRAINT team_members_status_check
+        CHECK (status IN ('ativo', 'convite_pendente'));
 
     ALTER TABLE team_members
       DROP CONSTRAINT IF EXISTS team_members_contact_check,

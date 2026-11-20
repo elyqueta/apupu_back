@@ -22,10 +22,10 @@ export type TeamCategory = (typeof TEAM_CATEGORIES)[number];
 export const TEAM_MEMBER_ROLES = ['gestor', 'membro'] as const;
 export type TeamMemberRole = (typeof TEAM_MEMBER_ROLES)[number];
 
-export const TEAM_MEMBER_STATUSES = ['ativo', 'convite_pendente'] as const;
+export const TEAM_MEMBER_STATUSES = ['ativo', 'convite_pendente', 'convite_telefone'] as const;
 export type TeamMemberStatus = (typeof TEAM_MEMBER_STATUSES)[number];
 
-export const TEAM_MEMBER_ORIGINS = ['convidado', 'email'] as const;
+export const TEAM_MEMBER_ORIGINS = ['convidado', 'email', 'telefone'] as const;
 export type TeamMemberOrigin = (typeof TEAM_MEMBER_ORIGINS)[number];
 
 /**
@@ -123,7 +123,8 @@ export interface TeamMember {
   id: string;
   teamId: string;
   hostId: string | null;
-  email: string;
+  email: string | null;
+  phone: string | null;
   displayName: string | null;
   role: TeamMemberRole;
   status: TeamMemberStatus;
@@ -197,11 +198,15 @@ export interface TeamGuestCandidate {
 export interface UpdateMemberRoleResult {
   member: TeamMemberWithStats;
   eventManagerId: string | null;
+  /** Código/link apenas quando a promoção cria um novo acesso. */
+  accessCode?: string;
+  accessLink?: string;
 }
 
 /** Linha devolvida na adição de membros. */
 export interface TeamMemberAddResult {
-  email: string;
+  email: string | null;
+  phone?: string | null;
   memberId: string | null;
   status: TeamMemberStatus;
   reason?: string;

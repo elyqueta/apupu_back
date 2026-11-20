@@ -262,11 +262,14 @@ export const invitationRepository = {
    */
   async findLatestGuestNameByEmail(email: string): Promise<string | null> {
     const result = await query<{ guest_name: string }>(
-      `SELECT guest_name
-         FROM invitations
-        WHERE lower(guest_email) = lower($1)
-          AND claim_revoked_at IS NULL
-        ORDER BY created_at DESC, id DESC
+      `SELECT i.guest_name
+         FROM invitations i
+         JOIN events e ON e.id = i.event_id
+        WHERE lower(i.guest_email) = lower($1)
+          AND i.claimed_at IS NOT NULL
+          AND i.claim_revoked_at IS NULL
+          AND COALESCE(e.ends_at, e.starts_at) > now() - interval '30 days'
+        ORDER BY i.created_at DESC, i.id DESC
         LIMIT 1`,
       [email]
     );

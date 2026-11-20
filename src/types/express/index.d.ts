@@ -34,6 +34,12 @@ declare global {
       };
       /** Papel resolvido para o evento do pedido. */
       accessRole?: EventAccessRole;
+      /** Contacto já validado pela sessão de gestão (link + código). */
+      managerContact?: {
+        email: string | null;
+        phone: string | null;
+        displayName: string | null;
+      };
       hostAccount?: HostWithProfile;
       accountSession?: {
         sessionId: string;

@@ -5,9 +5,17 @@ import { EventStatus } from './event.types';
 export interface EventManager {
   id: string;
   eventId: string;
-  email: string;
+  teamId: string;
+  email: string | null;
+  phone: string | null;
+  displayName: string | null;
   tokenHash: string | null;
   tokenExpiresAt: Date | null;
+  accessCodeHash: string | null;
+  accessFailedCount: number;
+  accessLockedUntil: Date | null;
+  linkExpiresAt: Date | null;
+  linkRevokedAt: Date | null;
   revokedAt: Date | null;
   lastUsedAt: Date | null;
   createdAt: Date;

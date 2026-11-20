@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { activityController } from '../../controllers/activity.controller';
+import { authController } from '../../controllers/auth.controller';
 import { eventManagerController } from '../../controllers/eventManager.controller';
 import { guestInvitationController } from '../../controllers/guestInvitation.controller';
 import { hostEventController } from '../../controllers/hostEvent.controller';
@@ -14,6 +15,7 @@ import { teamInviteController } from '../../controllers/teamInvite.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
 import { hostAuth } from '../../middlewares/hostAuth';
+import { managerSessionAuth } from '../../middlewares/managerSessionAuth';
 import { writeLimiter } from '../../middlewares/rateLimiter';
 import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
 import {
@@ -23,6 +25,7 @@ import {
 import { uploadAvatar } from '../../middlewares/uploadAvatar';
 import { uploadProfileCover } from '../../middlewares/uploadProfileCover';
 import { validate } from '../../middlewares/validate';
+import { registerRequestCodeSchema } from '../../schemas/auth.schemas';
 import { createEventSchema, eventIdParamsSchema } from '../../schemas/event.schemas';
 import {
   addEventManagerSchema,
@@ -40,9 +43,11 @@ import {
   notificationIdParamsSchema,
   notificationsQuerySchema,
   paginatedQuerySchema,
+  regenerateManagerAccessSchema,
   reportExportQuerySchema,
   taskIdParamsSchema,
   tasksQuerySchema,
+  updateManagerLinkSchema,
   updateNotificationSchema,
   updateProfileSchema,
   updateTaskSchema,
@@ -70,6 +75,51 @@ import {
  * `X-CSRF-Token`. O `host_id` vem sempre da sessão.
  */
 const router = Router();
+
+/**
+ * @openapi
+ * /api/v1/host/manager/register/request-code:
+ *   post:
+ *     tags: [Conta]
+ *     summary: Prepara o registo de um gestor autenticado por link + código
+ *     description: >
+ *       Exige a sessão de gestão (cookie HttpOnly) e o CSRF derivado.
+ *       Quando o email pedido é o mesmo do gestor, o OTP é dispensado;
+ *       caso contrário segue o fluxo normal por email.
+ *     security:
+ *       - hostSession: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email }
+ *     responses:
+ *       200:
+ *         description: Contacto já verificado; token de registo devolvido.
+ *       202:
+ *         description: OTP enviado por email.
+ *       401:
+ *         description: Sem sessão de gestão válida.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       422:
+ *         description: Dados inválidos.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/manager/register/request-code',
+  writeLimiter,
+  asyncHandler(managerSessionAuth),
+  validate({ body: registerRequestCodeSchema }),
+  asyncHandler(authController.requestManagerRegistrationCode)
+);
 
 /**
  * @openapi
@@ -706,6 +756,38 @@ router.post(
   requireAuthCsrf,
   requireVerifiedEmail,
   asyncHandler(eventManagerController.resend)
+);
+
+router.patch(
+  '/events/:eventId/managers/:managerId/link',
+  validate({ params: eventManagerParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  requireVerifiedEmail,
+  validate({ body: updateManagerLinkSchema }),
+  asyncHandler(eventManagerController.updateLink)
+);
+
+router.post(
+  '/events/:eventId/managers/:managerId/access-code',
+  validate({ params: eventManagerParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  requireVerifiedEmail,
+  validate({ body: regenerateManagerAccessSchema }),
+  asyncHandler(eventManagerController.regenerateAccess)
+);
+
+router.post(
+  '/events/:eventId/managers/:managerId/revoke',
+  validate({ params: eventManagerParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  requireVerifiedEmail,
+  asyncHandler(eventManagerController.revokeLink)
 );
 
 /**

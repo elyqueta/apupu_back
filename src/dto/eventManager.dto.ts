@@ -10,7 +10,12 @@ import { EventManager, HostEventManager } from '../types/eventManager.types';
 export interface EventManagerDto {
   id: string;
   event_id: string;
-  email: string;
+  email: string | null;
+  phone: string | null;
+  display_name: string | null;
+  team_id: string;
+  link_expires_at: string | null;
+  link_revoked_at: string | null;
   has_account: boolean;
   last_used_at: string | null;
   created_at: string;
@@ -26,6 +31,11 @@ export function toEventManagerDto(manager: EventManager): EventManagerDto {
     id: manager.id,
     event_id: manager.eventId,
     email: manager.email,
+    phone: manager.phone,
+    display_name: manager.displayName,
+    team_id: manager.teamId,
+    link_expires_at: iso(manager.linkExpiresAt),
+    link_revoked_at: iso(manager.linkRevokedAt),
     has_account: manager.hasAccount,
     last_used_at: iso(manager.lastUsedAt),
     created_at: manager.createdAt.toISOString(),

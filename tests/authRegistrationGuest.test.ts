@@ -34,6 +34,10 @@ vi.mock('../src/repositories/hostToken.repository', () => ({
   passwordResetRepository: {},
 }));
 
+vi.mock('../src/repositories/teamMember.repository', () => ({
+  teamMemberRepository: { linkAccountByEmail: vi.fn() },
+}));
+
 vi.mock('../src/services/audit.service', () => ({
   auditService: { record: vi.fn() },
 }));
@@ -97,6 +101,53 @@ describe('registo com email inscrito por um anfitrião', () => {
     expect(enqueueRegistrationOtp).toHaveBeenCalledWith(
       'nova@exemplo.ao',
       result.code,
+      expect.anything()
+    );
+  });
+
+  it('dispensa o OTP para o mesmo email validado pela sessão de gestão', async () => {
+    const result = await authService.requestManagerRegistrationCode(
+      'gestor@exemplo.ao',
+      {
+        email: 'GESTOR@Exemplo.ao',
+        phone: null,
+        displayName: 'Gestor da equipa',
+      }
+    );
+
+    expect(result.status).toBe('guest');
+    if (result.status !== 'guest') throw new Error('Esperava o fluxo de gestor verificado.');
+
+    expect(result.displayName).toBe('Gestor da equipa');
+    expect(registrationVerificationRepository.createVerified).toHaveBeenCalledWith(
+      'gestor@exemplo.ao',
+      expect.any(String),
+      expect.any(Date),
+      expect.anything()
+    );
+    expect(enqueueRegistrationOtp).not.toHaveBeenCalled();
+  });
+
+  it('mantém o OTP quando o email é diferente do contacto do gestor', async () => {
+    vi.mocked(registrationVerificationRepository.findLatestActiveForEmail).mockResolvedValue(
+      null
+    );
+    vi.mocked(registrationVerificationRepository.create).mockResolvedValue({} as never);
+
+    const result = await authService.requestManagerRegistrationCode(
+      'novo@exemplo.ao',
+      {
+        email: null,
+        phone: '+244923456789',
+        displayName: 'Gestor por telefone',
+      }
+    );
+
+    expect(result.status).toBe('accepted');
+    expect(registrationVerificationRepository.createVerified).not.toHaveBeenCalled();
+    expect(enqueueRegistrationOtp).toHaveBeenCalledWith(
+      'novo@exemplo.ao',
+      expect.any(String),
       expect.anything()
     );
   });

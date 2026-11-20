@@ -528,13 +528,72 @@ describe.skipIf(!connectionString)('correções da Fase 2 (integração)', () =>
       });
       expect(demoted.member.role).toBe('membro');
 
-      // A despromoção não revoga o acesso ao evento (decisão aprovada).
+      // A despromoção revoga o link e o acesso ao evento, fechando a
+      // lacuna apontada na auditoria.
       const { rows } = await pool.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM event_managers
           WHERE event_id = $1 AND email = $2 AND revoked_at IS NULL`,
         [EVENT_1B, EMAIL_MEMBER_2]
       );
-      expect(rows[0]?.count).toBe('1');
+      expect(rows[0]?.count).toBe('0');
+    });
+
+    it('membro só com telefone não recebe email; promover cria acesso e despromover revoga', async () => {
+      const phoneTeam = await createTeam(EVENT_1B, 'Equipa Telefone');
+      const added = await teamMemberService.add(scopeOwner, phoneTeam, {
+        members: [{ phone: '923 456 789', display_name: 'Ana' }],
+      });
+
+      expect(added.pending).toEqual([
+        expect.objectContaining({
+          email: null,
+          phone: '+244923456789',
+          status: 'convite_telefone',
+        }),
+      ]);
+
+      const { rows: memberRows } = await pool.query<{ id: string; origin: string }>(
+        `SELECT id, origin FROM team_members
+          WHERE team_id = $1 AND phone = $2 AND removed_at IS NULL`,
+        [phoneTeam, '+244923456789']
+      );
+      expect(memberRows).toEqual([{ id: expect.any(String), origin: 'telefone' }]);
+
+      const { rows: deliveryRows } = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM email_deliveries
+          WHERE event_id = $1 AND recipient_email = $2`,
+        [EVENT_1B, '+244923456789']
+      );
+      expect(deliveryRows[0]?.count).toBe('0');
+
+      const promoted = await teamMemberService.updateRole(
+        scopeOwner,
+        phoneTeam,
+        memberRows[0]!.id,
+        { role: 'gestor' }
+      );
+      expect(promoted.member.role).toBe('gestor');
+      expect(promoted.eventManagerId).not.toBeNull();
+      expect(promoted.accessCode).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+      expect(promoted.accessLink).toContain('/gerir/');
+
+      const { rows: activeManagers } = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM event_managers
+          WHERE team_id = $1 AND revoked_at IS NULL`,
+        [phoneTeam]
+      );
+      expect(activeManagers[0]?.count).toBe('1');
+
+      await teamMemberService.updateRole(scopeOwner, phoneTeam, memberRows[0]!.id, {
+        role: 'membro',
+      });
+
+      const { rows: revokedManagers } = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM event_managers
+          WHERE team_id = $1 AND revoked_at IS NOT NULL`,
+        [phoneTeam]
+      );
+      expect(revokedManagers[0]?.count).toBe('1');
     });
 
     it('não deixa adicionar a própria conta, deduplica maiúsculas/minúsculas e limita a 50', async () => {
@@ -563,14 +622,14 @@ describe.skipIf(!connectionString)('correções da Fase 2 (integração)', () =>
       const many = Array.from({ length: 51 }, (_, index) => `bulk-${index}@exemplo.pt`);
 
       const { addTeamMembersSchema } = await import('../src/schemas/team.schemas');
-      expect(addTeamMembersSchema.safeParse({ emails: many }).success).toBe(true);
+      expect(addTeamMembersSchema.safeParse({ emails: many }).success).toBe(false);
 
       await expect(
         teamMemberService.add(scopeOwner, teamAlpha, { emails: many })
       ).rejects.toMatchObject({
         statusCode: 400,
-        code: 'too_many_emails',
-        message: 'Só pode adicionar até 50 emails por pedido.',
+        code: 'too_many_members',
+        message: 'Só pode adicionar até 50 pessoas por pedido.',
       });
     });
 

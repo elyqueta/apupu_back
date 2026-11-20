@@ -110,6 +110,7 @@ export const NOTIFICATION_KINDS = [
   'task_reassigned',
   'team_added',
   'role_changed',
+  'access_suspicious',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
