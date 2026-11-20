@@ -1,8 +1,13 @@
 import { ForbiddenError, NotFoundError } from '../errors';
 import { adminAuditRepository } from '../repositories/adminAudit.repository';
+import {
+  adminProfileRepository,
+  AdminProfileEvent,
+  AdminProfileTeam,
+} from '../repositories/adminProfile.repository';
 import { eventRepository } from '../repositories/event.repository';
 import { hostAuthSessionRepository } from '../repositories/hostAuthSession.repository';
-import { hostRepository, AdminUserListItem } from '../repositories/host.repository';
+import { hostRepository, AdminUserListItem, toAdminUserListItem } from '../repositories/host.repository';
 import { invitationRepository } from '../repositories/invitation.repository';
 import {
   AdminAuditQuery,
@@ -19,6 +24,12 @@ import {
   requestEventCancelOtp,
 } from './auth.service';
 import { eventService } from './event.service';
+
+/** Detalhe de conta devolvido ao modal de perfil do painel admin. */
+export interface AdminUserDetailDto extends AdminUserListItem {
+  events: AdminProfileEvent[];
+  teams: AdminProfileTeam[];
+}
 
 interface AdminActivityDto {
   id: string;
@@ -178,7 +189,7 @@ export const adminService = {
     return { items: result.items, pagination: buildPaginationMeta(result.total, page.page, page.pageSize) };
   },
 
-  async getUser(adminId: string, userId: string): Promise<AdminUserListItem> {
+  async getUser(adminId: string, userId: string): Promise<AdminUserDetailDto> {
     const host = await hostRepository.findById(userId);
     if (!host) throw new NotFoundError('Utilizador não encontrado.', 'user_not_found');
 
@@ -189,15 +200,12 @@ export const adminService = {
       targetId: userId,
     });
 
-    return {
-      id: host.id,
-      email: host.email,
-      status: host.status,
-      is_super_admin: host.isSuperAdmin,
-      email_verified_at: host.emailVerifiedAt?.toISOString() ?? null,
-      created_at: host.createdAt.toISOString(),
-      display_name: host.profile.displayName,
-    };
+    const [events, teams] = await Promise.all([
+      adminProfileRepository.eventsForUser(userId, 50),
+      adminProfileRepository.teamsForUser(userId, 50),
+    ]);
+
+    return { ...toAdminUserListItem(host), events, teams };
   },
 
   async suspendUser(

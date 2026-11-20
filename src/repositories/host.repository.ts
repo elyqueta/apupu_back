@@ -19,6 +19,14 @@ export interface AdminUserListItem {
   email_verified_at: string | null;
   created_at: string;
   display_name: string | null;
+  /** Dados de perfil usados pelos cards e pelo detalhe do painel admin. */
+  avatar_url: string | null;
+  cover_url: string | null;
+  phone: string | null;
+  birth_date: string | null;
+  locale: string;
+  timezone: string;
+  profile_complete: boolean;
 }
 
 interface HostRow {
@@ -79,6 +87,26 @@ function toHost(row: HostRow): HostWithProfile {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     profile,
+  };
+}
+
+/** Vista segura de uma conta para o painel admin. */
+export function toAdminUserListItem(host: HostWithProfile): AdminUserListItem {
+  return {
+    id: host.id,
+    email: host.email,
+    status: host.status,
+    is_super_admin: host.isSuperAdmin,
+    email_verified_at: host.emailVerifiedAt?.toISOString() ?? null,
+    created_at: host.createdAt.toISOString(),
+    display_name: host.profile.displayName,
+    avatar_url: host.profile.avatarUrl,
+    cover_url: host.profile.coverUrl,
+    phone: host.profile.phone,
+    birth_date: host.profile.birthDate,
+    locale: host.profile.locale,
+    timezone: host.profile.timezone,
+    profile_complete: Boolean(host.profile.birthDate),
   };
 }
 
@@ -345,18 +373,7 @@ export const hostRepository = {
     ]);
 
     return {
-      items: list.rows.map((row) => {
-        const host = toHost(row);
-        return {
-          id: host.id,
-          email: host.email,
-          status: host.status,
-          is_super_admin: host.isSuperAdmin,
-          email_verified_at: host.emailVerifiedAt?.toISOString() ?? null,
-          created_at: host.createdAt.toISOString(),
-          display_name: host.profile.displayName,
-        };
-      }),
+      items: list.rows.map((row) => toAdminUserListItem(toHost(row))),
       total: Number(count.rows[0]?.total ?? '0'),
     };
   },
