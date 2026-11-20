@@ -107,7 +107,7 @@ export const adminAuditRepository = {
 
     const [items, count] = await Promise.all([
       query<AdminAuditRow>(
-        `SELECT ${SELECT_COLUMNS} ${base} ORDER BY created_at DESC LIMIT ${
+        `SELECT ${SELECT_COLUMNS} ${base} ORDER BY created_at DESC LIMIT $${
           params.length + 1
         } OFFSET $${params.length + 2}`,
         [...params, filters.limit, filters.offset]
