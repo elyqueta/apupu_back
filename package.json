@@ -28,6 +28,7 @@
     "worker:start": "node dist/worker.js",
     "reminders:run": "tsx src/scripts/runReminders.ts",
     "retention:run": "tsx src/scripts/runRetention.ts",
+    "admin-report:run": "tsx src/scripts/runAdminReport.ts",
     "test": "vitest run",
     "test:teams": "bash scripts/test-teams.sh",
     "test:watch": "vitest",

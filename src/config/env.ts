@@ -125,6 +125,19 @@ const envSchema = z.object({
   ACCOUNT_RETENTION_MONTHS: z.coerce.number().int().positive().default(24),
   RETENTION_BATCH_SIZE: z.coerce.number().int().positive().max(10000).default(500),
 
+  /**
+   * Relatório global semanal do painel admin (Bloco 8).
+   *
+   * O PDF é guardado na base de dados e descarregado a partir do `/admin`.
+   * O dia e a hora usam sempre `Africa/Luanda`, independentemente do
+   * fuso do servidor. A retenção conta semanas, não ficheiros.
+   */
+  ADMIN_WEEKLY_REPORT_ENABLED: z.stringbool().default(true),
+  ADMIN_WEEKLY_REPORT_LOCAL_HOUR: z.coerce.number().int().min(0).max(23).default(9),
+  ADMIN_WEEKLY_REPORT_LOCAL_WEEKDAY: z.coerce.number().int().min(0).max(6).default(1),
+  ADMIN_WEEKLY_REPORT_RETENTION_WEEKS: z.coerce.number().int().positive().max(104).default(12),
+  ADMIN_WEEKLY_REPORT_IMAGE_TIMEOUT_MS: z.coerce.number().int().positive().max(30000).default(3000),
+
   /** Limites dedicados de registo/login/reposição de senha. */
   AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
