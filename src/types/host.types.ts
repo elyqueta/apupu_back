@@ -15,6 +15,10 @@ export interface HostProfile {
   locale: HostLocale;
   timezone: string;
   avatarUrl: string | null;
+  /** SHA-256 do último ficheiro de avatar enviado; evita uploads repetidos. */
+  avatarHash: string | null;
+  /** Identificador no Cloudinary, usado para remover o asset antigo. */
+  avatarPublicId: string | null;
   /** Imagem de capa do perfil, definida por URL ou upload. */
   coverUrl: string | null;
   /** SHA-256 do último ficheiro enviado; permite upload idempotente. */
@@ -70,6 +74,8 @@ export interface UpdateHostProfileInput {
   locale?: HostLocale;
   timezone?: string;
   avatarUrl?: string | null;
+  avatarHash?: string | null;
+  avatarPublicId?: string | null;
   coverUrl?: string | null;
   coverHash?: string | null;
   coverPublicId?: string | null;

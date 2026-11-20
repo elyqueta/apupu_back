@@ -266,6 +266,38 @@ router.post(
 
 /**
  * @openapi
+ * /api/v1/host/profile/avatar:
+ *   delete:
+ *     tags: [Perfil]
+ *     summary: Remove o avatar da conta
+ *     description: >
+ *       Operação idempotente. Quando o avatar veio do Cloudinary, o
+ *       asset é removido; falhas nessa remoção são registadas e não
+ *       impedem a resposta.
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Avatar removido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/HostEnvelope' }
+ */
+router.delete(
+  '/profile/avatar',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(profileController.removeAvatar)
+);
+
+/**
+ * @openapi
  * /api/v1/host/profile/cover:
  *   post:
  *     tags: [Perfil]

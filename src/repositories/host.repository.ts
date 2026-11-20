@@ -27,6 +27,8 @@ interface HostRow {
   locale: HostLocale;
   timezone: string;
   avatar_url: string | null;
+  avatar_hash: string | null;
+  avatar_public_id: string | null;
   cover_url: string | null;
   cover_hash: string | null;
   cover_public_id: string | null;
@@ -43,6 +45,8 @@ function toHost(row: HostRow): HostWithProfile {
     locale: row.locale,
     timezone: row.timezone,
     avatarUrl: row.avatar_url,
+    avatarHash: row.avatar_hash,
+    avatarPublicId: row.avatar_public_id,
     coverUrl: row.cover_url,
     coverHash: row.cover_hash,
     coverPublicId: row.cover_public_id,
@@ -69,7 +73,7 @@ const SELECT_COLUMNS = `
   h.id, h.email::text AS email, h.password_hash, h.email_verified_at, h.status,
   h.failed_login_attempts, h.locked_until, h.last_login_at, h.created_at, h.updated_at,
   p.display_name, p.phone, p.birth_date::text AS birth_date, p.locale, p.timezone,
-  p.avatar_url,
+  p.avatar_url, p.avatar_hash, p.avatar_public_id,
   p.cover_url, p.cover_hash, p.cover_public_id,
   p.created_at AS profile_created_at, p.updated_at AS profile_updated_at
 `;
@@ -244,6 +248,8 @@ export const hostRepository = {
       ['locale', 'locale'],
       ['timezone', 'timezone'],
       ['avatarUrl', 'avatar_url'],
+      ['avatarHash', 'avatar_hash'],
+      ['avatarPublicId', 'avatar_public_id'],
       ['coverUrl', 'cover_url'],
       ['coverHash', 'cover_hash'],
       ['coverPublicId', 'cover_public_id'],
