@@ -1359,4 +1359,79 @@ export const contoContigoSchemas = {
       created_at: { type: 'string', format: 'date-time' },
     },
   },
+
+  AdminUser: {
+    type: 'object',
+    description: 'Conta listada no painel admin (Bloco 8).',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      email: { type: 'string', format: 'email' },
+      display_name: { type: 'string', nullable: true },
+      avatar_url: { type: 'string', nullable: true },
+      cover_url: { type: 'string', nullable: true },
+      phone: { type: 'string', nullable: true },
+      birth_date: { type: 'string', nullable: true },
+      locale: { type: 'string' },
+      timezone: { type: 'string' },
+      profile_complete: { type: 'boolean' },
+      status: { type: 'string', enum: ['active', 'suspended', 'deleted'] },
+      is_super_admin: { type: 'boolean' },
+      email_verified_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  AdminUserDetail: {
+    type: 'object',
+    description: 'Perfil completo devolvido ao detalhe do painel admin (Bloco 8).',
+    allOf: [
+      { $ref: '#/components/schemas/AdminUser' },
+      {
+        type: 'object',
+        properties: {
+          events: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                title: { type: 'string' },
+                status: { type: 'string' },
+                starts_at: { type: 'string', format: 'date-time' },
+                created_at: { type: 'string', format: 'date-time' },
+                guest_count: { type: 'integer' },
+              },
+            },
+          },
+          teams: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                name: { type: 'string' },
+                member_count: { type: 'integer' },
+                event_title: { type: 'string', nullable: true },
+              },
+            },
+          },
+        },
+      },
+    ],
+  },
+
+  AdminWeeklyReport: {
+    type: 'object',
+    description: 'PDF semanal guardado para download no painel admin (Bloco 8).',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      week_start: { type: 'string', format: 'date' },
+      status: { type: 'string', enum: ['generating', 'ready'] },
+      filename: { type: 'string' },
+      size_bytes: { type: 'integer' },
+      host_count: { type: 'integer' },
+      generated_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time' },
+    },
+  },
 } as const;

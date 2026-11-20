@@ -1,4 +1,6 @@
+import { Readable } from 'node:stream';
 import { Request, Response } from 'express';
+import { adminReportService } from '../services/adminReport.service';
 import { adminService } from '../services/admin.service';
 import {
   AdminAuditQuery,
@@ -15,7 +17,18 @@ function adminId(req: Request): string {
   return req.hostAccount.id;
 }
 
-/** Controlador do painel de super admin (Bloco 6). */
+function sendPdf(
+  res: Response,
+  file: { filename: string; contentType: string; stream: Readable }
+): void {
+  res.setHeader('Content-Type', file.contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.status(200);
+  file.stream.pipe(res);
+}
+
+/** Controlador do painel de super admin (Blocos 6 a 8). */
 export const adminController = {
   overview: async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({ data: await adminService.overview(adminId(req)) });
@@ -101,6 +114,32 @@ export const adminController = {
   revokeSessions: async (req: Request, res: Response): Promise<void> => {
     const result = await adminService.revokeSessions(adminId(req), req.params.userId ?? '');
     res.status(200).json({ data: result });
+  },
+
+  userReport: async (req: Request, res: Response): Promise<void> => {
+    const file = await adminReportService.userReport(
+      adminId(req),
+      req.params.userId ?? ''
+    );
+    sendPdf(res, file);
+  },
+
+  allUsersReport: async (req: Request, res: Response): Promise<void> => {
+    sendPdf(res, await adminReportService.allUsersReport(adminId(req)));
+  },
+
+  listWeeklyReports: async (_req: Request, res: Response): Promise<void> => {
+    res.status(200).json({ data: await adminReportService.listWeeklyReports() });
+  },
+
+  downloadWeeklyReport: async (req: Request, res: Response): Promise<void> => {
+    const { report, content } = await adminReportService.getWeeklyReport(
+      req.params.reportId ?? ''
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${report.filename}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(200).send(content);
   },
 
   listAudit: async (req: Request, res: Response): Promise<void> => {

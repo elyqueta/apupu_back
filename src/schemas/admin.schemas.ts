@@ -83,6 +83,11 @@ export const adminSupportMessageIdParamsSchema = z.object({
   messageId: z.string().uuid('Identificador inválido.'),
 });
 
+/** Relatório semanal guardado no painel admin (Bloco 8). */
+export const adminWeeklyReportIdParamsSchema = z.object({
+  reportId: z.string().uuid('Identificador inválido.'),
+});
+
 export const adminNewsletterSubscriptionIdParamsSchema = z.object({
   subscriptionId: z.string().uuid('Identificador inválido.'),
 });

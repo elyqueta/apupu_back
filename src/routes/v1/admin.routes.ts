@@ -23,6 +23,7 @@ import {
   adminSupportQuerySchema,
   adminUserIdParamsSchema,
   adminUsersQuerySchema,
+  adminWeeklyReportIdParamsSchema,
 } from '../../schemas/admin.schemas';
 import { eventIdParamsSchema } from '../../schemas/event.schemas';
 
@@ -75,6 +76,43 @@ router.post(
   asyncHandler(adminController.cancelEvent)
 );
 
+/**
+ * @openapi
+ * /api/v1/admin/users:
+ *   get:
+ *     tags: [Admin — Utilizadores]
+ *     summary: Lista contas com avatar e capa (super admin)
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema: { type: string, maxLength: 150 }
+ *       - in: query
+ *         name: role
+ *         schema: { type: string, enum: [admin, host] }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [active, suspended, deleted] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, minimum: 1, default: 1 }
+ *       - in: query
+ *         name: page_size
+ *         schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Lista paginada; `data[].avatar_url` e `data[].cover_url` podem ser nulos.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data: { type: array, items: { $ref: '#/components/schemas/AdminUser' } }
+ *                 pagination: { $ref: '#/components/schemas/PaginationMeta' }
+ *       403: { description: Área reservada ao super admin, schema: { $ref: '#/components/schemas/Error' } }
+ *       429: { description: Demasiados pedidos, schema: { $ref: '#/components/schemas/Error' } }
+ */
 router.get(
   '/users',
   adminActionLimiter,
@@ -82,11 +120,136 @@ router.get(
   asyncHandler(adminController.listUsers)
 );
 
+/**
+ * @openapi
+ * /api/v1/admin/users/{userId}:
+ *   get:
+ *     tags: [Admin — Utilizadores]
+ *     summary: Detalhe de uma conta com perfil, eventos e equipas (super admin)
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Perfil completo, até 50 eventos e 50 equipas associadas.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data: { $ref: '#/components/schemas/AdminUserDetail' }
+ *       404: { description: Utilizador não encontrado, schema: { $ref: '#/components/schemas/Error' } }
+ */
 router.get(
   '/users/:userId',
   adminActionLimiter,
   validate({ params: adminUserIdParamsSchema }),
   asyncHandler(adminController.getUser)
+);
+
+/**
+ * @openapi
+ * /api/v1/admin/users/{userId}/report:
+ *   get:
+ *     tags: [Admin — Relatórios]
+ *     summary: PDF individual de um perfil (super admin)
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: PDF com cabeçalho `Content-Disposition: attachment`.
+ *         content:
+ *           application/pdf:
+ *             schema: { type: string, format: binary }
+ *       404: { description: Utilizador não encontrado, schema: { $ref: '#/components/schemas/Error' } }
+ */
+router.get(
+  '/users/:userId/report',
+  adminActionLimiter,
+  validate({ params: adminUserIdParamsSchema }),
+  asyncHandler(adminController.userReport)
+);
+
+/**
+ * @openapi
+ * /api/v1/admin/reports/all:
+ *   get:
+ *     tags: [Admin — Relatórios]
+ *     summary: PDF global de todos os perfis sob procura (super admin)
+ *     security:
+ *       - accountSession: []
+ *     responses:
+ *       200:
+ *         description: PDF com todos os perfis e contadores agregados.
+ *         content:
+ *           application/pdf:
+ *             schema: { type: string, format: binary }
+ */
+router.get(
+  '/reports/all',
+  adminActionLimiter,
+  asyncHandler(adminController.allUsersReport)
+);
+
+/**
+ * @openapi
+ * /api/v1/admin/reports/weekly:
+ *   get:
+ *     tags: [Admin — Relatórios]
+ *     summary: Lista dos relatórios semanais disponíveis para download
+ *     security:
+ *       - accountSession: []
+ *     responses:
+ *       200:
+ *         description: Até 12 semanas, mais recente primeiro.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data: { type: array, items: { $ref: '#/components/schemas/AdminWeeklyReport' } }
+ */
+router.get(
+  '/reports/weekly',
+  adminActionLimiter,
+  asyncHandler(adminController.listWeeklyReports)
+);
+
+/**
+ * @openapi
+ * /api/v1/admin/reports/weekly/{reportId}/download:
+ *   get:
+ *     tags: [Admin — Relatórios]
+ *     summary: Descarrega um relatório semanal em PDF
+ *     security:
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: reportId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: PDF guardado na base de dados.
+ *         content:
+ *           application/pdf:
+ *             schema: { type: string, format: binary }
+ *       404: { description: Relatório não encontrado, schema: { $ref: '#/components/schemas/Error' } }
+ */
+router.get(
+  '/reports/weekly/:reportId/download',
+  adminActionLimiter,
+  validate({ params: adminWeeklyReportIdParamsSchema }),
+  asyncHandler(adminController.downloadWeeklyReport)
 );
 
 router.post(
