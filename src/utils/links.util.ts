@@ -5,16 +5,40 @@ function trimBase(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
+
+/** `true` quando a URL aponta para a própria máquina. */
+function isLocalUrl(value: string): boolean {
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(value).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Base pública do frontend usada nos links enviados por email.
  *
- * `APP_BASE_URL` é a única fonte de verdade. Não há fallback para
- * `CORS_ORIGIN`: em produção o arranque falha se a variável estiver
- * ausente ou apontar para localhost, pelo que os links nunca são
- * construídos a partir de uma origem diferente da configurada.
+ * `APP_BASE_URL` é a fonte de verdade. Quando ela aponta para localhost
+ * (por exemplo, ao copiar o `.env` de desenvolvimento para o Render),
+ * usamos a primeira origem pública de `CORS_ORIGIN`. Assim os links
+ * continuam corretos em ambientes de teste com `NODE_ENV=development`,
+ * onde a guarda de produção não está ativa e a docs precisa de ficar
+ * acessível. Em produção o arranque falha se `APP_BASE_URL` for local,
+ * pelo que este fallback nunca altera um deploy corretamente
+ * configurado.
  */
 export function publicAppBaseUrl(): string {
-  return trimBase(env.APP_BASE_URL);
+  const configured = trimBase(env.APP_BASE_URL);
+  if (!isLocalUrl(configured)) {
+    return configured;
+  }
+
+  const publicOrigin = env.CORS_ORIGIN.split(',')
+    .map((origin) => origin.trim())
+    .find((origin) => origin.length > 0 && !isLocalUrl(origin));
+
+  return trimBase(publicOrigin ?? configured);
 }
 
 /**
