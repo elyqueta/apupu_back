@@ -1334,4 +1334,29 @@ export const contoContigoSchemas = {
       },
     },
   },
+
+  SupportMessage: {
+    type: 'object',
+    description: 'Mensagem de apoio enviada pelo formulário público (Bloco 7).',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      name: { type: 'string' },
+      email: { type: 'string', format: 'email' },
+      message: { type: 'string' },
+      status: { type: 'string', enum: ['open', 'resolved'] },
+      created_at: { type: 'string', format: 'date-time' },
+      resolved_at: { type: 'string', format: 'date-time', nullable: true },
+      resolved_by: { type: 'string', format: 'uuid', nullable: true },
+    },
+  },
+
+  NewsletterSubscription: {
+    type: 'object',
+    description: 'Subscrição de novidades (Bloco 7).',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      email: { type: 'string', format: 'email' },
+      created_at: { type: 'string', format: 'date-time' },
+    },
+  },
 } as const;

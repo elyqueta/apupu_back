@@ -8,6 +8,7 @@ import hostRoutes from './host.routes';
 import hostWorkspaceRoutes from './hostWorkspace.routes';
 import managePublicRoutes from './managePublic.routes';
 import publicRoutes from './public.routes';
+import publicFormsRoutes from './publicForms.routes';
 import teamInvitePublicRoutes from './teamInvitePublic.routes';
 import templatesRoutes from './templates.routes';
 
@@ -34,5 +35,6 @@ router.use('/host', hostWorkspaceRoutes);
 router.use('/public/invitations', publicRoutes);
 router.use('/public/manage', managePublicRoutes);
 router.use('/public/team-invites', teamInvitePublicRoutes);
+router.use('/public', publicFormsRoutes);
 
 export default router;
