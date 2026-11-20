@@ -18,6 +18,14 @@
 - Imagens só de `res.cloudinary.com` do cloud configurado, com timeout e
   limite de tamanho: `avatar_url`/`cover_url` são definidos pelo utilizador,
   pelo que aceitar URLs arbitrárias seria SSRF.
+- Atividade administrativa explícita: `admin_audit_log` guarda apenas
+  `admin_id`, pelo que `list()`/`recent()` fazem join com `hosts` e
+  `host_profiles` e devolvem `admin_email` e `admin_name`. Nenhum hash, token ou
+  conteúdo de mensagem entra no DTO.
+- Refresh do front local: em `NODE_ENV=development` o cookie `apupu_auth` usa
+  `Path=/`, para que o browser o envie ao pedir a página (`/painel`) e o SSR do
+  Angular consiga reautenticar. Produção e teste mantêm `Path=/api/v1`; o
+  cookie de CSRF mantém esse path em todos os ambientes.
 
 ## Ficheiros alterados
 
@@ -25,11 +33,12 @@
 |---|---|
 | Migração | `migrations/1739900000025_admin-weekly-reports.js` |
 | Configuração | `src/config/env.ts`, `package.json` (`admin-report:run`), `src/server.ts`, `src/worker.ts` |
-| DTOs/repositórios | `src/repositories/host.repository.ts`, `src/repositories/adminProfile.repository.ts`, `src/repositories/adminWeeklyReport.repository.ts` |
+| DTOs/repositórios | `src/repositories/host.repository.ts`, `src/repositories/adminProfile.repository.ts`, `src/repositories/adminWeeklyReport.repository.ts`, `src/repositories/adminAudit.repository.ts` |
 | Serviços | `src/services/admin.service.ts`, `src/services/adminReport.service.ts`, `src/services/adminReportScheduler.ts`, `src/services/pdf/adminProfileDocument.ts` |
+| Utilitários | `src/utils/cookie.util.ts` |
 | API | `src/controllers/admin.controller.ts`, `src/routes/v1/admin.routes.ts`, `src/schemas/admin.schemas.ts`, `src/config/swagger-schemas/contoContigo.schemas.ts`, `src/config/swagger-responses.ts` |
 | Script | `src/scripts/runAdminReport.ts` |
-| Testes | `tests/adminProfileReports.test.ts` |
+| Testes | `tests/adminProfileReports.test.ts`, `tests/adminAuditList.test.ts`, `tests/authCookiePath.test.ts` |
 | Docs | `docs/PLANO-BLOCO-8.md`, `docs/API-CONTRACT.md`, `docs/DECISIONS.md`, `docs/REPORT-BLOCO-8.md` |
 
 ## Dados devolvidos ao admin
@@ -81,7 +90,7 @@ SQL e o mapeamento sem depender de base de dados.
 - `npm run typecheck` ✅
 - `npm run lint` ✅
 - `npm run build` ✅
-- `npm test -- --run` ✅ — **36 ficheiros / 312 testes passados** (6 ficheiros
+- `npm test -- --run` ✅ — **37 ficheiros / 317 testes passados** (6 ficheiros
   e 89 testes ignorados pela configuração existente).
 - Migração 0025 aplicada na base de desenvolvimento, revertida (`down`) e
   aplicada de novo (`up`) com sucesso.
@@ -101,3 +110,7 @@ SQL e o mapeamento sem depender de base de dados.
 - `83318cb` — testes do detalhe, dos PDFs, do job e do OpenAPI
 - `db6f450` — plano, relatório e contrato
 - `0e50511` — correcção da descrição YAML com dois pontos
+- `d555f7a` — correcção de `team_members.removed_at` no detalhe do perfil
+- `8d670b3` — identidade do autor nas entradas de auditoria
+- `f414b99` — cookie de conta com `Path=/` apenas em desenvolvimento
+
