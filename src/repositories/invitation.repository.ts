@@ -398,7 +398,7 @@ export const invitationRepository = {
         values
       ),
       query<InvitationWithEventRow>(
-        `SELECT ${SELECT_COLUMNS},
+        `SELECT ${SELECT_COLUMNS.split(',').map((column) => `i.${column.trim()}`).join(', ')},
                 e.title AS event_title, e.starts_at AS event_starts_at, e.status AS event_status
            FROM invitations i JOIN events e ON e.id = i.event_id
           WHERE ${where}
