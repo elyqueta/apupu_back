@@ -25,9 +25,17 @@ export interface HostProfile {
   coverHash: string | null;
   /** Identificador no Cloudinary, usado para remover o asset antigo. */
   coverPublicId: string | null;
+  /**
+   * Visibilidade do perfil (coluna `hosts.profile_visibility`). Privado
+   * por defeito: um perfil privado nunca aparece em pesquisas.
+   */
+  visibility: ProfileVisibility;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export const PROFILE_VISIBILITIES = ['public', 'private'] as const;
+export type ProfileVisibility = (typeof PROFILE_VISIBILITIES)[number];
 
 export interface HostAccount {
   id: string;
@@ -95,6 +103,7 @@ export interface UpdateHostProfileInput {
   coverUrl?: string | null;
   coverHash?: string | null;
   coverPublicId?: string | null;
+  visibility?: ProfileVisibility;
 }
 
 export interface HostAuthSession {

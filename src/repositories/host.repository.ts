@@ -7,9 +7,11 @@ import {
   HostProfile,
   HostPublicContact,
   HostStatus,
+  ProfileVisibility,
   HostWithProfile,
   UpdateHostProfileInput,
 } from '../types/host.types';
+import { escapeLike } from '../utils/like.util';
 
 /** Item da lista global exposta ao painel admin (sem dados sensíveis). */
 export interface AdminUserListItem {
@@ -53,6 +55,7 @@ interface HostRow {
   cover_url: string | null;
   cover_hash: string | null;
   cover_public_id: string | null;
+  profile_visibility: ProfileVisibility;
   profile_created_at: Date;
   profile_updated_at: Date;
 }
@@ -71,6 +74,7 @@ function toHost(row: HostRow): HostWithProfile {
     coverUrl: row.cover_url,
     coverHash: row.cover_hash,
     coverPublicId: row.cover_public_id,
+    visibility: row.profile_visibility,
     createdAt: row.profile_created_at,
     updatedAt: row.profile_updated_at,
   };
@@ -117,7 +121,7 @@ const SELECT_COLUMNS = `
   h.failed_login_attempts, h.locked_until, h.last_login_at, h.created_at, h.updated_at,
   p.display_name, p.phone, p.birth_date::text AS birth_date, p.locale, p.timezone,
   p.avatar_url, p.avatar_hash, p.avatar_public_id,
-  p.cover_url, p.cover_hash, p.cover_public_id,
+  p.cover_url, p.cover_hash, p.cover_public_id, h.profile_visibility,
   p.created_at AS profile_created_at, p.updated_at AS profile_updated_at
 `;
 
@@ -374,6 +378,13 @@ export const hostRepository = {
       }
     }
 
+    if (changes.visibility !== undefined) {
+      await runner.query(
+        `UPDATE hosts SET profile_visibility = $1, updated_at = now() WHERE id = $2`,
+        [changes.visibility, hostId]
+      );
+    }
+
     if (set.length > 0) {
       values.push(hostId);
       await runner.query(
@@ -391,6 +402,31 @@ export const hostRepository = {
     const row = result.rows[0];
     if (!row) throw new Error('Perfil de anfitrião não encontrado.');
     return toHost(row).profile;
+  },
+
+  /**
+   * Pesquisa de perfis para utilizadores (amigos, comunidades).
+   *
+   * Só devolve contas activas, verificadas e com perfil **público**: um
+   * perfil privado nunca aparece em pesquisa nenhuma.
+   */
+  async searchPublicProfiles(
+    q: string,
+    limit: number,
+    excludeHostId?: string
+  ): Promise<HostWithProfile[]> {
+    const result = await query<HostRow>(
+      `SELECT ${SELECT_COLUMNS} ${FROM_HOSTS}
+        WHERE h.profile_visibility = 'public'
+          AND h.status = 'active'
+          AND h.email_verified_at IS NOT NULL
+          AND ($3::uuid IS NULL OR h.id <> $3)
+          AND p.display_name ILIKE $1 ESCAPE '\\'
+        ORDER BY p.display_name ASC, h.id ASC
+        LIMIT $2`,
+      [`%${escapeLike(q)}%`, limit, excludeHostId ?? null]
+    );
+    return result.rows.map(toHost);
   },
 
   /** Lista global de contas para o painel admin. */

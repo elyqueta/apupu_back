@@ -55,7 +55,7 @@ async function present(
   access: GuestAccess
 ): Promise<PublicPresentation> {
   const [emailHasAccount, contact] = await Promise.all([
-    hostRepository.emailExists(invitation.guestEmail),
+    invitation.guestEmail ? hostRepository.emailExists(invitation.guestEmail) : false,
     hostRepository.findPublicContactByEventId(event.id),
   ]);
   const hostContact = contact ?? {

@@ -156,7 +156,21 @@ export const rsvpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) =>
-    `rsvp:${req.ip ?? 'unknown'}:${req.params.token ?? 'unknown'}`,
+    `rsvp:${req.ip ?? 'unknown'}:${req.params.token ?? req.params.slug ?? 'unknown'}`,
+  handler: limitHandler,
+});
+
+/**
+ * Limite por evento do link aberto (Bloco 10): independente do IP, trava
+ * o volume total de confirmações num mesmo evento público. Usa as mesmas
+ * variáveis dos endpoints públicos — nenhuma variável nova.
+ */
+export const publicEventRsvpEventLimiter = rateLimit({
+  windowMs: env.PUBLIC_RATE_LIMIT_WINDOW_MS,
+  limit: env.PUBLIC_RATE_LIMIT_MAX * 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `public-event-rsvp:${req.params.slug ?? 'unknown'}`,
   handler: limitHandler,
 });
 

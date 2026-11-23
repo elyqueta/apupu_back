@@ -95,7 +95,7 @@ function guestTableRows(guests: Invitation[]): TableCell[][] {
   return guests.map((guest) => [
     guest.guestName,
     formatAngolaPhone(guest.guestPhone) || '—',
-    guest.guestEmail,
+    guest.guestEmail ?? '—',
     { text: rsvpStatusLabel(guest.rsvpStatus), tone: statusTone(guest.rsvpStatus) },
     guest.tableName ?? '—',
     guest.rsvpRespondedAt ? formatDisplayDateTime(guest.rsvpRespondedAt) : '—',
@@ -115,7 +115,7 @@ function attendanceColumns(): TableColumn[] {
 function attendanceRows(guests: Invitation[]): TableCell[][] {
   return guests.map((guest) => [
     guest.guestName,
-    guest.guestEmail,
+    guest.guestEmail ?? '—',
     formatAngolaPhone(guest.guestPhone) || '—',
     guest.tableName ?? '—',
     guest.rsvpRespondedAt ? formatDisplayDateTime(guest.rsvpRespondedAt) : '—',
@@ -284,7 +284,7 @@ export function renderTicketPdf(
     const detailsY = drawSectionTitle(ctx, afterHighlight, 'Convidado');
     const afterDetails = drawTable(ctx, detailsY, detailColumns(), [
       ['Nome', invitation.guestName],
-      ['E-mail', invitation.guestEmail],
+      ['E-mail', invitation.guestEmail ?? '—'],
       ['Telemóvel', formatAngolaPhone(invitation.guestPhone) || '—'],
       ['Mesa', invitation.tableName ?? '—'],
       [

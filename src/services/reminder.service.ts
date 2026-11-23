@@ -118,7 +118,7 @@ export async function rescheduleRemindersForEvent(
  */
 export async function enqueueInvitationRemoved(
   event: Event,
-  recipientEmail: string,
+  recipientEmail: string | null,
   client?: PoolClient
 ): Promise<void> {
   await emailDeliveryRepository.enqueue(

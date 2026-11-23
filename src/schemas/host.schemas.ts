@@ -7,7 +7,7 @@ import {
 } from '../utils/pagination.util';
 import { ageInYears, isValidCalendarDate, isValidTimeZone } from '../utils/date.util';
 import { EVENT_STATUSES } from '../types/event.types';
-import { HOST_LOCALES, NOTIFICATION_KINDS } from '../types/host.types';
+import { HOST_LOCALES, NOTIFICATION_KINDS, PROFILE_VISIBILITIES } from '../types/host.types';
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -55,6 +55,7 @@ export const updateProfileSchema = z
       .optional(),
     avatar_url: z.url('URL de avatar inválida.').max(2048).nullable().optional(),
     cover_url: z.url('URL de capa inválida.').max(2048).nullable().optional(),
+    profile_visibility: z.enum(PROFILE_VISIBILITIES).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {

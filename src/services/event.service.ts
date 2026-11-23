@@ -277,7 +277,7 @@ export const eventService = {
       event: created.event,
       manageEmailStatus,
       deliveries: created.invitations.map((invitation) => ({
-        email: invitation.guestEmail,
+        email: invitation.guestEmail ?? '',
         status: 'queued' as const,
       })),
     };

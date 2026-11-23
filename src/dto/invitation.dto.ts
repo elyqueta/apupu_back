@@ -16,8 +16,16 @@ export interface InvitationDto {
   id: string;
   event_id: string;
   guest_name: string;
-  guest_email: string;
+  /** `null` em confirmações pelo link aberto feitas só com telefone. */
+  guest_email: string | null;
   guest_phone: string | null;
+  /** `personal` (convite individual) ou `public_link` (link aberto do evento). */
+  source: 'personal' | 'public_link';
+  /** Idade indicada na confirmação pelo link aberto (só organizadores). */
+  guest_age: number | null;
+  /** Selo "Idade alterada": a data de nascimento mudou e passou a cumprir os limites. */
+  age_flag: boolean;
+  age_flag_reason: 'birth_date_changed' | null;
   table_name: string | null;
   /** Mensagem opcional deixada ao responder (texto simples, até 500 caracteres). */
   guest_message: string | null;
@@ -90,6 +98,10 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     guest_name: invitation.guestName,
     guest_email: invitation.guestEmail,
     guest_phone: invitation.guestPhone,
+    source: invitation.source,
+    guest_age: invitation.guestAge,
+    age_flag: invitation.ageFlag,
+    age_flag_reason: invitation.ageFlagReason,
     table_name: invitation.tableName,
     guest_message: invitation.guestMessage,
     message_answer: invitation.messageAnswer,
@@ -213,7 +225,7 @@ export interface PublicInvitationDto {
   event: PublicEventDto;
   guest: {
     name: string;
-    email: string;
+    email: string | null;
     /** `true` quando o email do convite já tem conta registada. */
     email_has_account: boolean;
     rsvp_status: string;

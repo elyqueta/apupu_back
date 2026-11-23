@@ -581,6 +581,7 @@ function invitationMatchesAccess(
 ): boolean {
   if (access.kind === 'account') {
     return (
+      invitation.guestEmail !== null &&
       invitation.guestEmail.trim().toLowerCase() === access.email.trim().toLowerCase()
     );
   }

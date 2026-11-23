@@ -170,7 +170,7 @@ function guestRow(guest: Invitation, eventTitle: string): string[] {
   return [
     guest.guestName,
     formatAngolaPhone(guest.guestPhone),
-    guest.guestEmail,
+    guest.guestEmail ?? '',
     rsvpStatusLabel(guest.rsvpStatus),
     guest.tableName ?? '',
     formatExportDateTime(guest.rsvpRespondedAt),
@@ -182,7 +182,7 @@ function guestRow(guest: Invitation, eventTitle: string): string[] {
 function attendanceRow(guest: Invitation, eventTitle: string): string[] {
   return [
     guest.guestName,
-    guest.guestEmail,
+    guest.guestEmail ?? '',
     formatAngolaPhone(guest.guestPhone),
     guest.tableName ?? '',
     formatExportDateTime(guest.rsvpRespondedAt),

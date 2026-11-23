@@ -57,3 +57,63 @@ export const invitationLinkSchema = z
 
 export type InvitationLinkBody = z.infer<typeof invitationLinkSchema>;
 export type RsvpBody = z.infer<typeof rsvpSchema>;
+
+/* ───────────────────── Link aberto do evento (Bloco 10) ───────────────────── */
+
+export const publicEventSlugParamsSchema = z.object({
+  slug: z
+    .string()
+    .min(10, 'Link inválido.')
+    .max(64, 'Link inválido.')
+    .regex(/^[A-Za-z0-9_-]+$/, 'Link inválido.'),
+});
+
+const optionalContact = (max: number) =>
+  z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().max(max).optional()
+  );
+
+/**
+ * Confirmação pelo link aberto. Com conta autenticada (e CSRF válido) o
+ * nome, o contacto e a idade vêm da conta e os campos do corpo são
+ * ignorados. Sem conta: nome 2–120 e pelo menos um contacto.
+ *
+ * `website` é um campo honeypot invisível: tem de chegar vazio.
+ */
+export const publicEventRsvpSchema = z
+  .object({
+    name: optionalContact(120),
+    email: z.preprocess(
+      (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+      z
+        .email('Email inválido.')
+        .max(254)
+        .transform((value) => value.toLowerCase())
+        .optional()
+    ),
+    phone: optionalContact(30),
+    age: z.preprocess(
+      (value) => (value === '' || value === null ? undefined : value),
+      z.coerce
+        .number({ error: 'Idade inválida.' })
+        .int('Idade inválida.')
+        .min(0, 'Idade inválida.')
+        .max(120, 'Idade inválida.')
+        .optional()
+    ),
+    status: z.enum(['accepted', 'declined'], {
+      error: 'O estado deve ser "accepted" ou "declined".',
+    }),
+    message: z
+      .union([z.string(), z.null()])
+      .optional()
+      .transform((value) => sanitizeGuestMessage(value))
+      .refine((value) => value === null || value.length <= MAX_GUEST_MESSAGE_LENGTH, {
+        message: `A mensagem deve ter no máximo ${MAX_GUEST_MESSAGE_LENGTH} caracteres.`,
+      }),
+    website: z.string().max(200).optional(),
+  })
+  .strict();
+
+export type PublicEventRsvpBody = z.infer<typeof publicEventRsvpSchema>;
