@@ -21,6 +21,7 @@ export const AUDIT_ACTIONS = [
   'guest_updated',
   'guest_deleted',
   'guest_invitation_resent',
+  'guest_whatsapp_shared',
   'guest_access_revoked',
   'manage_link_rotated',
   'manage_link_resent',

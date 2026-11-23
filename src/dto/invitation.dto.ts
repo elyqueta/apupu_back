@@ -31,6 +31,12 @@ export interface InvitationDto {
   send_count: number;
   last_sent_at: string | null;
   /**
+   * Última vez que o anfitrião abriu o WhatsApp com o link deste convite.
+   * Não significa que a mensagem tenha sido enviada ou lida.
+   */
+  whatsapp_shared_at: string | null;
+  whatsapp_share_count: number;
+  /**
    * Primeira vez que o convidado abriu o link do convite.
    *
    * `null` enquanto o link nunca foi aberto. A partir daqui o anfitrião
@@ -94,6 +100,8 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     send_status: invitation.sendStatus,
     send_count: invitation.sendCount,
     last_sent_at: iso(invitation.lastSentAt),
+    whatsapp_shared_at: iso(invitation.whatsappSharedAt),
+    whatsapp_share_count: invitation.whatsappShareCount,
     opened_at: iso(invitation.claimedAt),
     invitation_url: invitationUrl(invitation),
     invitation_url_expires_at: iso(invitation.linkExpiresAt),

@@ -300,6 +300,32 @@ export const invitationService = {
     });
   },
 
+  /**
+   * Regista que o anfitrião abriu o WhatsApp com o link individual deste
+   * convite. Não há limite de usos: reencaminhar de novo é permitido e
+   * actualiza a contagem. Não afirma que a mensagem foi enviada ou lida.
+   */
+  async markWhatsappShared(eventId: string, invitationId: string): Promise<Invitation> {
+    return withTransaction(async (client) => {
+      const invitation = await findOwnedInvitation(eventId, invitationId, client);
+
+      if (invitation.claimRevokedAt || !invitation.tokenEncrypted) {
+        throw new ConflictError(
+          'O convite não tem um link partilhável.',
+          'invitation_not_shareable'
+        );
+      }
+
+      const updated = await invitationRepository.markWhatsappShared(invitation.id, client);
+
+      if (!updated) {
+        throw new NotFoundError('Convidado não encontrado.', 'invitation_not_found');
+      }
+
+      return updated;
+    });
+  },
+
   async revoke(eventId: string, invitationId: string): Promise<Invitation> {
     return withTransaction(async (client) => {
       const invitation = await findOwnedInvitation(eventId, invitationId, client);

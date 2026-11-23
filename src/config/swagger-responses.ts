@@ -218,6 +218,11 @@ export const errorResponses = {
     'invitation_not_resendable',
     'Este convite não pode ser reenviado.'
   ),
+  InvitationNotShareable: errorResponse(
+    'O convite está revogado ou não tem um link partilhável.',
+    'invitation_not_shareable',
+    'Este convite não pode ser partilhado.'
+  ),
   EmailAlreadyRegistered: errorResponse(
     'O email já tem uma conta.',
     'email_already_registered',
@@ -438,6 +443,13 @@ export const operationErrorResponses: Record<
     403: 'CsrfInvalid',
     404: 'InvitationNotFound',
     409: 'InvitationNotResendable',
+    429: 'RateLimited',
+  },
+  'post /api/v1/host/events/{eventId}/invitations/{invitationId}/whatsapp-shared': {
+    401: 'HostSessionInvalid',
+    403: 'CsrfInvalid',
+    404: 'InvitationNotFound',
+    409: 'InvitationNotShareable',
     429: 'RateLimited',
   },
   'post /api/v1/host/events/{eventId}/invitations/{invitationId}/revoke': {

@@ -35,6 +35,8 @@ interface InvitationRow {
   send_status: SendStatus;
   send_count: number;
   last_sent_at: Date | null;
+  whatsapp_shared_at: Date | null;
+  whatsapp_share_count: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -63,6 +65,8 @@ function toInvitation(row: InvitationRow): Invitation {
     sendStatus: row.send_status,
     sendCount: row.send_count,
     lastSentAt: row.last_sent_at,
+    whatsappSharedAt: row.whatsapp_shared_at,
+    whatsappShareCount: row.whatsapp_share_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -73,6 +77,7 @@ const SELECT_COLUMNS = `
   message_answer, message_answered_at, message_read_at,
   link_expires_at, token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
   rsvp_status, rsvp_responded_at, rsvp_version,
+  whatsapp_shared_at, whatsapp_share_count,
   send_status, send_count, last_sent_at, created_at, updated_at
 `;
 
@@ -864,6 +869,29 @@ export const invitationRepository = {
         WHERE id = $1
         RETURNING ${SELECT_COLUMNS}`,
       [id, message]
+    );
+
+    const row = result.rows[0];
+    return row ? toInvitation(row) : null;
+  },
+
+  /**
+   * Regista a partilha iniciada pelo anfitrião. O incremento é atómico para
+   * que duas aberturas simultâneas não percam uma contagem.
+   */
+  async markWhatsappShared(
+    id: string,
+    client?: PoolClient
+  ): Promise<Invitation | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `UPDATE invitations
+          SET whatsapp_shared_at = now(),
+              whatsapp_share_count = whatsapp_share_count + 1,
+              updated_at = now()
+        WHERE id = $1
+        RETURNING ${SELECT_COLUMNS}`,
+      [id]
     );
 
     const row = result.rows[0];

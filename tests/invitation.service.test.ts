@@ -15,6 +15,7 @@ vi.mock('../src/repositories/invitation.repository', () => ({
     countByEvent: vi.fn(),
     respond: vi.fn(),
     setGuestMessage: vi.fn(),
+    markWhatsappShared: vi.fn(),
   },
 }));
 
@@ -79,6 +80,8 @@ function makeInvitation(overrides: Partial<Invitation> = {}): Invitation {
     sendStatus: 'sent',
     sendCount: 1,
     lastSentAt: null,
+    whatsappSharedAt: null,
+    whatsappShareCount: 0,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
     ...overrides,
@@ -328,5 +331,53 @@ describe('invitationService.respond', () => {
       'Mensagem anterior',
       expect.anything()
     );
+  });
+});
+
+describe('invitationService.markWhatsappShared', () => {
+  const sharedAt = new Date('2026-11-23T12:00:00Z');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('incrementa a contagem e devolve o convite actualizado', async () => {
+    const updated = makeInvitation({
+      whatsappSharedAt: sharedAt,
+      whatsappShareCount: 2,
+    });
+    vi.mocked(invitationRepository.findById).mockResolvedValue(makeInvitation());
+    vi.mocked(invitationRepository.markWhatsappShared).mockResolvedValue(updated);
+
+    const result = await invitationService.markWhatsappShared(eventId, invitationId);
+
+    expect(invitationRepository.markWhatsappShared).toHaveBeenCalledWith(
+      invitationId,
+      expect.anything()
+    );
+    expect(result.whatsappSharedAt).toEqual(sharedAt);
+    expect(result.whatsappShareCount).toBe(2);
+  });
+
+  it('não regista partilha de um convite revogado', async () => {
+    vi.mocked(invitationRepository.findById).mockResolvedValue(
+      makeInvitation({ claimRevokedAt: sharedAt })
+    );
+
+    await expect(invitationService.markWhatsappShared(eventId, invitationId)).rejects.toMatchObject({
+      code: 'invitation_not_shareable',
+    });
+    expect(invitationRepository.markWhatsappShared).not.toHaveBeenCalled();
+  });
+
+  it('não regista partilha de um convite de outro evento', async () => {
+    vi.mocked(invitationRepository.findById).mockResolvedValue(
+      makeInvitation({ eventId: '00000000-0000-4000-8000-000000000099' })
+    );
+
+    await expect(invitationService.markWhatsappShared(eventId, invitationId)).rejects.toMatchObject({
+      code: 'invitation_not_found',
+    });
+    expect(invitationRepository.markWhatsappShared).not.toHaveBeenCalled();
   });
 });

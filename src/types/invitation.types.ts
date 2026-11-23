@@ -34,6 +34,13 @@ export interface Invitation {
   sendStatus: SendStatus;
   sendCount: number;
   lastSentAt: Date | null;
+  /**
+   * Última vez que o anfitrião iniciou a partilha do link no WhatsApp.
+   * Não indica que a mensagem foi enviada ou lida pelo convidado.
+   */
+  whatsappSharedAt: Date | null;
+  /** Número de vezes que o anfitrião iniciou a partilha do link no WhatsApp. */
+  whatsappShareCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
