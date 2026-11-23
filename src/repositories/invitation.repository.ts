@@ -285,6 +285,7 @@ export const invitationRepository = {
          FROM invitations i
          JOIN events e ON e.id = i.event_id
         WHERE lower(i.guest_email) = lower($1)
+          AND e.deleted_at IS NULL
           AND i.claimed_at IS NOT NULL
           AND i.claim_revoked_at IS NULL
           AND COALESCE(e.ends_at, e.starts_at) > now() - interval '30 days'
@@ -351,7 +352,7 @@ export const invitationRepository = {
     offset: number;
   }): Promise<{ items: InvitationWithEvent[]; total: number }> {
     const values: unknown[] = [filters.hostId];
-    const conditions: string[] = [];
+    const conditions: string[] = ['e.deleted_at IS NULL'];
 
     const push = (sql: string, value: unknown): void => {
       values.push(value);
@@ -519,7 +520,7 @@ export const invitationRepository = {
     filters: HostGuestListFilters
   ): Promise<{ items: InvitationWithEvent[]; total: number }> {
     const values: unknown[] = [filters.hostId];
-    let conditions = ['e.host_id = $1'];
+    let conditions = ['e.host_id = $1', 'e.deleted_at IS NULL'];
 
     if (filters.managerEmail) {
       values.push(filters.managerEmail);
@@ -531,6 +532,7 @@ export const invitationRepository = {
               AND m.email = $2::citext
               AND m.revoked_at IS NULL
          ))`,
+        'e.deleted_at IS NULL',
       ];
     }
 
@@ -622,6 +624,7 @@ export const invitationRepository = {
         FROM invitations i
         JOIN events e ON e.id = i.event_id
        WHERE (e.host_id = $1 OR e.id = $2)
+         AND e.deleted_at IS NULL
          ${qCondition}
        ORDER BY ${dedupeKey}, e.starts_at ASC NULLS LAST, i.created_at ASC, i.id ASC
     `;
@@ -690,7 +693,8 @@ export const invitationRepository = {
   async listForAccountEmail(
     filters: AccountInvitationListFilters
   ): Promise<{ items: AccountInvitation[]; total: number }> {
-    const where = 'lower(i.guest_email) = lower($1) AND i.claim_revoked_at IS NULL';
+    const where =
+      'lower(i.guest_email) = lower($1) AND i.claim_revoked_at IS NULL AND e.deleted_at IS NULL';
     const values: unknown[] = [filters.email];
     const direction = filters.order === 'asc' ? 'ASC' : 'DESC';
 

@@ -3,6 +3,7 @@ import { env } from '../config/env';
 import {
   EVENT_CATEGORIES,
   EVENT_STATUSES,
+  EVENT_VISIBILITIES,
   LOCATION_TYPES,
   THEME_MODES,
 } from '../types/event.types';
@@ -36,6 +37,19 @@ const updateDate = z
     z.coerce.date({ error: 'Data inválida.' }).nullable()
   )
   .optional();
+
+/** Idade opcional (0–120); `null` ou vazio significa "sem limite". */
+const ageLimit = z.preprocess(
+  (value) => (value === '' || value === undefined ? null : value),
+  z.coerce
+    .number({ error: 'Idade inválida.' })
+    .int('A idade deve ser um número inteiro.')
+    .min(0, 'A idade deve estar entre 0 e 120.')
+    .max(120, 'A idade deve estar entre 0 e 120.')
+    .nullable()
+);
+
+const visibilitySchema = z.enum(EVENT_VISIBILITIES);
 
 const locationSchema = z.discriminatedUnion('type', [
   z
@@ -134,6 +148,10 @@ const eventObjectSchema = z
     theme: themeSchema.optional(),
     contribution: contributionSchema.optional(),
     rsvp_deadline: optionalDate,
+    visibility: visibilitySchema.default('private'),
+    show_attendee_count: z.boolean().default(false),
+    min_age: ageLimit.optional(),
+    max_age: ageLimit.optional(),
   })
   .strict();
 
@@ -163,6 +181,10 @@ const eventUpdateObjectSchema = z
     contribution: contributionUpdateSchema,
     rsvp_deadline: updateDate,
     status: z.enum(EVENT_STATUSES),
+    visibility: visibilitySchema,
+    show_attendee_count: z.boolean(),
+    min_age: ageLimit,
+    max_age: ageLimit,
   })
   .strict()
   .partial()
@@ -171,9 +193,29 @@ const eventUpdateObjectSchema = z
   });
 
 function validateEventDates(
-  value: { starts_at?: Date; ends_at?: Date | null; rsvp_deadline?: Date | null },
+  value: {
+    starts_at?: Date;
+    ends_at?: Date | null;
+    rsvp_deadline?: Date | null;
+    min_age?: number | null;
+    max_age?: number | null;
+  },
   ctx: z.RefinementCtx
 ): void {
+  if (
+    value.min_age !== undefined &&
+    value.min_age !== null &&
+    value.max_age !== undefined &&
+    value.max_age !== null &&
+    value.min_age > value.max_age
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['max_age'],
+      message: 'A idade máxima deve ser maior ou igual à idade mínima.',
+    });
+  }
+
   if (value.ends_at && value.starts_at && value.ends_at <= value.starts_at) {
     ctx.addIssue({
       code: 'custom',
@@ -262,6 +304,17 @@ export const updateInvitationSchema = z
     message: 'Indique pelo menos um campo para atualizar.',
   });
 
+/**
+ * Remoção de evento. `confirm_name` só é exigido quando há convidados
+ * confirmados; nesse caso tem de coincidir com o título (após trim).
+ */
+export const deleteEventSchema = z
+  .object({
+    confirm_name: z.string().max(200).optional(),
+  })
+  .strict()
+  .default({});
+
 export const hostSessionSchema = z
   .object({
     token: z.string().min(20, 'Token de gestão inválido.').max(200),
@@ -284,3 +337,4 @@ export type CreateEventBody = z.infer<typeof createEventSchema>;
 export type UpdateEventBody = z.infer<typeof updateEventSchema>;
 export type CreateInvitationBody = z.infer<typeof createInvitationSchema>;
 export type UpdateInvitationBody = z.infer<typeof updateInvitationSchema>;
+export type DeleteEventBody = z.infer<typeof deleteEventSchema>;

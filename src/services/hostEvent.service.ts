@@ -1,4 +1,6 @@
-import { NotFoundError } from '../errors';
+import { NotFoundError, ValidationError } from '../errors';
+import { withTransaction } from '../database/pool';
+import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { eventRepository } from '../repositories/event.repository';
 import { CreateEventBody } from '../schemas/event.schemas';
 import { HostEventsQuery } from '../schemas/host.schemas';
@@ -67,12 +69,43 @@ export const hostEventService = {
     return eventService.create(input, { hostId });
   },
 
-  async remove(hostId: string, eventId: string): Promise<void> {
-    const deleted = await eventRepository.deleteForHost(eventId, hostId);
+  /**
+   * Remoção lógica pelo proprietário. Com convidados confirmados exige
+   * `confirmName` igual ao título (exacto, após trim). Gestores e outras
+   * contas recebem o mesmo 404 de um evento inexistente.
+   */
+  async remove(
+    hostId: string,
+    eventId: string,
+    confirmName?: string
+  ): Promise<{ acceptedCount: number }> {
+    return withTransaction(async (client) => {
+      const event = await eventRepository.findByIdForHost(eventId, hostId, client);
 
-    if (!deleted) {
-      throw new NotFoundError('Evento não encontrado.', 'event_not_found');
-    }
+      if (!event) {
+        throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+      }
+
+      const acceptedCount = await eventRepository.countAccepted(eventId, client);
+
+      if (acceptedCount > 0 && (confirmName ?? '').trim() !== event.title.trim()) {
+        throw new ValidationError(
+          'Escreva o nome do evento para confirmar.',
+          { confirm_name: ['Escreva o nome do evento para confirmar.'] },
+          'event_delete_confirmation_required'
+        );
+      }
+
+      const deleted = await eventRepository.softDeleteForHost(eventId, hostId, client);
+
+      if (!deleted) {
+        throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+      }
+
+      await emailDeliveryRepository.cancelPendingForEvent(eventId, client);
+
+      return { acceptedCount };
+    });
   },
 
   /**

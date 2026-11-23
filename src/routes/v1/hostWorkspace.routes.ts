@@ -28,7 +28,11 @@ import { uploadProfileCover } from '../../middlewares/uploadProfileCover';
 import { validate } from '../../middlewares/validate';
 import { registerRequestCodeSchema } from '../../schemas/auth.schemas';
 import { hostCancelSchema } from '../../schemas/admin.schemas';
-import { createEventSchema, eventIdParamsSchema } from '../../schemas/event.schemas';
+import {
+  createEventSchema,
+  deleteEventSchema,
+  eventIdParamsSchema,
+} from '../../schemas/event.schemas';
 import {
   addEventManagerSchema,
   avatarSchema,
@@ -537,7 +541,20 @@ router.post(
  * /api/v1/host/events/{eventId}:
  *   delete:
  *     tags: [Workspace]
- *     summary: Apaga um evento e os dados associados (cascata)
+ *     summary: Remove um evento (remoção lógica)
+ *     description: >
+ *       Só o proprietário pode remover. Se houver convidados com presença
+ *       confirmada, o corpo tem de trazer `confirm_name` igual ao título
+ *       do evento (comparação exacta, após trim); caso contrário devolve
+ *       422 `event_delete_confirmation_required`.
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               confirm_name: { type: string }
  *     security:
  *       - accountSession: []
  *     parameters:
@@ -557,10 +574,15 @@ router.post(
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Error' }
+ *       422:
+ *         description: Falta confirmar o nome do evento.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.delete(
   '/events/:eventId',
-  validate({ params: eventIdParamsSchema }),
+  validate({ params: eventIdParamsSchema, body: deleteEventSchema }),
   asyncHandler(hostAccountAuth),
   writeLimiter,
   requireAuthCsrf,

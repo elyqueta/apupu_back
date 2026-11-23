@@ -278,7 +278,7 @@ export function buildTeamListQuery(filters: TeamListFilters): {
 } {
   // $1 = host da sessão, $2 = email efectivo (usado por my_role/mine).
   const values: unknown[] = [filters.hostId, filters.actorEmail];
-  const conditions = ['t.deleted_at IS NULL'];
+  const conditions = ['t.deleted_at IS NULL', 'e.deleted_at IS NULL'];
 
   const access = ['e.host_id = $1'];
 

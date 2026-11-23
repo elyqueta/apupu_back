@@ -229,6 +229,7 @@ export const notificationRepository = {
            AND m.revoked_at IS NULL
       ))`;
     }
+    access = `${access} AND e.deleted_at IS NULL`;
 
     await runner.query(
       `INSERT INTO host_notifications (

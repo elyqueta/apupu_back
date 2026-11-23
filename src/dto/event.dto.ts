@@ -1,5 +1,6 @@
 import { Event, EventStats } from '../types/event.types';
 import { HostPublicContact } from '../types/host.types';
+import { links } from '../utils/links.util';
 
 /**
  * DTOs explícitos.
@@ -49,6 +50,14 @@ export interface EventDto {
   contribution: ContributionDto;
   rsvp_deadline: string | null;
   status: string;
+  /** `private` (só convites individuais) ou `public` (link aberto). */
+  visibility: 'public' | 'private';
+  /** Link aberto do evento; `null` quando o evento é privado. */
+  public_url: string | null;
+  show_attendee_count: boolean;
+  /** Limites de idade: só na vista de gestão, nunca em respostas públicas. */
+  min_age: number | null;
+  max_age: number | null;
   /** Papel de quem consulta: `host` ou `manager`. */
   access_role?: 'host' | 'manager';
   created_at: string;
@@ -63,7 +72,17 @@ export interface EventDto {
 
 export type PublicEventDto = Omit<
   EventDto,
-  'host_email' | 'template_id' | 'created_at' | 'updated_at' | 'stats' | 'access_role'
+  | 'host_email'
+  | 'template_id'
+  | 'created_at'
+  | 'updated_at'
+  | 'stats'
+  | 'access_role'
+  | 'visibility'
+  | 'public_url'
+  | 'show_attendee_count'
+  | 'min_age'
+  | 'max_age'
 > & {
   /** Contacto controlado: email é sempre visível; telefone/avatar só se preenchidos. */
   host_email: string;
@@ -121,6 +140,12 @@ export function toEventDto(
     contribution: contributionDto(event),
     rsvp_deadline: iso(event.rsvpDeadline),
     status: event.status,
+    visibility: event.visibility,
+    public_url:
+      event.visibility === 'public' && event.publicSlug ? links.publicEvent(event.publicSlug) : null,
+    show_attendee_count: event.showAttendeeCount,
+    min_age: event.minAge,
+    max_age: event.maxAge,
     ...(accessRole ? { access_role: accessRole } : {}),
     created_at: event.createdAt.toISOString(),
     updated_at: event.updatedAt.toISOString(),
@@ -173,5 +198,31 @@ export function toPublicEventDto(
     contribution: contributionDto(event),
     rsvp_deadline: iso(event.rsvpDeadline),
     status: event.status,
+  };
+}
+
+/**
+ * Evento aberto (`GET /public/events/:slug`): o mesmo DTO seguro do
+ * convite, sem convidados e sem limites de idade. `attendee_count` só
+ * existe na resposta quando o anfitrião o tornou público.
+ */
+export type OpenEventDto = PublicEventDto & {
+  slug: string;
+  has_age_restriction: boolean;
+  rsvp_deadline_passed: boolean;
+  attendee_count?: number;
+};
+
+export function toOpenEventDto(
+  event: Event,
+  hostContact: HostPublicContact,
+  options: { rsvpDeadlinePassed: boolean; attendeeCount: number }
+): OpenEventDto {
+  return {
+    ...toPublicEventDto(event, hostContact),
+    slug: event.publicSlug ?? '',
+    has_age_restriction: event.minAge !== null || event.maxAge !== null,
+    rsvp_deadline_passed: options.rsvpDeadlinePassed,
+    ...(event.showAttendeeCount ? { attendee_count: options.attendeeCount } : {}),
   };
 }

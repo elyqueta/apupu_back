@@ -8,6 +8,10 @@ export const EVENT_ACCESS_ROLES = ['host', 'manager'] as const;
 export type EventAccessRole = (typeof EVENT_ACCESS_ROLES)[number];
 
 
+/** Visibilidade: privado (só convites individuais) ou público (link aberto). */
+export const EVENT_VISIBILITIES = ['public', 'private'] as const;
+export type EventVisibility = (typeof EVENT_VISIBILITIES)[number];
+
 export const LOCATION_TYPES = ['venue', 'online'] as const;
 export type LocationType = (typeof LOCATION_TYPES)[number];
 
@@ -79,6 +83,16 @@ export interface Event {
   cancelledBy: string | null;
   manageTokenExpiresAt: Date | null;
   manageTokenRevokedAt: Date | null;
+  visibility: EventVisibility;
+  /** Slug aleatório do link público; gerado ao tornar o evento público. */
+  publicSlug: string | null;
+  /** O nº de confirmados só é público quando o anfitrião o permite. */
+  showAttendeeCount: boolean;
+  /** Limites de idade: internos, nunca expostos em respostas públicas. */
+  minAge: number | null;
+  maxAge: number | null;
+  /** Remoção lógica: eventos removidos deixam de ser encontrados. */
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -109,6 +123,11 @@ export interface CreateEventInput {
   coverUrl?: string | null;
   coverHash?: string | null;
   coverPublicId?: string | null;
+  visibility?: EventVisibility;
+  publicSlug?: string | null;
+  showAttendeeCount?: boolean;
+  minAge?: number | null;
+  maxAge?: number | null;
 }
 
 export type UpdateEventInput = Partial<CreateEventInput> & {

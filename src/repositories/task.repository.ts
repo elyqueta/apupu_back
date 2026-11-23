@@ -128,6 +128,7 @@ function accessCondition(
            JOIN events access_event ON access_event.id = access_team.event_id
           WHERE access_team.id = ${alias}.team_id
             AND access_team.deleted_at IS NULL
+            AND access_event.deleted_at IS NULL
             AND (
               access_event.host_id = $${hostParam}
               OR EXISTS (
@@ -153,6 +154,7 @@ function accessCondition(
            JOIN events access_event ON access_event.id = access_team.event_id
           WHERE access_team.id = ${alias}.team_id
             AND access_team.deleted_at IS NULL
+            AND access_event.deleted_at IS NULL
             AND access_event.host_id = $${hostParam}
        ))`
     );

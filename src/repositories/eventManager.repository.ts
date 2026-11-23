@@ -104,6 +104,7 @@ export const eventManagerRepository = {
          FROM event_managers m
          JOIN events e ON e.id = m.event_id
         WHERE e.host_id = $1
+          AND e.deleted_at IS NULL
           AND m.revoked_at IS NULL
         ORDER BY e.starts_at ASC NULLS LAST, e.created_at ASC, m.created_at ASC`,
       [hostId]

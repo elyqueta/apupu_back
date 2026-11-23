@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { toEventDto } from '../dto/event.dto';
-import { CreateEventBody } from '../schemas/event.schemas';
+import { CreateEventBody, DeleteEventBody } from '../schemas/event.schemas';
 import { HostEventsQuery } from '../schemas/host.schemas';
 import { auditService } from '../services/audit.service';
 import { assertEventCancelOtp, requestEventCancelOtp } from '../services/auth.service';
@@ -141,12 +141,14 @@ export const hostEventController = {
   remove: async (req: Request, res: Response): Promise<void> => {
     const hostId = requireHostId(req);
     const eventId = req.params.eventId ?? '';
-    await hostEventService.remove(hostId, eventId);
+    const body = (req.body ?? {}) as DeleteEventBody;
+    const result = await hostEventService.remove(hostId, eventId, body.confirm_name);
 
     await auditService.recordRequest(req, {
       action: 'event_deleted',
       hostId,
       eventId,
+      metadata: { soft_delete: true, accepted_count: result.acceptedCount },
     });
 
     res.status(204).send();
