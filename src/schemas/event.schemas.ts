@@ -56,7 +56,7 @@ const locationSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('venue'),
-      name: z.string().trim().min(1, 'O nome do local é obrigatório.').max(200),
+      name: z.string().trim().max(200),
       address: optionalText(300),
       latitude: z.number().min(-90).max(90).nullable().optional(),
       longitude: z.number().min(-180).max(180).nullable().optional(),
@@ -66,6 +66,10 @@ const locationSchema = z.discriminatedUnion('type', [
     .refine((value) => (value.latitude == null) === (value.longitude == null), {
       message: 'Indique a latitude e a longitude, ou nenhuma.',
       path: ['latitude'],
+    })
+    .refine((value) => value.name.length > 0 || (value.latitude != null && value.longitude != null), {
+      message: 'Indique o nome do local ou selecione um ponto no mapa.',
+      path: ['name'],
     }),
   z
     .object({
