@@ -67,8 +67,16 @@ export function readHostSession(req: Request, eventId: string): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-export function setHostSession(res: Response, eventId: string, sessionToken: string): void {
-  const maxAgeMs = env.HOST_SESSION_TTL_MINUTES * 60 * 1000;
+export function setHostSession(
+  res: Response,
+  eventId: string,
+  sessionToken: string,
+  expiresAt?: Date
+): void {
+  // Sessões de gestor por link + código persistem até `expiresAt`.
+  const maxAgeMs = expiresAt
+    ? Math.max(60_000, expiresAt.getTime() - Date.now())
+    : env.HOST_SESSION_TTL_MINUTES * 60 * 1000;
 
   res.cookie(hostCookieName(eventId), sessionToken, baseCookieOptions(HOST_PATH, maxAgeMs));
   res.cookie(

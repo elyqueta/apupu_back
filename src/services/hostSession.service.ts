@@ -22,6 +22,29 @@ function isManageTokenValid(event: EventRecord): boolean {
   return true;
 }
 
+/** Sem validade de link definida, a sessão do gestor dura no máximo 30 dias. */
+const MANAGER_SESSION_FALLBACK_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Sessão persistente de quem entra com link + código (pedido do autor,
+ * 24/11/2026): fica guardada no navegador até ao fim da validade do link,
+ * sem pedir conta. Continua revogável a qualquer momento: cada pedido
+ * volta a validar o gestor (`isManagerLinkValid`), por isso revogar o link
+ * ou remover o gestor termina a sessão de imediato. Gerar um código novo
+ * não termina sessões já abertas.
+ */
+export function managerSessionExpiry(
+  manager: { linkExpiresAt: Date | null; tokenExpiresAt: Date | null },
+  now = Date.now()
+): Date {
+  const minimum = now + env.HOST_SESSION_TTL_MINUTES * 60 * 1000;
+  const limits = [manager.linkExpiresAt, manager.tokenExpiresAt]
+    .filter((value): value is Date => value instanceof Date)
+    .map((value) => value.getTime());
+  const cap = limits.length > 0 ? Math.min(...limits) : now + MANAGER_SESSION_FALLBACK_MS;
+  return new Date(Math.max(minimum, Math.min(cap, now + MANAGER_SESSION_FALLBACK_MS * 12)));
+}
+
 export function isManagerLinkValid(manager: {
   revokedAt: Date | null;
   tokenExpiresAt: Date | null;
@@ -97,7 +120,7 @@ export const hostSessionService = {
     }
 
     const sessionToken = generateToken();
-    const expiresAt = new Date(Date.now() + env.HOST_SESSION_TTL_MINUTES * 60 * 1000);
+    const expiresAt = managerSessionExpiry(manager);
 
     const session = await hostSessionRepository.create({
       eventId: event.id,

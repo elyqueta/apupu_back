@@ -267,3 +267,15 @@ describe('Bloco 11 — apagar evento da comunidade', () => {
     await expect(hostEventService.remove('owner-host', 'ev1', 'Retiro')).resolves.toEqual({ acceptedCount: 2 });
   });
 });
+
+describe('Sessão persistente de quem entra com link + código', () => {
+  it('dura até ao fim do link, com mínimo de uma sessão normal', async () => {
+    const { managerSessionExpiry } = await import('../src/services/hostSession.service');
+    const now = Date.UTC(2026, 10, 24);
+    const link = new Date(now + 10 * 86_400_000);
+    expect(managerSessionExpiry({ linkExpiresAt: link, tokenExpiresAt: null }, now).getTime()).toBe(link.getTime());
+    const soon = new Date(now + 60_000);
+    expect(managerSessionExpiry({ linkExpiresAt: soon, tokenExpiresAt: null }, now).getTime()).toBeGreaterThan(soon.getTime());
+    expect(managerSessionExpiry({ linkExpiresAt: null, tokenExpiresAt: null }, now).getTime()).toBe(now + 30 * 86_400_000);
+  });
+});

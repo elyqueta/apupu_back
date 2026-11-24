@@ -14,7 +14,8 @@ export const manageAccessController = {
   access: async (req: Request, res: Response): Promise<void> => {
     const result = await manageAccessService.access(req.body);
 
-    setHostSession(res, result.event.id, result.sessionToken);
+    // Sessão persistente até ao fim da validade do link (revogável pelo gestor).
+    setHostSession(res, result.event.id, result.sessionToken, result.session.expiresAt);
 
     await auditService.recordRequest(req, {
       action: 'manager_link_used',
