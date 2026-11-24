@@ -5,6 +5,7 @@ import { invitationRepository } from '../repositories/invitation.repository';
 import { taskRepository } from '../repositories/task.repository';
 import { teamInviteRepository } from '../repositories/teamInvite.repository';
 import { teamRepository } from '../repositories/team.repository';
+import { EventStatus } from '../types/event.types';
 import { effectiveEventStatus } from '../utils/eventStatus.util';
 import { hashToken } from '../utils/token.util';
 
@@ -157,7 +158,7 @@ export function requireActiveEvent(
       }
 
       const status = effectiveEventStatus({
-        status: event.status as any,
+        status: event.status as EventStatus,
         startsAt: event.startsAt ?? new Date(0),
         endsAt: event.endsAt ?? null,
         timezone: event.timezone ?? 'Africa/Luanda',

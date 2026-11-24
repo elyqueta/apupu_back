@@ -7,6 +7,7 @@ import {
   FeedPersonRow,
   socialRepository,
 } from '../repositories/social.repository';
+import { EventStatus } from '../types/event.types';
 import { effectiveEventStatus } from '../utils/eventStatus.util';
 import { links } from '../utils/links.util';
 
@@ -32,7 +33,7 @@ export function decodeCursor(cursor: string | undefined): number {
 
 export function toFeedEventDto(row: FeedEventRow) {
   const status = effectiveEventStatus({
-    status: row.status as any,
+    status: row.status as EventStatus,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     timezone: row.timezone,

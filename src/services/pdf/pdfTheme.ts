@@ -123,7 +123,7 @@ export function registerFonts(doc: PDFKit.PDFDocument): void {
     try {
       doc.registerFont(name, full);
     } catch (error) {
-      throw new Error(`Fonte do PDF em falta ou inválida: ${file} (${String(error)})`);
+      throw new Error(`Fonte do PDF em falta ou inválida: ${file} (${String(error)})`, { cause: error });
     }
   }
 }

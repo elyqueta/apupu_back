@@ -223,10 +223,10 @@ async function renderGratitudePdf(
   const local = (event.location?.name || event.location?.address || 'Local a confirmar').slice(0, 38);
   const org = (event.hostName || 'ORGANIZAÇÃO').toUpperCase();
   const subtitle = (event.title ? 'CELEBRAÇÃO ESPECIAL' : 'FESTIVAL DE ADOLESCENTES').toUpperCase();
-  const dress = ((event as any).dressCode || 'TRAJE AFRICANO').toUpperCase();
-  const qrDestination = (manifest.pdf as any).qr_destination as string | undefined;
-  const qrCustom = (manifest.pdf as any).qr_custom_url as string | undefined;
-  const eventPublicUrl = (event as any).publicSlug ? links.publicEvent((event as any).publicSlug) : null;
+  const dress = (event.dressCode || 'TRAJE AFRICANO').toUpperCase();
+  const qrDestination = manifest.pdf.qr_destination;
+  const qrCustom = manifest.pdf.qr_custom_url;
+  const eventPublicUrl = event.publicSlug ? links.publicEvent(event.publicSlug) : null;
   const qrUrl = qrDestination === 'custom' && qrCustom ? qrCustom : qrDestination === 'event' ? eventPublicUrl || invitationUrl : invitationUrl || eventPublicUrl;
 
   const pattern = `<pattern id="af" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M20 0 L40 20 L20 40 L0 20 Z" fill="none" stroke="#8A1C1C" stroke-width="2"/><path d="M20 8 L32 20 L20 32 L8 20 Z" fill="#1F7A3A"/><path d="M20 14 L26 20 L20 26 L14 20 Z" fill="#F2C14E"/><path d="M0 0 L10 10 M40 0 L30 10 M0 40 L10 30 M40 40 L30 30" stroke="#E07A2F" stroke-width="2"/></pattern>`;
@@ -347,9 +347,9 @@ export function renderInvitationPdf(
         doc.moveDown(0.7);
       }
 
-      const qrDestination = (manifest.pdf as any).qr_destination as string | undefined;
-      const qrCustom = (manifest.pdf as any).qr_custom_url as string | undefined;
-      const eventPublicUrl = (event as any).publicSlug ? links.publicEvent((event as any).publicSlug) : null;
+      const qrDestination = manifest.pdf.qr_destination;
+      const qrCustom = manifest.pdf.qr_custom_url;
+      const eventPublicUrl = event.publicSlug ? links.publicEvent(event.publicSlug) : null;
       const qrUrl =
         qrDestination === 'custom' && qrCustom
           ? qrCustom
@@ -359,7 +359,7 @@ export function renderInvitationPdf(
 
       if (qrUrl) {
         const size = mm(36);
-        const legend = (manifest.pdf as any).qr_label || 'Informação';
+        const legend = manifest.pdf.qr_label || 'Informação';
         if (doc.y + size + mm(18) > doc.page.height - margin) doc.addPage();
         const y = doc.y + mm(8);
         const position = manifest.pdf.qr_position;

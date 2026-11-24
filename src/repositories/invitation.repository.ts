@@ -843,9 +843,7 @@ export const invitationRepository = {
     const effectiveStatus = `CASE WHEN e.status = 'cancelled' THEN 'cancelled' WHEN e.status = 'draft' THEN 'draft' WHEN e.status = 'completed' THEN 'completed' WHEN (${effectiveEnd}) <= now() THEN 'completed' ELSE e.status END`;
     const statusGroup = `CASE WHEN (${effectiveStatus}) = 'cancelled' THEN 2 WHEN (${effectiveStatus}) = 'completed' THEN 1 ELSE 0 END`;
     const orderBy =
-      filters.sort === 'starts_at'
-        ? `${statusGroup} ASC, CASE WHEN ${statusGroup} = 0 THEN e.starts_at END ASC NULLS LAST, CASE WHEN ${statusGroup} > 0 THEN e.starts_at END DESC NULLS LAST, i.id ${direction}`
-        : `e.${filters.sort} ${direction} NULLS LAST, i.id ${direction}`;
+      `${statusGroup} ASC, CASE WHEN ${statusGroup} = 0 THEN e.starts_at END ASC NULLS LAST, CASE WHEN ${statusGroup} > 0 THEN e.starts_at END DESC NULLS LAST, i.id ${direction}`;
 
     const countResult = await query<{ total: string }>(
       `SELECT count(*)::text AS total
