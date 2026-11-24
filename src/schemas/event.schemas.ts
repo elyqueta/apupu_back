@@ -1,3 +1,4 @@
+import { youtubeVideoId } from '../utils/youtube.util';
 import { z } from 'zod';
 import { env } from '../config/env';
 import {
@@ -57,8 +58,15 @@ const locationSchema = z.discriminatedUnion('type', [
       type: z.literal('venue'),
       name: z.string().trim().min(1, 'O nome do local é obrigatório.').max(200),
       address: optionalText(300),
+      latitude: z.number().min(-90).max(90).nullable().optional(),
+      longitude: z.number().min(-180).max(180).nullable().optional(),
+      place_label: optionalText(200),
     })
-    .strict(),
+    .strict()
+    .refine((value) => (value.latitude == null) === (value.longitude == null), {
+      message: 'Indique a latitude e a longitude, ou nenhuma.',
+      path: ['latitude'],
+    }),
   z
     .object({
       type: z.literal('online'),
@@ -66,6 +74,25 @@ const locationSchema = z.discriminatedUnion('type', [
     })
     .strict(),
 ]);
+
+/** Bloco 14: aceita um link do YouTube e guarda só o ID (ou `null`). */
+const youtubeField = z
+  .string()
+  .trim()
+  .max(300)
+  .nullable()
+  .transform((value, ctx) => {
+    if (value === null || value === '') return null;
+    const id = youtubeVideoId(value);
+    if (!id) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Link do YouTube inválido. Use um link de vídeo (youtube.com/watch, youtu.be, shorts ou embed).',
+      });
+      return z.NEVER;
+    }
+    return id;
+  });
 
 const themeSchema = z
   .object({
@@ -153,6 +180,8 @@ const eventObjectSchema = z
     community_id: z.uuid('Comunidade inválida.').nullable().optional(),
     min_age: ageLimit.optional(),
     max_age: ageLimit.optional(),
+    youtube_url: youtubeField.optional(),
+    use_tables: z.boolean().optional(),
   })
   .strict();
 
@@ -186,6 +215,8 @@ const eventUpdateObjectSchema = z
     show_attendee_count: z.boolean(),
     min_age: ageLimit,
     max_age: ageLimit,
+    youtube_url: youtubeField,
+    use_tables: z.boolean(),
   })
   .strict()
   .partial()

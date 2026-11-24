@@ -11,6 +11,7 @@ interface TemplateRow {
   themes: Array<{ mode: string; palette: string }>;
   is_active: boolean;
   sort_order: number;
+  manifest: unknown;
   created_at: Date;
   updated_at: Date;
 }
@@ -26,6 +27,7 @@ function toTemplate(row: TemplateRow): EventTemplate {
     themes: row.themes,
     isActive: row.is_active,
     sortOrder: row.sort_order,
+    manifest: row.manifest,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -33,7 +35,7 @@ function toTemplate(row: TemplateRow): EventTemplate {
 
 const SELECT_COLUMNS = `
   id, slug, name, description, preview_image_url, supported_fields, themes,
-  is_active, sort_order, created_at, updated_at
+  is_active, sort_order, manifest, created_at, updated_at
 `;
 
 export const templateRepository = {

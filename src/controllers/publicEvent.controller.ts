@@ -1,3 +1,4 @@
+import { invitePresentationService, PresentationExtras } from '../services/invitePresentation.service';
 import { Request, Response } from 'express';
 import { OpenEventDto, toOpenEventDto } from '../dto/event.dto';
 import { hostRepository } from '../repositories/host.repository';
@@ -13,13 +14,19 @@ async function openEventDto(
   event: Event,
   attendeeCount: number,
   rsvpDeadlinePassed: boolean
-): Promise<OpenEventDto> {
-  const contact = await hostRepository.findPublicContactByEventId(event.id);
-  return toOpenEventDto(
-    event,
-    contact ?? { name: event.hostName, email: event.hostEmail, phone: null, avatarUrl: null },
-    { rsvpDeadlinePassed, attendeeCount }
-  );
+): Promise<OpenEventDto & PresentationExtras> {
+  const [contact, extras] = await Promise.all([
+    hostRepository.findPublicContactByEventId(event.id),
+    invitePresentationService.extras(event),
+  ]);
+  return {
+    ...toOpenEventDto(
+      event,
+      contact ?? { name: event.hostName, email: event.hostEmail, phone: null, avatarUrl: null },
+      { rsvpDeadlinePassed, attendeeCount }
+    ),
+    ...extras,
+  };
 }
 
 function viewerDto(viewer: PublicEventViewer | null): Record<string, unknown> | null {

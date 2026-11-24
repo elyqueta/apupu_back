@@ -1,3 +1,4 @@
+import { parseManifest, TemplateManifest } from '../types/templateManifest';
 import { logger } from '../config/logger';
 import { Event } from '../types/event.types';
 import { HostPublicContact } from '../types/host.types';
@@ -203,6 +204,9 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
         name: invitation.eventLocation.name,
         address: invitation.eventLocation.address,
         online_url: invitation.eventLocation.onlineUrl,
+        latitude: invitation.eventLocation.latitude ?? null,
+        longitude: invitation.eventLocation.longitude ?? null,
+        place_label: invitation.eventLocation.placeLabel ?? null,
       },
     },
   };
@@ -272,6 +276,8 @@ export interface TemplateDto {
   supported_fields: string[];
   themes: Array<{ mode: string; palette: string }>;
   is_active: boolean;
+  /** Bloco 14: manifesto validado (cai no neutro se inválido). */
+  manifest: TemplateManifest;
 }
 
 export function toTemplateDto(template: EventTemplate): TemplateDto {
@@ -284,5 +290,6 @@ export function toTemplateDto(template: EventTemplate): TemplateDto {
     supported_fields: template.supportedFields,
     themes: template.themes,
     is_active: template.isActive,
+    manifest: parseManifest(template.manifest),
   };
 }

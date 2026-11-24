@@ -24,6 +24,9 @@ export interface EventLocationDto {
   name: string | null;
   address: string | null;
   online_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  place_label: string | null;
 }
 
 export interface EventThemeDto {
@@ -60,6 +63,9 @@ export interface EventDto {
   max_age: number | null;
   /** Comunidade do evento (Bloco 11); `null` = evento pessoal. */
   community_id: string | null;
+  /** Bloco 14: vídeo (só o ID) e mesas. */
+  youtube_video_id: string | null;
+  use_tables: boolean;
   /** Papel de quem consulta: `host` ou `manager`. */
   access_role?: 'host' | 'manager';
   created_at: string;
@@ -86,6 +92,7 @@ export type PublicEventDto = Omit<
   | 'min_age'
   | 'max_age'
   | 'community_id'
+  | 'use_tables'
 > & {
   /** Contacto controlado: email é sempre visível; telefone/avatar só se preenchidos. */
   host_email: string;
@@ -130,6 +137,9 @@ export function toEventDto(
       name: event.location.name,
       address: event.location.address,
       online_url: event.location.onlineUrl,
+      latitude: event.location.latitude ?? null,
+      longitude: event.location.longitude ?? null,
+      place_label: event.location.placeLabel ?? null,
     },
     message: event.message,
     rules: event.rules,
@@ -150,6 +160,8 @@ export function toEventDto(
     min_age: event.minAge,
     max_age: event.maxAge,
     community_id: event.communityId,
+    youtube_video_id: event.youtubeVideoId ?? null,
+    use_tables: event.useTables ?? false,
     ...(accessRole ? { access_role: accessRole } : {}),
     created_at: event.createdAt.toISOString(),
     updated_at: event.updatedAt.toISOString(),
@@ -190,6 +202,9 @@ export function toPublicEventDto(
       name: event.location.name,
       address: event.location.address,
       online_url: event.location.onlineUrl,
+      latitude: event.location.latitude ?? null,
+      longitude: event.location.longitude ?? null,
+      place_label: event.location.placeLabel ?? null,
     },
     message: event.message,
     rules: event.rules,
@@ -202,6 +217,7 @@ export function toPublicEventDto(
     contribution: contributionDto(event),
     rsvp_deadline: iso(event.rsvpDeadline),
     status: event.status,
+    youtube_video_id: event.youtubeVideoId ?? null,
   };
 }
 

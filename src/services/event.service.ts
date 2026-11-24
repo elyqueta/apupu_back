@@ -91,6 +91,9 @@ function toLocation(location: CreateEventBody['event']['location']): EventLocati
     name: location.name,
     address: normalizeOptional(location.address),
     onlineUrl: null,
+    latitude: location.latitude ?? null,
+    longitude: location.longitude ?? null,
+    placeLabel: normalizeOptional(location.place_label),
   };
 }
 
@@ -220,6 +223,8 @@ export const eventService = {
       minAge: input.event.min_age ?? null,
       maxAge: input.event.max_age ?? null,
       communityId: input.event.community_id ?? null,
+      youtubeVideoId: input.event.youtube_url ?? null,
+      useTables: input.event.use_tables ?? false,
     };
 
     assertAgeRange(data.minAge ?? null, data.maxAge ?? null);
@@ -399,6 +404,8 @@ export const eventService = {
       }
       if ('rsvp_deadline' in input) changes.rsvpDeadline = input.rsvp_deadline ?? null;
       if (input.status !== undefined) changes.status = input.status;
+      if ('youtube_url' in input) changes.youtubeVideoId = input.youtube_url ?? null;
+      if (input.use_tables !== undefined) changes.useTables = input.use_tables;
 
       const visibility = input.visibility ?? current.visibility;
       if (input.visibility !== undefined) changes.visibility = input.visibility;

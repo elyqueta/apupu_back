@@ -32,6 +32,10 @@ export interface EventLocation {
   name: string | null;
   address: string | null;
   onlineUrl: string | null;
+  /** Bloco 14: localização exata (ambas ou nenhuma). */
+  latitude?: number | null;
+  longitude?: number | null;
+  placeLabel?: string | null;
 }
 
 export interface EventTheme {
@@ -95,6 +99,10 @@ export interface Event {
   deletedAt: Date | null;
   /** Comunidade do evento (Bloco 11); `null` = evento pessoal. */
   communityId: string | null;
+  /** Bloco 14: só o ID do vídeo (11 caracteres), nunca o URL. */
+  youtubeVideoId?: string | null;
+  /** Bloco 14: mesas ativas (o PDF só mostra a mesa quando `true`). */
+  useTables?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -131,6 +139,8 @@ export interface CreateEventInput {
   minAge?: number | null;
   maxAge?: number | null;
   communityId?: string | null;
+  youtubeVideoId?: string | null;
+  useTables?: boolean;
 }
 
 export type UpdateEventInput = Partial<CreateEventInput> & {

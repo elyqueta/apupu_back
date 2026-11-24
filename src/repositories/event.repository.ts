@@ -59,6 +59,11 @@ interface EventRow {
   max_age: number | null;
   deleted_at: Date | null;
   community_id: string | null;
+  youtube_video_id: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  place_label: string | null;
+  use_tables: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -77,6 +82,9 @@ function toEvent(row: EventRow): EventRecord {
     name: row.location_name,
     address: row.location_address,
     onlineUrl: row.online_url,
+    latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+    longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+    placeLabel: row.place_label ?? null,
   };
 
   const contribution: EventContribution = {
@@ -121,6 +129,8 @@ function toEvent(row: EventRow): EventRecord {
     maxAge: row.max_age,
     deletedAt: row.deleted_at,
     communityId: row.community_id,
+    youtubeVideoId: row.youtube_video_id ?? null,
+    useTables: row.use_tables ?? false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -152,6 +162,7 @@ const SELECT_COLUMNS = `
   contribution_account_reference, cover_url, cover_hash, cover_public_id,
   rsvp_deadline, status, cancelled_at, cancelled_reason, cancelled_by,
   visibility, public_slug, show_attendee_count, min_age, max_age, deleted_at, community_id,
+  youtube_video_id, latitude, longitude, place_label, use_tables,
   created_at, updated_at
 `;
 
@@ -244,11 +255,12 @@ export const eventRepository = {
          template_id, theme, contribution_enabled, contribution_bank_name,
          contribution_account_holder, contribution_account_reference,
          rsvp_deadline, cover_url, status,
-         visibility, public_slug, show_attendee_count, min_age, max_age, community_id
+         visibility, public_slug, show_attendee_count, min_age, max_age, community_id,
+         youtube_video_id, latitude, longitude, place_label, use_tables
        )
        VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'scheduled',
-         $26,$27,$28,$29,$30,$31
+         $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
        )
        RETURNING ${SELECT_COLUMNS}`,
       [
@@ -283,6 +295,11 @@ export const eventRepository = {
         data.minAge ?? null,
         data.maxAge ?? null,
         data.communityId ?? null,
+        data.youtubeVideoId ?? null,
+        data.location.latitude ?? null,
+        data.location.longitude ?? null,
+        data.location.placeLabel ?? null,
+        data.useTables ?? false,
       ]
     );
 
@@ -418,6 +435,8 @@ export const eventRepository = {
       ['showAttendeeCount', 'show_attendee_count', (v: unknown): unknown => v],
       ['minAge', 'min_age', (v: unknown): unknown => v],
       ['maxAge', 'max_age', (v: unknown): unknown => v],
+      ['youtubeVideoId', 'youtube_video_id', (v: unknown): unknown => v],
+      ['useTables', 'use_tables', (v: unknown): unknown => v],
     ];
 
     const set: string[] = [];
@@ -439,6 +458,12 @@ export const eventRepository = {
       set.push(`location_address = $${values.length}`);
       values.push(changes.location.onlineUrl);
       set.push(`online_url = $${values.length}`);
+      values.push(changes.location.latitude ?? null);
+      set.push(`latitude = $${values.length}`);
+      values.push(changes.location.longitude ?? null);
+      set.push(`longitude = $${values.length}`);
+      values.push(changes.location.placeLabel ?? null);
+      set.push(`place_label = $${values.length}`);
     }
 
     if ('theme' in changes && changes.theme) {

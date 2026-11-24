@@ -253,3 +253,16 @@ export const adminActionLimiter = rateLimit({
   keyGenerator: adminKey,
   handler: limitHandler,
 });
+
+/**
+ * Bloco 14 — rascunhos guardados automaticamente (debounce de 2 s no
+ * front). Limite próprio para não esgotar o `writeLimiter` geral.
+ */
+export const eventDraftLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: writeKey,
+  handler: limitHandler,
+});
