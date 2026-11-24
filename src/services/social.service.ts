@@ -43,6 +43,11 @@ export function toFeedEventDto(row: FeedEventRow) {
     /** Estilo do template para pré-visualizar sem capa (sem dados privados). */
     template: { id: row.template_id, palette: row.theme?.palette ?? 'default', mode: row.theme?.mode ?? 'light' },
     host_name: row.host_name,
+    /** Mesma imagem pública do contacto do anfitrião no convite. */
+    host_avatar_url: row.host_avatar_url,
+    /** Início da mensagem pública do convite (máx. 220 caracteres). */
+    excerpt: row.excerpt,
+    published_at: row.created_at.toISOString(),
     public_url: links.publicEvent(row.public_slug),
     slug: row.public_slug,
     community: row.community_slug ? { name: row.community_name, slug: row.community_slug } : null,

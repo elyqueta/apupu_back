@@ -47,6 +47,9 @@ export interface FeedEventRow {
   attendee_count: number;
   community_name: string | null;
   community_slug: string | null;
+  host_avatar_url: string | null;
+  excerpt: string | null;
+  created_at: Date;
 }
 
 export interface FeedCommunityRow {
@@ -72,10 +75,14 @@ const EVENT_SELECT = `
          e.public_slug, e.host_name, e.show_attendee_count,
          (SELECT count(*)::int FROM invitations i
            WHERE i.event_id = e.id AND i.rsvp_status = 'accepted') AS attendee_count,
-         c.name AS community_name, c.slug AS community_slug
+         c.name AS community_name, c.slug AS community_slug,
+         hp.avatar_url AS host_avatar_url,
+         left(e.message, 220) AS excerpt,
+         e.created_at
     FROM events e
     LEFT JOIN communities c
       ON c.id = e.community_id AND c.deleted_at IS NULL AND c.visibility = 'public'
+    LEFT JOIN host_profiles hp ON hp.host_id = e.host_id
 `;
 
 const COMMUNITY_SELECT = `
