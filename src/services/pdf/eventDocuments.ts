@@ -1,4 +1,3 @@
-import { toInvitationDto } from '../../dto/invitation.dto';
 import { EventRecord, EventStats } from '../../types/event.types';
 import { Invitation } from '../../types/invitation.types';
 import {
@@ -12,7 +11,6 @@ import {
   DonutDatum,
   drawDonut,
   drawHighlightBlock,
-  drawQr,
   drawSectionTitle,
   drawTable,
   drawTitle,
@@ -23,7 +21,7 @@ import {
   TableColumn,
   renderPdf,
 } from './pdfLayout';
-import { PDF_COLORS, mm } from './pdfTheme';
+import { PDF_COLORS } from './pdfTheme';
 
 function statusTone(status: string): StatusTone {
   if (status === 'accepted') return 'confirmed';
@@ -256,79 +254,5 @@ export function renderEventSummaryPdf(
       ['Taxa de resposta', percent(responseRate(stats))],
       ['Taxa de confirmação', percent(acceptanceRate(stats))],
     ]);
-  });
-}
-
-/** Bilhete individual com o QR do link do convite. */
-export function renderTicketPdf(
-  event: EventRecord,
-  invitation: Invitation,
-  generatedAt: Date
-): Promise<Buffer> {
-  const meta = metaFor(
-    'Bilhete de convite',
-    'CC-BIL',
-    event,
-    generatedAt,
-    'Bilhete individual com QR do convite'
-  );
-
-  return renderPdf(meta, async (ctx: PdfContext) => {
-    const y = drawTitle(ctx, 'Bilhete de convite', eventSubtitle(event));
-    const afterHighlight = drawHighlightBlock(ctx, y, [
-      { label: 'Data', value: formatDisplayDateTime(event.startsAt) },
-      { label: 'Local', value: locationLabel(event) },
-      { label: 'Estado', value: rsvpStatusLabel(invitation.rsvpStatus) },
-    ]);
-
-    const detailsY = drawSectionTitle(ctx, afterHighlight, 'Convidado');
-    const afterDetails = drawTable(ctx, detailsY, detailColumns(), [
-      ['Nome', invitation.guestName],
-      ['E-mail', invitation.guestEmail ?? '—'],
-      ['Telemóvel', formatAngolaPhone(invitation.guestPhone) || '—'],
-      ['Mesa', invitation.tableName ?? '—'],
-      [
-        'Respondeu em',
-        invitation.rsvpRespondedAt
-          ? formatDisplayDateTime(invitation.rsvpRespondedAt)
-          : 'Ainda não respondeu',
-      ],
-    ]);
-
-    const qrSize = mm(32);
-    const qrX = ctx.left + ctx.width - qrSize;
-    const qrY = afterDetails + mm(2);
-    const invitationUrl = toInvitationDto(invitation).invitation_url;
-
-    ctx.doc
-      .font('Figtree-Bold')
-      .fontSize(12)
-      .fillColor(PDF_COLORS.brand)
-      .text('Apresenta este bilhete à entrada.', ctx.left, qrY + mm(2), {
-        width: ctx.width - qrSize - mm(6),
-      });
-    ctx.doc
-      .font('Figtree')
-      .fontSize(9)
-      .fillColor(PDF_COLORS.muted)
-      .text(
-        `Gerado em ${formatDisplayDateTime(generatedAt)}. O QR abre a página do convite.`,
-        ctx.left,
-        qrY + mm(9),
-        { width: ctx.width - qrSize - mm(6) }
-      );
-
-    if (invitationUrl) {
-      await drawQr(ctx, qrX, qrY, invitationUrl, qrSize);
-    } else {
-      ctx.doc
-        .font('Figtree')
-        .fontSize(9)
-        .fillColor(PDF_COLORS.declinedText)
-        .text('Link do convite indisponível.', qrX, qrY + 12, {
-          width: qrSize,
-          align: 'center',
-        });
-    }
   });
 }

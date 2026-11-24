@@ -1,3 +1,7 @@
+import { toInvitationDto } from '../dto/invitation.dto';
+import { templateRepository } from '../repositories/template.repository';
+import { parseManifest } from '../types/templateManifest';
+import { renderInvitationPdf } from './pdf/invitationDocument';
 import { Readable } from 'node:stream';
 import { BadRequestError, NotFoundError } from '../errors';
 import { eventRepository } from '../repositories/event.repository';
@@ -14,7 +18,6 @@ import {
   renderAttendancePdf,
   renderEventSummaryPdf,
   renderGuestsPdf,
-  renderTicketPdf,
 } from './pdf/eventDocuments';
 import { renderEventPeriodPdf, renderReportPdf } from './pdf/reportDocument';
 
@@ -151,13 +154,13 @@ export const reportExportService = {
 
     if (document === 'ticket') {
       if (format !== 'pdf') {
-        throw new BadRequestError('O bilhete só está disponível em PDF.');
+        throw new BadRequestError('O convite só está disponível em PDF.');
       }
       if (!options.invitationId) {
         throw new BadRequestError(
-          'Indica o convite do bilhete.',
+          'Indique o convite.',
           'bad_request',
-          { invitation_id: ['Obrigatório para o bilhete.'] }
+          { invitation_id: ['Obrigatório para o convite.'] }
         );
       }
 
@@ -166,11 +169,14 @@ export const reportExportService = {
         throw new NotFoundError('Convite não encontrado.');
       }
 
-      const body = await renderTicketPdf(event, invitation, generatedAt);
-      return pdfExport(
-        body,
-        eventPdfFilename('bilhete', event, generatedAt)
+      const template = event.templateId ? await templateRepository.findById(event.templateId) : null;
+      const body = await renderInvitationPdf(
+        event,
+        invitation,
+        parseManifest(template?.manifest),
+        toInvitationDto(invitation).invitation_url
       );
+      return pdfExport(body, eventPdfFilename('convite', event, generatedAt));
     }
 
     if (format === 'csv') {
