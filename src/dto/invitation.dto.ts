@@ -6,6 +6,7 @@ import { AccountInvitation, Invitation, InvitationWithEvent } from '../types/inv
 import { EmailDelivery } from '../types/emailDelivery.types';
 import { EventTemplate } from '../types/template.types';
 import { decryptToken } from '../utils/crypto.util';
+import { effectiveEventStatus } from '../utils/eventStatus.util';
 import { links } from '../utils/links.util';
 import { EventLocationDto, PublicEventDto, toPublicEventDto } from './event.dto';
 
@@ -180,6 +181,12 @@ export interface GuestInvitationDto {
 
 /** Vista da conta convidada ("Meus convites"). */
 export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvitationDto {
+  const status = effectiveEventStatus({
+    status: invitation.eventStatus,
+    startsAt: invitation.eventStartsAt,
+    endsAt: invitation.eventEndsAt,
+    timezone: invitation.eventTimezone,
+  });
   return {
     id: invitation.id,
     event_id: invitation.eventId,
@@ -195,7 +202,7 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
       host_name: invitation.eventHostName,
       starts_at: iso(invitation.eventStartsAt),
       timezone: invitation.eventTimezone,
-      status: invitation.eventStatus,
+      status,
       category: invitation.eventCategory,
       template_id: invitation.eventTemplateId,
       cover_url: invitation.eventCoverUrl,
@@ -276,6 +283,7 @@ export interface TemplateDto {
   supported_fields: string[];
   themes: Array<{ mode: string; palette: string }>;
   is_active: boolean;
+  kind: 'system' | 'user';
   /** Bloco 14: manifesto validado (cai no neutro se inválido). */
   manifest: TemplateManifest;
 }
@@ -290,6 +298,7 @@ export function toTemplateDto(template: EventTemplate): TemplateDto {
     supported_fields: template.supportedFields,
     themes: template.themes,
     is_active: template.isActive,
+    kind: template.kind ?? 'user',
     manifest: parseManifest(template.manifest),
   };
 }

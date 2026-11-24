@@ -98,6 +98,7 @@ export interface AccountInvitation extends Invitation {
   eventTitle: string;
   eventHostName: string;
   eventStartsAt: Date;
+  eventEndsAt: Date | null;
   eventTimezone: string;
   eventStatus: EventStatus;
   eventCategory: EventCategory | null;

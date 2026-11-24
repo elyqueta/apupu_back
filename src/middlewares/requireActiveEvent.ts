@@ -5,6 +5,7 @@ import { invitationRepository } from '../repositories/invitation.repository';
 import { taskRepository } from '../repositories/task.repository';
 import { teamInviteRepository } from '../repositories/teamInvite.repository';
 import { teamRepository } from '../repositories/team.repository';
+import { effectiveEventStatus } from '../utils/eventStatus.util';
 import { hashToken } from '../utils/token.util';
 
 /**
@@ -19,12 +20,20 @@ import { hashToken } from '../utils/token.util';
  * inventamos um bloqueio.
  */
 export const EVENT_CANCELLED_MESSAGE = 'Este evento foi cancelado. Já não é possível fazer alterações.';
+export const EVENT_COMPLETED_MESSAGE = 'Este evento já terminou. Já não é possível fazer alterações.';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+type EventStatusRow = {
+  status: string;
+  startsAt?: Date;
+  endsAt?: Date | null;
+  timezone?: string;
+} | null;
+
 interface EventLookupDependencies {
-  findEventStatus: (eventId: string) => Promise<{ status: string } | null>;
+  findEventStatus: (eventId: string) => Promise<EventStatusRow>;
   findInvitationByTokenHash: (hash: string) => Promise<{ eventId: string } | null>;
   findInvitationById: (id: string) => Promise<{ eventId: string } | null>;
   findTaskById: (id: string) => Promise<{ eventId: string | null } | null>;
@@ -55,6 +64,15 @@ function isIgnoredWrite(path: string): boolean {
     /\/events\/[^/]+\/cancel$/.test(path) ||
     /^\/host\/session(?:\/[^/]+)?$/.test(path)
   );
+}
+
+/**
+ * Bloco 15: eventos terminados ficam só de leitura, exceto galeria.
+ * Ponto de extensão: quando a galeria existir, as rotas devem bater
+ * neste padrão (ou o middleware deve receber allowGallery).
+ */
+function isGalleryWrite(path: string): boolean {
+  return /\/events\/[^/]+\/(gallery|media)(?:\/|$)/.test(path);
 }
 
 function bodyEventId(body: unknown): string | null {
@@ -112,7 +130,8 @@ export async function resolveEventIdForWrite(
 }
 
 export function requireActiveEvent(
-  dependencies: EventLookupDependencies = defaultDependencies
+  dependencies: EventLookupDependencies = defaultDependencies,
+  options: { allowGallery?: boolean } = {}
 ) {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -132,8 +151,23 @@ export function requireActiveEvent(
       }
 
       const event = await dependencies.findEventStatus(eventId);
-      if (event?.status === 'cancelled') {
+      if (!event) {
+        next();
+        return;
+      }
+
+      const status = effectiveEventStatus({
+        status: event.status as any,
+        startsAt: event.startsAt ?? new Date(0),
+        endsAt: event.endsAt ?? null,
+        timezone: event.timezone ?? 'Africa/Luanda',
+      });
+
+      if (status === 'cancelled') {
         throw new ConflictError(EVENT_CANCELLED_MESSAGE, 'event_cancelled');
+      }
+      if (status === 'completed' && !options.allowGallery && !isGalleryWrite(req.path)) {
+        throw new ConflictError(EVENT_COMPLETED_MESSAGE, 'event_completed');
       }
 
       next();

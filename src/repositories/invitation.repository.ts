@@ -112,6 +112,7 @@ interface AccountInvitationRow extends InvitationRow {
   event_title: string;
   event_host_name: string;
   event_starts_at: Date;
+  event_ends_at: Date | null;
   event_timezone: string;
   event_status: EventStatus;
   event_category: EventCategory | null;
@@ -136,6 +137,7 @@ function toAccountInvitation(row: AccountInvitationRow): AccountInvitation {
     eventTitle: row.event_title,
     eventHostName: row.event_host_name,
     eventStartsAt: row.event_starts_at,
+    eventEndsAt: row.event_ends_at,
     eventTimezone: row.event_timezone,
     eventStatus: row.event_status,
     eventCategory: row.event_category,
@@ -837,6 +839,13 @@ export const invitationRepository = {
       'lower(i.guest_email) = lower($1) AND i.claim_revoked_at IS NULL AND e.deleted_at IS NULL';
     const values: unknown[] = [filters.email];
     const direction = filters.order === 'asc' ? 'ASC' : 'DESC';
+    const effectiveEnd = `CASE WHEN e.ends_at IS NOT NULL THEN e.ends_at ELSE (((e.starts_at AT TIME ZONE COALESCE(NULLIF(e.timezone,''),'Africa/Luanda'))::date + 1)::timestamp AT TIME ZONE COALESCE(NULLIF(e.timezone,''),'Africa/Luanda')) END`;
+    const effectiveStatus = `CASE WHEN e.status = 'cancelled' THEN 'cancelled' WHEN e.status = 'draft' THEN 'draft' WHEN e.status = 'completed' THEN 'completed' WHEN (${effectiveEnd}) <= now() THEN 'completed' ELSE e.status END`;
+    const statusGroup = `CASE WHEN (${effectiveStatus}) = 'cancelled' THEN 2 WHEN (${effectiveStatus}) = 'completed' THEN 1 ELSE 0 END`;
+    const orderBy =
+      filters.sort === 'starts_at'
+        ? `${statusGroup} ASC, CASE WHEN ${statusGroup} = 0 THEN e.starts_at END ASC NULLS LAST, CASE WHEN ${statusGroup} > 0 THEN e.starts_at END DESC NULLS LAST, i.id ${direction}`
+        : `e.${filters.sort} ${direction} NULLS LAST, i.id ${direction}`;
 
     const countResult = await query<{ total: string }>(
       `SELECT count(*)::text AS total
@@ -852,6 +861,7 @@ export const invitationRepository = {
               e.title AS event_title,
               e.host_name AS event_host_name,
               e.starts_at AS event_starts_at,
+              e.ends_at AS event_ends_at,
               e.timezone AS event_timezone,
               e.status AS event_status,
               e.category AS event_category,
@@ -864,7 +874,7 @@ export const invitationRepository = {
          FROM invitations i
          JOIN events e ON e.id = i.event_id
         WHERE ${where}
-        ORDER BY e.${filters.sort} ${direction} NULLS LAST, i.id ${direction}
+        ORDER BY ${orderBy}
         LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,
       listValues
     );
