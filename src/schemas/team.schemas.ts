@@ -60,8 +60,24 @@ export const createTeamSchema = z
     name: teamNameSchema,
     category: z.enum(TEAM_CATEGORIES).default('outra'),
     description: teamDescriptionSchema,
+    /** Bloco 11: equipa dentro de uma comunidade (opcional). */
+    community_id: z.uuid('Comunidade inválida.').nullable().optional(),
   })
   .strict();
+
+/** Bloco 11: eventos geridos pela equipa (só o criador altera). */
+export const setTeamEventsSchema = z
+  .object({
+    event_ids: z.array(z.uuid('Evento inválido.')).max(200).default([]),
+    /** Todos os eventos da comunidade da equipa (ou do criador, sem comunidade). */
+    all: z.boolean().default(false),
+  })
+  .strict();
+
+export const teamEventParamsSchema = z.object({
+  teamId: z.uuid('Equipa inválida.'),
+  eventId: z.uuid('Evento inválido.'),
+});
 
 export const updateTeamSchema = z
   .object({
@@ -179,6 +195,7 @@ export const taskStatusSchema = z.enum(TASK_STATUSES);
 export type TeamListQuery = z.infer<typeof teamListQuerySchema>;
 export type CreateTeamBody = z.infer<typeof createTeamSchema>;
 export type UpdateTeamBody = z.infer<typeof updateTeamSchema>;
+export type SetTeamEventsBody = z.infer<typeof setTeamEventsSchema>;
 export type DeleteTeamQuery = z.infer<typeof deleteTeamQuerySchema>;
 export type TeamMemberListQuery = z.infer<typeof teamMemberListQuerySchema>;
 export type AddTeamMembersBody = z.infer<typeof addTeamMembersSchema>;

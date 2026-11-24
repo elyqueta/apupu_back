@@ -58,6 +58,7 @@ interface EventRow {
   min_age: number | null;
   max_age: number | null;
   deleted_at: Date | null;
+  community_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -119,6 +120,7 @@ function toEvent(row: EventRow): EventRecord {
     minAge: row.min_age,
     maxAge: row.max_age,
     deletedAt: row.deleted_at,
+    communityId: row.community_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -149,7 +151,7 @@ const SELECT_COLUMNS = `
   contribution_enabled, contribution_bank_name, contribution_account_holder,
   contribution_account_reference, cover_url, cover_hash, cover_public_id,
   rsvp_deadline, status, cancelled_at, cancelled_reason, cancelled_by,
-  visibility, public_slug, show_attendee_count, min_age, max_age, deleted_at,
+  visibility, public_slug, show_attendee_count, min_age, max_age, deleted_at, community_id,
   created_at, updated_at
 `;
 
@@ -189,12 +191,29 @@ function accessCondition(
     ))`;
   }
 
+  // Bloco 11: gestores e responsável da comunidade do evento.
+  condition = `(${condition} OR EXISTS (
+    SELECT 1
+      FROM community_members cm
+     WHERE cm.community_id = ${alias}.community_id
+       AND cm.host_id = $${hostParam}
+       AND cm.status = 'active'
+       AND cm.role IN ('owner', 'manager')
+  ))`;
+
   return `(${condition} AND ${notDeleted})`;
 }
 
 /** Papel de quem consulta: `host` quando é proprietário. */
 function accessRoleExpression(alias = 'e', hostParam = 1): string {
-  return `CASE WHEN ${alias}.host_id = $${hostParam} THEN 'host' ELSE 'manager' END`;
+  // O responsável da comunidade tem os mesmos poderes do anfitrião.
+  return `CASE WHEN ${alias}.host_id = $${hostParam} OR EXISTS (
+    SELECT 1 FROM community_members cmo
+     WHERE cmo.community_id = ${alias}.community_id
+       AND cmo.host_id = $${hostParam}
+       AND cmo.status = 'active'
+       AND cmo.role = 'owner'
+  ) THEN 'host' ELSE 'manager' END`;
 }
 
 const STATS_LATERAL = `
@@ -225,11 +244,11 @@ export const eventRepository = {
          template_id, theme, contribution_enabled, contribution_bank_name,
          contribution_account_holder, contribution_account_reference,
          rsvp_deadline, cover_url, status,
-         visibility, public_slug, show_attendee_count, min_age, max_age
+         visibility, public_slug, show_attendee_count, min_age, max_age, community_id
        )
        VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'scheduled',
-         $26,$27,$28,$29,$30
+         $26,$27,$28,$29,$30,$31
        )
        RETURNING ${SELECT_COLUMNS}`,
       [
@@ -263,6 +282,7 @@ export const eventRepository = {
         data.showAttendeeCount ?? false,
         data.minAge ?? null,
         data.maxAge ?? null,
+        data.communityId ?? null,
       ]
     );
 
@@ -329,6 +349,13 @@ export const eventRepository = {
            AND m.revoked_at IS NULL
       ))`;
     }
+    condition = `(${condition} OR EXISTS (
+      SELECT 1 FROM community_members cm
+       WHERE cm.community_id = e.community_id
+         AND cm.host_id = $2
+         AND cm.status = 'active'
+         AND cm.role IN ('owner', 'manager')
+    ))`;
 
     const result = await runner.query<EventRow & { access_role: EventAccessRole }>(
       `SELECT ${columnsFor('e')},
@@ -500,6 +527,20 @@ export const eventRepository = {
               updated_at = now()
         WHERE id = $1 AND host_id = $2 AND deleted_at IS NULL`,
       [id, hostId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  /** Remoção lógica sem restrição de dono (a permissão é validada no serviço). */
+  async softDelete(id: string, client?: PoolClient): Promise<boolean> {
+    const runner = client ?? pool;
+    const result = await runner.query(
+      `UPDATE events
+          SET deleted_at = now(),
+              manage_token_revoked_at = COALESCE(manage_token_revoked_at, now()),
+              updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
     );
     return (result.rowCount ?? 0) > 0;
   },

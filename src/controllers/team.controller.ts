@@ -2,9 +2,11 @@ import { Request, Response } from 'express';
 import { toTeamDto } from '../dto/team.dto';
 import {
   CreateTeamBody,
+  SetTeamEventsBody,
   TeamListQuery,
   UpdateTeamBody,
 } from '../schemas/team.schemas';
+import { auditService } from '../services/audit.service';
 import { teamService } from '../services/team.service';
 import { EventAccessScope } from '../types/event.types';
 
@@ -52,6 +54,46 @@ export const teamController = {
       req.body as UpdateTeamBody
     );
     res.status(200).json({ data: toTeamDto(team) });
+  },
+
+  setEvents: async (req: Request, res: Response): Promise<void> => {
+    const team = await teamService.setEvents(
+      accessScope(req),
+      req.params.teamId ?? '',
+      req.body as SetTeamEventsBody
+    );
+    await auditService.recordRequest(req, {
+      action: 'team_events_changed',
+      hostId: accessScope(req).hostId,
+      eventId: team.eventId,
+      metadata: { team_id: team.id, event_count: team.eventIds.length },
+    });
+    res.status(200).json({ data: toTeamDto(team) });
+  },
+
+  removeEvent: async (req: Request, res: Response): Promise<void> => {
+    const team = await teamService.removeEvent(
+      accessScope(req),
+      req.params.teamId ?? '',
+      req.params.eventId ?? ''
+    );
+    await auditService.recordRequest(req, {
+      action: 'team_events_changed',
+      hostId: accessScope(req).hostId,
+      eventId: team.eventId,
+      metadata: { team_id: team.id, event_count: team.eventIds.length },
+    });
+    res.status(200).json({ data: toTeamDto(team) });
+  },
+
+  leave: async (req: Request, res: Response): Promise<void> => {
+    await teamService.leave(accessScope(req), req.params.teamId ?? '');
+    await auditService.recordRequest(req, {
+      action: 'team_left',
+      hostId: accessScope(req).hostId,
+      metadata: { team_id: req.params.teamId ?? '' },
+    });
+    res.status(204).send();
   },
 
   remove: async (req: Request, res: Response): Promise<void> => {

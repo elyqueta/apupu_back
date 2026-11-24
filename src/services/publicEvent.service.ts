@@ -1,6 +1,7 @@
 import { withTransaction } from '../database/pool';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { activityRepository } from '../repositories/activity.repository';
+import { communityRepository } from '../repositories/community.repository';
 import { eventRepository } from '../repositories/event.repository';
 import { hostBirthDateChangeRepository } from '../repositories/hostBirthDateChange.repository';
 import { hostRepository } from '../repositories/host.repository';
@@ -267,6 +268,11 @@ export const publicEventService = {
     }
     const message = body.message ?? null;
     const linkExpiresAt = await linkValidityService.maximumFor(event);
+    // Partilha rastreada (Bloco 11): só conta um código activo da mesma comunidade.
+    const referrer =
+      body.ref && event.communityId
+        ? await communityRepository.findActiveMemberByRefCode(event.communityId, body.ref)
+        : null;
 
     try {
       return await withTransaction(async (client) => {
@@ -328,6 +334,7 @@ export const publicEventService = {
               linkExpiresAt,
               tokenHash: hashToken(token),
               tokenEncrypted: encryptToken(token),
+              referrerMemberId: referrer?.id ?? null,
             },
             client
           );

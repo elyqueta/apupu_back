@@ -58,6 +58,8 @@ export interface EventDto {
   /** Limites de idade: só na vista de gestão, nunca em respostas públicas. */
   min_age: number | null;
   max_age: number | null;
+  /** Comunidade do evento (Bloco 11); `null` = evento pessoal. */
+  community_id: string | null;
   /** Papel de quem consulta: `host` ou `manager`. */
   access_role?: 'host' | 'manager';
   created_at: string;
@@ -83,6 +85,7 @@ export type PublicEventDto = Omit<
   | 'show_attendee_count'
   | 'min_age'
   | 'max_age'
+  | 'community_id'
 > & {
   /** Contacto controlado: email é sempre visível; telefone/avatar só se preenchidos. */
   host_email: string;
@@ -146,6 +149,7 @@ export function toEventDto(
     show_attendee_count: event.showAttendeeCount,
     min_age: event.minAge,
     max_age: event.maxAge,
+    community_id: event.communityId,
     ...(accessRole ? { access_role: accessRole } : {}),
     created_at: event.createdAt.toISOString(),
     updated_at: event.updatedAt.toISOString(),

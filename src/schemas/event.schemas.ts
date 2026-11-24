@@ -150,6 +150,7 @@ const eventObjectSchema = z
     rsvp_deadline: optionalDate,
     visibility: visibilitySchema.default('private'),
     show_attendee_count: z.boolean().default(false),
+    community_id: z.uuid('Comunidade inválida.').nullable().optional(),
     min_age: ageLimit.optional(),
     max_age: ageLimit.optional(),
   })

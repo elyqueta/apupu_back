@@ -219,6 +219,7 @@ export const eventService = {
         input.event.visibility === 'public' ? input.event.show_attendee_count : false,
       minAge: input.event.min_age ?? null,
       maxAge: input.event.max_age ?? null,
+      communityId: input.event.community_id ?? null,
     };
 
     assertAgeRange(data.minAge ?? null, data.maxAge ?? null);

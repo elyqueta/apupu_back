@@ -113,6 +113,8 @@ export const publicEventRsvpSchema = z
         message: `A mensagem deve ter no máximo ${MAX_GUEST_MESSAGE_LENGTH} caracteres.`,
       }),
     website: z.string().max(200).optional(),
+    /** Bloco 11: código de partilha do membro da comunidade (`?ref=`). */
+    ref: z.string().trim().regex(/^[A-Za-z0-9_-]{6,32}$/).optional(),
   })
   .strict();
 

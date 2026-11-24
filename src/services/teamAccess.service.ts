@@ -76,7 +76,23 @@ export async function resolveTeamAccess(
     throw new NotFoundError(TEAM_NOT_FOUND, 'team_not_found');
   }
 
-  const role = await resolveEventRole(team.eventId, scope);
+  let role = await resolveEventRole(team.eventId, scope);
+
+  // Bloco 11: o criador e quem gere um dos eventos associados também vê a
+  // equipa. O criador tem poderes de anfitrião; os restantes, de gestor.
+  if (!role && team.createdByHostId === scope.hostId) {
+    role = 'host';
+  }
+  if (!role) {
+    for (const eventId of team.eventIds) {
+      if (eventId === team.eventId) continue;
+      const other = await resolveEventRole(eventId, scope);
+      if (other === 'host' || other === 'manager') {
+        role = 'manager';
+        break;
+      }
+    }
+  }
 
   if (!role) {
     throw new NotFoundError(TEAM_NOT_FOUND, 'team_not_found');

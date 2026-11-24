@@ -36,6 +36,9 @@ export const EMAIL_TEMPLATE_CODES = [
   'tarefa_atribuida',
   'tarefa_concluida',
   'tarefa_reatribuida',
+  // Bloco 11 — comunidades.
+  'comunidade_aviso',
+  'comunidade_transferencia_codigo',
 ] as const;
 
 export type EmailTemplateCode = (typeof EMAIL_TEMPLATE_CODES)[number];
@@ -106,6 +109,16 @@ export interface EmailVars {
   variante?: 'novo' | 'anterior';
   /** Página de confirmação de "Não conheço este convite" (Fase 3). */
   denunciarUrl?: string;
+  /** Nome da comunidade (Bloco 11). */
+  comunidade?: string;
+  /** Tipo de aviso de comunidade (Bloco 11). */
+  aviso?:
+    | 'join_request_received'
+    | 'join_request_approved'
+    | 'join_request_rejected'
+    | 'member_invited'
+    | 'transfer_started'
+    | 'transfer_completed';
 }
 
 export type EmailTone = 'default' | 'danger';

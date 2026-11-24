@@ -1,9 +1,13 @@
-import { ConflictError, NotFoundError, ValidationError } from '../errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
+import { communityRepository } from '../repositories/community.repository';
+import { teamMemberRepository } from '../repositories/teamMember.repository';
+import { communityPermissions } from './communityPermissions';
 import { withTransaction } from '../database/pool';
 import { teamRepository } from '../repositories/team.repository';
 import {
   CreateTeamBody,
   DeleteTeamQuery,
+  SetTeamEventsBody,
   TeamListQuery,
   UpdateTeamBody,
 } from '../schemas/team.schemas';
@@ -60,6 +64,79 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 export const teamService = {
+  /**
+   * Bloco 11: associa a equipa a um, vários ou todos os eventos. Só o
+   * criador; o evento principal (`teams.event_id`) mantém-se sempre.
+   */
+  async setEvents(
+    scope: EventAccessScope,
+    teamId: string,
+    input: SetTeamEventsBody
+  ): Promise<TeamWithStats> {
+    const { team } = await resolveTeamAccess(teamId, scope);
+    if (team.createdByHostId !== scope.hostId) {
+      throw new ForbiddenError(
+        'Só quem criou a equipa a pode associar a outros eventos.',
+        'team_creator_only'
+      );
+    }
+
+    const assignable = await teamRepository.listAssignableEventIds(scope.hostId, team.communityId);
+    // "Todos": numa equipa de comunidade, todos os eventos da comunidade;
+    // sem comunidade, todos os eventos de que o criador é anfitrião.
+    const requested = input.all
+      ? team.communityId
+        ? await teamRepository.listAssignableEventIds(scope.hostId, team.communityId, true)
+        : assignable
+      : input.event_ids;
+    const invalid = requested.filter((id) => !assignable.includes(id));
+    if (invalid.length > 0) {
+      throw new ValidationError('Verifique os campos indicados.', {
+        event_ids: ['Só pode associar eventos que gere.'],
+      });
+    }
+
+    await withTransaction((client) => teamRepository.setEvents(team.id, team.eventId, requested, client));
+    const updated = await teamRepository.findById(team.id);
+    if (!updated) throw new NotFoundError('Equipa não encontrada.', 'team_not_found');
+    return updated;
+  },
+
+  async removeEvent(scope: EventAccessScope, teamId: string, eventId: string): Promise<TeamWithStats> {
+    const { team } = await resolveTeamAccess(teamId, scope);
+    if (team.createdByHostId !== scope.hostId) {
+      throw new ForbiddenError(
+        'Só quem criou a equipa a pode associar a outros eventos.',
+        'team_creator_only'
+      );
+    }
+    if (eventId === team.eventId) {
+      throw new ConflictError('O evento principal da equipa não pode ser retirado.', 'team_primary_event');
+    }
+    await withTransaction((client) =>
+      teamRepository.setEvents(
+        team.id,
+        team.eventId,
+        team.eventIds.filter((id) => id !== eventId),
+        client
+      )
+    );
+    const updated = await teamRepository.findById(team.id);
+    if (!updated) throw new NotFoundError('Equipa não encontrada.', 'team_not_found');
+    return updated;
+  },
+
+  /** Bloco 11: um membro sai da equipa quando quiser (o anfitrião implícito não). */
+  async leave(scope: EventAccessScope, teamId: string): Promise<void> {
+    const { team } = await resolveTeamAccess(teamId, scope);
+    const email = scope.managerEmail;
+    const member = email ? await teamMemberRepository.findActiveByTeamAndEmail(team.id, email) : null;
+    if (!member || member.isHost) {
+      throw new NotFoundError('Não é membro desta equipa.', 'team_member_not_found');
+    }
+    await teamMemberRepository.softRemove(member.id);
+  },
+
   async list(scope: EventAccessScope, query: TeamListQuery): Promise<TeamListResult> {
     if (query.event_id) {
       await requireEventRole(query.event_id, scope);
@@ -102,6 +179,21 @@ export const teamService = {
     const role = await requireEventRole(input.event_id, scope);
     assertCanManageTeam(role);
 
+    if (input.community_id) {
+      const member = await communityRepository.findMemberByHost(input.community_id, scope.hostId);
+      const allowed = communityPermissions.canCreateTeam({
+        role: member?.role ?? null,
+        status: member?.status ?? null,
+        isHostAccount: member?.hasHostAccount ?? false,
+      });
+      if (!allowed) {
+        throw new ForbiddenError(
+          'Só gestores e o responsável criam equipas na comunidade.',
+          'community_forbidden'
+        );
+      }
+    }
+
     try {
       const team = await withTransaction(async (client) => {
         const created = await teamRepository.create(
@@ -111,6 +203,7 @@ export const teamService = {
             category: input.category,
             description: input.description ?? null,
             createdByHostId: scope.hostId,
+            communityId: input.community_id ?? null,
           },
           client
         );

@@ -11,8 +11,10 @@ vi.mock('../src/repositories/event.repository', () => ({
     findByPublicSlug: vi.fn(),
     findByIdForUpdate: vi.fn(),
     findByIdForHost: vi.fn(),
+    findById: vi.fn(),
     countAccepted: vi.fn(async () => 0),
     softDeleteForHost: vi.fn(async () => true),
+    softDelete: vi.fn(async () => true),
   },
 }));
 
@@ -36,6 +38,10 @@ vi.mock('../src/repositories/host.repository', async () => {
 
 vi.mock('../src/repositories/hostBirthDateChange.repository', () => ({
   hostBirthDateChangeRepository: { previousValues: vi.fn(async () => []), record: vi.fn() },
+}));
+
+vi.mock('../src/repositories/community.repository', () => ({
+  communityRepository: { findMemberByHost: vi.fn(async () => null), findActiveMemberByRefCode: vi.fn(async () => null) },
 }));
 
 vi.mock('../src/repositories/activity.repository', () => ({
@@ -385,7 +391,7 @@ describe('Bloco 10 — RSVP pelo link aberto', () => {
 
 describe('Bloco 10 — apagar evento', () => {
   it('com confirmados exige o nome exacto', async () => {
-    vi.mocked(eventRepository.findByIdForHost).mockResolvedValue(makeEvent());
+    vi.mocked(eventRepository.findById).mockResolvedValue(makeEvent());
     vi.mocked(eventRepository.countAccepted).mockResolvedValue(3);
 
     await expect(hostEventService.remove(hostId, eventId)).rejects.toMatchObject({
@@ -397,21 +403,21 @@ describe('Bloco 10 — apagar evento', () => {
     await expect(hostEventService.remove(hostId, eventId, '  Festa da Ana ')).resolves.toEqual({
       acceptedCount: 3,
     });
-    expect(eventRepository.softDeleteForHost).toHaveBeenCalledTimes(1);
+    expect(eventRepository.softDelete).toHaveBeenCalledTimes(1);
   });
 
   it('sem confirmados não exige o nome', async () => {
-    vi.mocked(eventRepository.findByIdForHost).mockResolvedValue(makeEvent());
+    vi.mocked(eventRepository.findById).mockResolvedValue(makeEvent());
     vi.mocked(eventRepository.countAccepted).mockResolvedValue(0);
     await expect(hostEventService.remove(hostId, eventId)).resolves.toEqual({ acceptedCount: 0 });
   });
 
   it('gestor ou outra conta recebe 404 (só o criador apaga)', async () => {
-    vi.mocked(eventRepository.findByIdForHost).mockResolvedValue(null);
+    vi.mocked(eventRepository.findById).mockResolvedValue(makeEvent());
     await expect(hostEventService.remove('outra-conta', eventId, 'Festa da Ana')).rejects.toMatchObject({
       statusCode: 404,
     });
-    expect(eventRepository.softDeleteForHost).not.toHaveBeenCalled();
+    expect(eventRepository.softDelete).not.toHaveBeenCalled();
   });
 });
 

@@ -93,6 +93,8 @@ export interface Event {
   maxAge: number | null;
   /** Remoção lógica: eventos removidos deixam de ser encontrados. */
   deletedAt: Date | null;
+  /** Comunidade do evento (Bloco 11); `null` = evento pessoal. */
+  communityId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -128,6 +130,7 @@ export interface CreateEventInput {
   showAttendeeCount?: boolean;
   minAge?: number | null;
   maxAge?: number | null;
+  communityId?: string | null;
 }
 
 export type UpdateEventInput = Partial<CreateEventInput> & {

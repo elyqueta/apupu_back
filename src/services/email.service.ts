@@ -365,6 +365,18 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
     case 'registration_otp': {
       const code = hostToken(context);
 
+      if (payloadString(context, 'purpose') === 'community_transfer') {
+        return {
+          to: context.recipientEmail,
+          code: 'comunidade_transferencia_codigo',
+          vars: {
+            codigo: code,
+            comunidade: payloadString(context, 'communityName'),
+            expiraEm: `${env.REGISTRATION_OTP_TTL_MINUTES} minutos`,
+          },
+        };
+      }
+
       if (payloadString(context, 'purpose') === 'event_cancel') {
         return {
           to: context.recipientEmail,
@@ -393,6 +405,21 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         code: 'recuperar_senha',
         vars: { url: links.resetPassword(hostToken(context)) },
       };
+
+    case 'community_notice': {
+      const slug = payloadString(context, 'communitySlug');
+      return {
+        to: context.recipientEmail,
+        code: 'comunidade_aviso',
+        vars: {
+          nome: payloadString(context, 'recipientName'),
+          comunidade: payloadString(context, 'communityName'),
+          autor: payloadString(context, 'actorName'),
+          aviso: payloadString(context, 'kind') as EmailVars['aviso'],
+          url: slug ? links.community(slug) : links.settings(),
+        },
+      };
+    }
 
     case 'host_welcome':
       return {

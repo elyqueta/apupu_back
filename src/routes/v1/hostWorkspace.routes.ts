@@ -67,6 +67,8 @@ import {
 import {
   addTeamMembersSchema,
   createTeamSchema,
+  setTeamEventsSchema,
+  teamEventParamsSchema,
   deleteTeamQuerySchema,
   moveTaskSchema,
   removeTeamMemberQuerySchema,
@@ -2074,6 +2076,69 @@ router.post(
   requireAuthCsrf,
   validate({ body: createTeamSchema }),
   asyncHandler(teamController.create)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}/events:
+ *   put:
+ *     tags: [Equipas]
+ *     summary: Associa a equipa a eventos (só o criador)
+ *     description: >
+ *       Substitui os eventos geridos pela equipa (`event_ids` ou `all`). O
+ *       evento principal mantém-se sempre. Só eventos que o criador gere.
+ *     responses:
+ *       200: { description: Equipa actualizada. }
+ *       403:
+ *         description: Não é o criador.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       422:
+ *         description: Evento inválido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.put(
+  '/teams/:teamId/events',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ params: teamIdParamsSchema, body: setTeamEventsSchema }),
+  asyncHandler(teamController.setEvents)
+);
+
+router.delete(
+  '/teams/:teamId/events/:eventId',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ params: teamEventParamsSchema }),
+  asyncHandler(teamController.removeEvent)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}/leave:
+ *   post:
+ *     tags: [Equipas]
+ *     summary: Sai da equipa (qualquer membro, quando quiser)
+ *     responses:
+ *       204: { description: Saiu da equipa. }
+ *       404:
+ *         description: Não é membro.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/teams/:teamId/leave',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ params: teamIdParamsSchema }),
+  asyncHandler(teamController.leave)
 );
 
 /**

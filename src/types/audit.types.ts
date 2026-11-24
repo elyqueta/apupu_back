@@ -36,6 +36,20 @@ export const AUDIT_ACTIONS = [
   // A constraint CHECK de host_audit_log é alargada na migração 0023.
   'support_message_resolved',
   'newsletter_subscription_removed',
+  // Bloco 11: comunidades e equipas reutilizáveis (CHECK alargado na migração 0029).
+  'community_created',
+  'community_updated',
+  'community_deleted',
+  'community_member_invited',
+  'community_member_removed',
+  'community_member_left',
+  'community_role_changed',
+  'community_join_decided',
+  'community_transfer_started',
+  'community_transfer_completed',
+  'community_transfer_cancelled',
+  'team_events_changed',
+  'team_left',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

@@ -214,6 +214,8 @@ export interface InsertPublicInvitationData {
   linkExpiresAt: Date;
   tokenHash: string;
   tokenEncrypted: string;
+  /** Bloco 11: membro da comunidade que partilhou o link (`?ref=`). */
+  referrerMemberId?: string | null;
 }
 
 export const invitationRepository = {
@@ -225,9 +227,9 @@ export const invitationRepository = {
          event_id, guest_name, guest_email, guest_phone, guest_phone_normalized,
          source, guest_age, age_flag, age_flag_reason,
          rsvp_status, rsvp_responded_at, rsvp_version, guest_message,
-         link_expires_at, token_hash, token_encrypted
+         link_expires_at, token_hash, token_encrypted, referrer_member_id
        )
-       VALUES ($1,$2,$3,$4,$5,'public_link',$6,$7,$8,$9,now(),1,$10,$11,$12,$13)
+       VALUES ($1,$2,$3,$4,$5,'public_link',$6,$7,$8,$9,now(),1,$10,$11,$12,$13,$14)
        RETURNING ${SELECT_COLUMNS}`,
       [
         data.eventId,
@@ -243,6 +245,7 @@ export const invitationRepository = {
         data.linkExpiresAt,
         data.tokenHash,
         data.tokenEncrypted,
+        data.referrerMemberId ?? null,
       ]
     );
     const row = result.rows[0];

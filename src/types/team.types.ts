@@ -88,6 +88,10 @@ export interface Team {
   category: TeamCategory;
   description: string | null;
   createdByHostId: string | null;
+  /** Comunidade da equipa (Bloco 11); `null` = equipa sem comunidade. */
+  communityId: string | null;
+  /** Eventos geridos pela equipa (`team_events`); inclui o evento principal. */
+  eventIds: string[];
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

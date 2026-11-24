@@ -24,6 +24,8 @@ interface TeamRow {
   category: TeamCategory;
   description: string | null;
   created_by_host_id: string | null;
+  community_id: string | null;
+  event_ids: string[] | null;
   deleted_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -45,6 +47,8 @@ function toTeam(row: TeamRow): TeamWithStats {
     category: row.category,
     description: row.description,
     createdByHostId: row.created_by_host_id,
+    communityId: row.community_id ?? null,
+    eventIds: row.event_ids ?? [row.event_id],
     deletedAt: row.deleted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -174,7 +178,13 @@ function teamAggregateColumns(): string {
 
 const SELECT_TEAM = `
   t.id, t.event_id, t.name, t.category, t.description,
-  t.created_by_host_id, t.deleted_at, t.created_at, t.updated_at,
+  t.created_by_host_id, t.community_id, t.deleted_at, t.created_at, t.updated_at,
+  ARRAY(
+    SELECT te.event_id FROM team_events te
+      JOIN events tev ON tev.id = te.event_id AND tev.deleted_at IS NULL
+     WHERE te.team_id = t.id
+     ORDER BY te.created_at ASC
+  ) AS event_ids,
   e.title AS event_title,
   ${EVENT_STATUS_SQL} AS event_status,
   ${teamAggregateColumns()}
@@ -199,7 +209,13 @@ const FROM_TEAM = `
  */
 const SELECT_TEAM_PAGE = `
   p.id, p.event_id, p.name, p.category, p.description,
-  p.created_by_host_id, p.deleted_at, p.created_at, p.updated_at,
+  p.created_by_host_id, p.community_id, p.deleted_at, p.created_at, p.updated_at,
+  ARRAY(
+    SELECT te.event_id FROM team_events te
+      JOIN events tev ON tev.id = te.event_id AND tev.deleted_at IS NULL
+     WHERE te.team_id = p.id
+     ORDER BY te.created_at ASC
+  ) AS event_ids,
   p.event_title, p.event_status,
   ${teamAggregateColumns()}
 `;
@@ -280,7 +296,16 @@ export function buildTeamListQuery(filters: TeamListFilters): {
   const values: unknown[] = [filters.hostId, filters.actorEmail];
   const conditions = ['t.deleted_at IS NULL', 'e.deleted_at IS NULL'];
 
-  const access = ['e.host_id = $1'];
+  const access = [
+    'e.host_id = $1',
+    // Bloco 11: anfitrião de qualquer evento associado e criador da equipa.
+    `EXISTS (
+       SELECT 1 FROM team_events tea
+         JOIN events ea ON ea.id = tea.event_id AND ea.deleted_at IS NULL
+        WHERE tea.team_id = t.id AND ea.host_id = $1
+     )`,
+    't.created_by_host_id = $1',
+  ];
 
   if (filters.managerEmail) {
     values.push(filters.managerEmail);
@@ -307,7 +332,9 @@ export function buildTeamListQuery(filters: TeamListFilters): {
 
   if (filters.eventId) {
     values.push(filters.eventId);
-    conditions.push(`t.event_id = $${values.length}`);
+    conditions.push(`(t.event_id = $${values.length} OR EXISTS (
+      SELECT 1 FROM team_events tef WHERE tef.team_id = t.id AND tef.event_id = $${values.length}
+    ))`);
   }
 
   if (filters.category) {
@@ -351,7 +378,7 @@ export function buildTeamListQuery(filters: TeamListFilters): {
       // pagam as agregações (ver comentário de SELECT_TEAM_PAGE).
       text: `WITH team_page AS (
                SELECT t.id, t.event_id, t.name, t.category, t.description,
-                      t.created_by_host_id, t.deleted_at, t.created_at, t.updated_at,
+                      t.created_by_host_id, t.community_id, t.deleted_at, t.created_at, t.updated_at,
                       e.starts_at,
                       e.title AS event_title,
                       ${EVENT_STATUS_SQL} AS event_status,
@@ -376,24 +403,88 @@ export interface CreateTeamData {
   category: TeamCategory;
   description: string | null;
   createdByHostId: string | null;
+  communityId?: string | null;
 }
 
 export const teamRepository = {
   async create(data: CreateTeamData, client?: PoolClient): Promise<TeamWithStats> {
     const runner = client ?? pool;
     const result = await runner.query<{ id: string }>(
-      `INSERT INTO teams (event_id, name, category, description, created_by_host_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO teams (event_id, name, category, description, created_by_host_id, community_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [data.eventId, data.name, data.category, data.description, data.createdByHostId]
+      [
+        data.eventId,
+        data.name,
+        data.category,
+        data.description,
+        data.createdByHostId,
+        data.communityId ?? null,
+      ]
     );
 
     const id = result.rows[0]?.id;
     if (!id) throw new Error('Falha ao criar equipa.');
+    // Novas equipas escrevem sempre em `team_events` (Bloco 11).
+    await runner.query(
+      `INSERT INTO team_events (team_id, event_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [id, data.eventId]
+    );
 
     const team = await this.findById(id, client);
     if (!team) throw new Error('Falha ao ler a equipa criada.');
     return team;
+  },
+
+  /**
+   * Eventos que o criador pode associar: os da comunidade da equipa ou,
+   * sem comunidade, os eventos de que é anfitrião. Só eventos activos.
+   */
+  async listAssignableEventIds(
+    creatorId: string,
+    communityId: string | null,
+    onlyCommunity = false,
+    client?: PoolClient
+  ): Promise<string[]> {
+    const runner = client ?? pool;
+    const communityEvents = `SELECT e.id FROM events e
+            WHERE e.community_id = $2 AND e.deleted_at IS NULL
+              AND EXISTS (
+                SELECT 1 FROM community_members cm
+                 WHERE cm.community_id = $2 AND cm.host_id = $1
+                   AND cm.status = 'active' AND cm.role IN ('owner', 'manager')
+              )`;
+    const result = await runner.query<{ id: string }>(
+      communityId
+        ? onlyCommunity
+          ? communityEvents
+          : `${communityEvents}
+            UNION
+           SELECT e.id FROM events e WHERE e.host_id = $1 AND e.deleted_at IS NULL`
+        : `SELECT e.id FROM events e WHERE e.host_id = $1 AND e.deleted_at IS NULL AND $2::uuid IS NULL`,
+      [creatorId, communityId]
+    );
+    return result.rows.map((row) => row.id);
+  },
+
+  /** Substitui os eventos associados; o evento principal mantém-se sempre. */
+  async setEvents(
+    teamId: string,
+    primaryEventId: string,
+    eventIds: string[],
+    client: PoolClient
+  ): Promise<void> {
+    const ids = Array.from(new Set([primaryEventId, ...eventIds]));
+    await client.query(
+      `DELETE FROM team_events WHERE team_id = $1 AND NOT (event_id = ANY($2::uuid[]))`,
+      [teamId, ids]
+    );
+    await client.query(
+      `INSERT INTO team_events (team_id, event_id)
+       SELECT $1, unnest($2::uuid[])
+       ON CONFLICT DO NOTHING`,
+      [teamId, ids]
+    );
   },
 
   async findById(id: string, client?: PoolClient): Promise<TeamWithStats | null> {
