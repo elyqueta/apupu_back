@@ -79,4 +79,25 @@ describe('Bloco 14 — PDF "Convite"', () => {
       writeFileSync(join(dir, `convite-${name}.pdf`), buffer);
     }
   });
+
+  it('Bloco 15: embute 3 fontes diferentes no PDF', async () => {
+    const manifest: TemplateManifest = {
+      ...DEFAULT_MANIFEST,
+      fonts: { display: 'condensed', body: 'serif' },
+      layout: { align: 'center', blocks: ['title', 'host', 'datetime', 'location', 'message'] },
+    };
+    const buffer = await renderInvitationPdf(
+      event({ message: 'Mensagem de teste' }),
+      invitation,
+      manifest,
+      'https://contocontigo.example/i/abc'
+    );
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    const raw = buffer.toString('latin1');
+    // Fontes embutidas aparecem como objetos FontFile2/FontDescriptor/BaseFont
+    expect(raw).toMatch(/FontFile2|FontDescriptor/);
+    for (const font of ['Oswald', 'CormorantGaramond', 'Figtree']) {
+      expect(raw).toContain(font);
+    }
+  });
 });

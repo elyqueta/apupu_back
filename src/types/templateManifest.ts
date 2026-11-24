@@ -7,7 +7,7 @@ import { z } from 'zod';
  */
 const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 
-export const TEMPLATE_FONTS = ['sans', 'serif', 'cap', 'script'] as const;
+export const TEMPLATE_FONTS = ['sans', 'serif', 'cap', 'script', 'condensed'] as const;
 export const OPEN_STYLES = ['none', 'envelope', 'curtain', 'fade', 'fold'] as const;
 export const COVER_MODES = ['hero', 'framed', 'none'] as const;
 export const LAYOUT_BLOCKS = ['title', 'host', 'datetime', 'location', 'deadline', 'message'] as const;
@@ -38,6 +38,9 @@ export const templateManifestSchema = z
         frame: z.enum(['none', 'single', 'double']),
         qr_position: z.enum(QR_POSITIONS),
         show_ornaments: z.boolean(),
+        qr_label: z.string().max(40).optional(),
+        qr_destination: z.enum(['event', 'invite', 'custom']).optional(),
+        qr_custom_url: z.string().max(500).optional(),
       })
       .strict(),
   })
