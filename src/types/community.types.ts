@@ -37,6 +37,8 @@ export interface CommunityWithStats extends Community {
   myStatus: CommunityMemberStatus | null;
   /** Pedido de adesão pendente de quem consulta. */
   myPendingRequest: boolean;
+  /** Instituição a que a comunidade pertence (Bloco 13). */
+  institution: { name: string; slug: string } | null;
 }
 
 export interface CommunityMember {

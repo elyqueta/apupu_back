@@ -50,6 +50,15 @@ export const AUDIT_ACTIONS = [
   'community_transfer_cancelled',
   'team_events_changed',
   'team_left',
+  // Bloco 13: instituições (CHECK alargado na migração 0032).
+  'institution_created',
+  'institution_updated',
+  'institution_deleted',
+  'institution_link_requested',
+  'institution_link_approved',
+  'institution_link_rejected',
+  'institution_community_removed',
+  'institution_community_left',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

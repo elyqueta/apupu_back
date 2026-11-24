@@ -203,6 +203,27 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
       ),
   },
 
+  instituicao_codigo: {
+    code: 'instituicao_codigo',
+    email: (vars) => ({
+      subject: short('Confirma a alteração na instituição', 50),
+      preheader: short('Usa o código para confirmares a ligação ou remoção da comunidade.', 90),
+      title: 'Confirma a alteração',
+      greetingName: recipientName(vars),
+      paragraphs: [
+        `Pediste para ligar ou remover a comunidade ${vars.comunidade ?? ''} da instituição ${vars.instituicao ?? ''}.`.replace(/\s+/g, ' ').trim(),
+        'Usa este código para confirmar:',
+        `O código expira ao fim de ${vars.expiraEm ?? '10 minutos'} e só pode ser usado uma vez.`,
+        'Se não fizeste este pedido, ignora este e-mail.',
+      ],
+      code: vars.codigo ?? '------',
+      reason: 'administras uma instituição no Conto Contigo',
+    }),
+    push: () => pushMessage('Código da instituição', 'Usa o código enviado para confirmares a alteração.'),
+    sms: (vars) =>
+      smsMessage(`Conto Contigo: código ${vars.codigo ?? '------'}. Expira em ${vars.expiraEm ?? '10 minutos'}.`),
+  },
+
   comunidade_aviso: {
     code: 'comunidade_aviso',
     email: (vars) => {

@@ -17,7 +17,7 @@ import { pool } from '../database/pool';
  *
  * O código em claro nunca chega à base de dados.
  */
-export type VerificationPurpose = 'registration' | 'event_cancel' | 'community_transfer';
+export type VerificationPurpose = 'registration' | 'event_cancel' | 'community_transfer' | 'institution_link';
 
 interface RegistrationVerificationRow {
   id: string;

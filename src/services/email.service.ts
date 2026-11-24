@@ -365,6 +365,19 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
     case 'registration_otp': {
       const code = hostToken(context);
 
+      if (payloadString(context, 'purpose') === 'institution_link') {
+        return {
+          to: context.recipientEmail,
+          code: 'instituicao_codigo',
+          vars: {
+            codigo: code,
+            comunidade: payloadString(context, 'communityName'),
+            instituicao: payloadString(context, 'institutionName'),
+            expiraEm: `${env.REGISTRATION_OTP_TTL_MINUTES} minutos`,
+          },
+        };
+      }
+
       if (payloadString(context, 'purpose') === 'community_transfer') {
         return {
           to: context.recipientEmail,

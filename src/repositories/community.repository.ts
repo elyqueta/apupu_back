@@ -39,6 +39,8 @@ interface CommunityStatsRow extends CommunityRow {
   my_role: CommunityRole | null;
   my_status: CommunityMemberStatus | null;
   my_pending_request: boolean;
+  institution_name: string | null;
+  institution_slug: string | null;
 }
 
 const COMMUNITY_COLUMNS = `
@@ -70,6 +72,7 @@ function toCommunityWithStats(row: CommunityStatsRow): CommunityWithStats {
     myRole: row.my_role,
     myStatus: row.my_status,
     myPendingRequest: Boolean(row.my_pending_request),
+    institution: row.institution_slug ? { name: row.institution_name ?? '', slug: row.institution_slug } : null,
   };
 }
 
@@ -87,7 +90,9 @@ const STATS_SELECT = `
   EXISTS (
     SELECT 1 FROM community_join_requests r
      WHERE r.community_id = c.id AND r.host_id = $1 AND r.status = 'pending'
-  ) AS my_pending_request
+  ) AS my_pending_request,
+  (SELECT ins.name FROM institutions ins WHERE ins.id = c.institution_id AND ins.deleted_at IS NULL) AS institution_name,
+  (SELECT ins.slug FROM institutions ins WHERE ins.id = c.institution_id AND ins.deleted_at IS NULL) AS institution_slug
 `;
 
 const ME_JOIN = `

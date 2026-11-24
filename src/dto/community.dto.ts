@@ -27,6 +27,7 @@ export function toCommunityDto(community: CommunityWithStats) {
     my_role: community.myRole,
     my_status: community.myStatus,
     my_pending_request: community.myPendingRequest,
+    institution: community.institution,
     url: links.community(community.slug),
     created_at: community.createdAt.toISOString(),
   };

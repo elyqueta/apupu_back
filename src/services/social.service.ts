@@ -1,4 +1,5 @@
 import { ConflictError, NotFoundError, TooManyRequestsError, ValidationError } from '../errors';
+import { institutionRepository } from '../repositories/institution.repository';
 import { notificationRepository } from '../repositories/notification.repository';
 import {
   FeedCommunityRow,
@@ -89,6 +90,26 @@ export const socialService = {
     let items: unknown[];
     if (input.type === 'communities') {
       items = (await socialRepository.feedCommunities({ q: input.q, offset, limit })).map(toFeedCommunityDto);
+      // Bloco 13: instituições públicas aparecem como cartões no topo da
+      // primeira página do separador "Comunidades" (sem novo tipo de pesquisa).
+      if (offset === 0) {
+        const institutions = await institutionRepository.listPublic(6, 0, input.q);
+        const hasMore = items.length > FEED_PAGE_SIZE;
+        const cards = institutions.map((row) => ({
+          type: 'institution' as const,
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          description: row.description,
+          avatar_url: row.avatar_url,
+          cover_url: row.cover_url,
+          community_count: row.community_count,
+        }));
+        return {
+          items: [...cards, ...items.slice(0, FEED_PAGE_SIZE)],
+          next_cursor: hasMore ? encodeCursor(offset + FEED_PAGE_SIZE) : null,
+        };
+      }
     } else if (input.type === 'people') {
       items = (await socialRepository.feedPeople({ q: input.q, offset, limit })).map(toFeedPersonDto);
     } else {

@@ -39,6 +39,8 @@ export const EMAIL_TEMPLATE_CODES = [
   // Bloco 11 — comunidades.
   'comunidade_aviso',
   'comunidade_transferencia_codigo',
+  // Bloco 13 — instituições.
+  'instituicao_codigo',
 ] as const;
 
 export type EmailTemplateCode = (typeof EMAIL_TEMPLATE_CODES)[number];
@@ -111,6 +113,8 @@ export interface EmailVars {
   denunciarUrl?: string;
   /** Nome da comunidade (Bloco 11). */
   comunidade?: string;
+  /** Nome da instituição (Bloco 13). */
+  instituicao?: string;
   /** Tipo de aviso de comunidade (Bloco 11). */
   aviso?:
     | 'join_request_received'

@@ -45,9 +45,11 @@ describe('Bloco 12 — feed e pesquisa (testes negativos)', () => {
     expect(sql).toContain("h.status = 'active'");
   });
 
-  it('comunidades: só públicas', async () => {
+  it('comunidades e instituições (Bloco 13): só públicas', async () => {
     await socialService.feed({ type: 'communities' });
-    expect(sqlCalls().at(-1)).toContain("c.visibility = 'public'");
+    const calls = sqlCalls();
+    expect(calls.find((sql) => sql.includes('FROM communities c'))).toContain("c.visibility = 'public'");
+    expect(calls.find((sql) => sql.includes('FROM institutions i'))).toContain("i.visibility = 'public'");
   });
 
   it('a pesquisa escapa curingas e aplica as mesmas regras a cada grupo', async () => {
