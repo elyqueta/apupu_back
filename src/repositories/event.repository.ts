@@ -11,6 +11,7 @@ import {
   EventStats,
   EventStatus,
   EventTheme,
+  EventVisibility,
   EventWithStats,
   CreateEventInput,
   HostEventListFilters,
@@ -51,6 +52,18 @@ interface EventRow {
   cancelled_at: Date | null;
   cancelled_reason: string | null;
   cancelled_by: string | null;
+  visibility: EventVisibility;
+  public_slug: string | null;
+  show_attendee_count: boolean;
+  min_age: number | null;
+  max_age: number | null;
+  deleted_at: Date | null;
+  community_id: string | null;
+  youtube_video_id: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  place_label: string | null;
+  use_tables: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -69,6 +82,9 @@ function toEvent(row: EventRow): EventRecord {
     name: row.location_name,
     address: row.location_address,
     onlineUrl: row.online_url,
+    latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+    longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+    placeLabel: row.place_label ?? null,
   };
 
   const contribution: EventContribution = {
@@ -106,6 +122,15 @@ function toEvent(row: EventRow): EventRecord {
     cancelledAt: row.cancelled_at,
     cancelledReason: row.cancelled_reason,
     cancelledBy: row.cancelled_by,
+    visibility: row.visibility,
+    publicSlug: row.public_slug,
+    showAttendeeCount: row.show_attendee_count,
+    minAge: row.min_age,
+    maxAge: row.max_age,
+    deletedAt: row.deleted_at,
+    communityId: row.community_id,
+    youtubeVideoId: row.youtube_video_id ?? null,
+    useTables: row.use_tables ?? false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -136,6 +161,8 @@ const SELECT_COLUMNS = `
   contribution_enabled, contribution_bank_name, contribution_account_holder,
   contribution_account_reference, cover_url, cover_hash, cover_public_id,
   rsvp_deadline, status, cancelled_at, cancelled_reason, cancelled_by,
+  visibility, public_slug, show_attendee_count, min_age, max_age, deleted_at, community_id,
+  youtube_video_id, latitude, longitude, place_label, use_tables,
   created_at, updated_at
 `;
 
@@ -161,6 +188,7 @@ function accessCondition(
   values.push(scope.hostId);
   const hostParam = values.length;
   let condition = `${alias}.host_id = $${hostParam}`;
+  const notDeleted = `${alias}.deleted_at IS NULL`;
 
   if (scope.managerEmail) {
     values.push(scope.managerEmail);
@@ -174,12 +202,29 @@ function accessCondition(
     ))`;
   }
 
-  return condition;
+  // Bloco 11: gestores e responsável da comunidade do evento.
+  condition = `(${condition} OR EXISTS (
+    SELECT 1
+      FROM community_members cm
+     WHERE cm.community_id = ${alias}.community_id
+       AND cm.host_id = $${hostParam}
+       AND cm.status = 'active'
+       AND cm.role IN ('owner', 'manager')
+  ))`;
+
+  return `(${condition} AND ${notDeleted})`;
 }
 
 /** Papel de quem consulta: `host` quando é proprietário. */
 function accessRoleExpression(alias = 'e', hostParam = 1): string {
-  return `CASE WHEN ${alias}.host_id = $${hostParam} THEN 'host' ELSE 'manager' END`;
+  // O responsável da comunidade tem os mesmos poderes do anfitrião.
+  return `CASE WHEN ${alias}.host_id = $${hostParam} OR EXISTS (
+    SELECT 1 FROM community_members cmo
+     WHERE cmo.community_id = ${alias}.community_id
+       AND cmo.host_id = $${hostParam}
+       AND cmo.status = 'active'
+       AND cmo.role = 'owner'
+  ) THEN 'host' ELSE 'manager' END`;
 }
 
 const STATS_LATERAL = `
@@ -209,10 +254,13 @@ export const eventRepository = {
          location_name, location_address, online_url, message, rules, dress_code,
          template_id, theme, contribution_enabled, contribution_bank_name,
          contribution_account_holder, contribution_account_reference,
-         rsvp_deadline, cover_url, status
+         rsvp_deadline, cover_url, status,
+         visibility, public_slug, show_attendee_count, min_age, max_age, community_id,
+         youtube_video_id, latitude, longitude, place_label, use_tables
        )
        VALUES (
-         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'scheduled'
+         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'scheduled',
+         $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
        )
        RETURNING ${SELECT_COLUMNS}`,
       [
@@ -241,6 +289,17 @@ export const eventRepository = {
         data.contribution.accountReference,
         data.rsvpDeadline,
         data.coverUrl ?? null,
+        data.visibility ?? 'private',
+        data.publicSlug ?? null,
+        data.showAttendeeCount ?? false,
+        data.minAge ?? null,
+        data.maxAge ?? null,
+        data.communityId ?? null,
+        data.youtubeVideoId ?? null,
+        data.location.latitude ?? null,
+        data.location.longitude ?? null,
+        data.location.placeLabel ?? null,
+        data.useTables ?? false,
       ]
     );
 
@@ -252,7 +311,7 @@ export const eventRepository = {
   async findById(id: string, client?: PoolClient): Promise<EventRecord | null> {
     const runner = client ?? pool;
     const result = await runner.query<EventRow>(
-      `SELECT ${SELECT_COLUMNS} FROM events WHERE id = $1`,
+      `SELECT ${SELECT_COLUMNS} FROM events WHERE id = $1 AND deleted_at IS NULL`,
       [id]
     );
     const row = result.rows[0];
@@ -262,7 +321,7 @@ export const eventRepository = {
   /** Lê com lock de linha para alterações com efeitos na outbox. */
   async findByIdForUpdate(id: string, client: PoolClient): Promise<EventRecord | null> {
     const result = await client.query<EventRow>(
-      `SELECT ${SELECT_COLUMNS} FROM events WHERE id = $1 FOR UPDATE`,
+      `SELECT ${SELECT_COLUMNS} FROM events WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
       [id]
     );
     const row = result.rows[0];
@@ -273,7 +332,7 @@ export const eventRepository = {
   async findByIdForHost(id: string, hostId: string, client?: PoolClient): Promise<EventRecord | null> {
     const runner = client ?? pool;
     const result = await runner.query<EventRow>(
-      `SELECT ${SELECT_COLUMNS} FROM events WHERE id = $1 AND host_id = $2`,
+      `SELECT ${SELECT_COLUMNS} FROM events WHERE id = $1 AND host_id = $2 AND deleted_at IS NULL`,
       [id, hostId]
     );
     const row = result.rows[0];
@@ -307,12 +366,19 @@ export const eventRepository = {
            AND m.revoked_at IS NULL
       ))`;
     }
+    condition = `(${condition} OR EXISTS (
+      SELECT 1 FROM community_members cm
+       WHERE cm.community_id = e.community_id
+         AND cm.host_id = $2
+         AND cm.status = 'active'
+         AND cm.role IN ('owner', 'manager')
+    ))`;
 
     const result = await runner.query<EventRow & { access_role: EventAccessRole }>(
       `SELECT ${columnsFor('e')},
               ${accessRoleExpression('e', 2)} AS access_role
          FROM events e
-        WHERE e.id = $1 AND ${condition}`,
+        WHERE e.id = $1 AND e.deleted_at IS NULL AND ${condition}`,
       values
     );
 
@@ -324,7 +390,7 @@ export const eventRepository = {
 
   async findByManageTokenHash(hash: string): Promise<EventRecord | null> {
     const result = await query<EventRow>(
-      `SELECT ${SELECT_COLUMNS} FROM events WHERE manage_token_hash = $1`,
+      `SELECT ${SELECT_COLUMNS} FROM events WHERE manage_token_hash = $1 AND deleted_at IS NULL`,
       [hash]
     );
     const row = result.rows[0];
@@ -364,6 +430,13 @@ export const eventRepository = {
       ['cancelledAt', 'cancelled_at', (v: unknown): unknown => v],
       ['cancelledReason', 'cancelled_reason', (v: unknown): unknown => v],
       ['cancelledBy', 'cancelled_by', (v: unknown): unknown => v],
+      ['visibility', 'visibility', (v: unknown): unknown => v],
+      ['publicSlug', 'public_slug', (v: unknown): unknown => v],
+      ['showAttendeeCount', 'show_attendee_count', (v: unknown): unknown => v],
+      ['minAge', 'min_age', (v: unknown): unknown => v],
+      ['maxAge', 'max_age', (v: unknown): unknown => v],
+      ['youtubeVideoId', 'youtube_video_id', (v: unknown): unknown => v],
+      ['useTables', 'use_tables', (v: unknown): unknown => v],
     ];
 
     const set: string[] = [];
@@ -385,6 +458,12 @@ export const eventRepository = {
       set.push(`location_address = $${values.length}`);
       values.push(changes.location.onlineUrl);
       set.push(`online_url = $${values.length}`);
+      values.push(changes.location.latitude ?? null);
+      set.push(`latitude = $${values.length}`);
+      values.push(changes.location.longitude ?? null);
+      set.push(`longitude = $${values.length}`);
+      values.push(changes.location.placeLabel ?? null);
+      set.push(`place_label = $${values.length}`);
     }
 
     if ('theme' in changes && changes.theme) {
@@ -412,6 +491,7 @@ export const eventRepository = {
       `UPDATE events
           SET ${set.join(', ')}, updated_at = now()
         WHERE id = $${values.length}
+          AND deleted_at IS NULL
         RETURNING ${SELECT_COLUMNS}`,
       values
     );
@@ -459,9 +539,61 @@ export const eventRepository = {
     return row ? toEvent(row) : null;
   },
 
-  async deleteForHost(id: string, hostId: string): Promise<boolean> {
-    const result = await query('DELETE FROM events WHERE id = $1 AND host_id = $2', [id, hostId]);
+  /**
+   * Remoção lógica, limitada ao proprietário. O link de gestão é
+   * revogado e o link público deixa de resolver (`deleted_at`).
+   */
+  async softDeleteForHost(id: string, hostId: string, client?: PoolClient): Promise<boolean> {
+    const runner = client ?? pool;
+    const result = await runner.query(
+      `UPDATE events
+          SET deleted_at = now(),
+              manage_token_revoked_at = COALESCE(manage_token_revoked_at, now()),
+              updated_at = now()
+        WHERE id = $1 AND host_id = $2 AND deleted_at IS NULL`,
+      [id, hostId]
+    );
     return (result.rowCount ?? 0) > 0;
+  },
+
+  /** Remoção lógica sem restrição de dono (a permissão é validada no serviço). */
+  async softDelete(id: string, client?: PoolClient): Promise<boolean> {
+    const runner = client ?? pool;
+    const result = await runner.query(
+      `UPDATE events
+          SET deleted_at = now(),
+              manage_token_revoked_at = COALESCE(manage_token_revoked_at, now()),
+              updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  /** Evento público, activo e não removido, pelo slug do link aberto. */
+  async findByPublicSlug(slug: string, client?: PoolClient): Promise<EventRecord | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<EventRow>(
+      `SELECT ${SELECT_COLUMNS}
+         FROM events
+        WHERE public_slug = $1
+          AND visibility = 'public'
+          AND deleted_at IS NULL`,
+      [slug]
+    );
+    const row = result.rows[0];
+    return row ? toEvent(row) : null;
+  },
+
+  async countAccepted(eventId: string, client?: PoolClient): Promise<number> {
+    const runner = client ?? pool;
+    const result = await runner.query<{ total: string }>(
+      `SELECT count(*)::text AS total
+         FROM invitations
+        WHERE event_id = $1 AND rsvp_status = 'accepted'`,
+      [eventId]
+    );
+    return Number(result.rows[0]?.total ?? '0');
   },
 
   /** Liga eventos legados ao anfitrião após verificação de email. */
@@ -650,8 +782,8 @@ export const eventRepository = {
     }>(
       `SELECT
          (SELECT count(*)::text FROM hosts) AS hosts,
-         (SELECT count(*)::text FROM events WHERE status = 'scheduled') AS active,
-         (SELECT count(*)::text FROM events WHERE status = 'cancelled') AS cancelled`
+         (SELECT count(*)::text FROM events WHERE status = 'scheduled' AND deleted_at IS NULL) AS active,
+         (SELECT count(*)::text FROM events WHERE status = 'cancelled' AND deleted_at IS NULL) AS cancelled`
     );
     const row = result.rows[0];
     return {
@@ -673,7 +805,7 @@ export const eventRepository = {
     offset: number;
   }): Promise<{ items: EventWithStats[]; total: number }> {
     const values: unknown[] = [];
-    const conditions: string[] = [];
+    const conditions: string[] = ['e.deleted_at IS NULL'];
 
     const push = (sql: string, value: unknown): void => {
       values.push(value);

@@ -63,12 +63,19 @@ interface ActivityNotificationText {
 
 function activityText(
   kind: ActivityKind,
-  guestName: string | null
+  guestName: string | null,
+  metadata: Record<string, unknown> = {}
 ): ActivityNotificationText {
   const guest = guestName?.trim() || 'Um convidado';
 
   switch (kind) {
     case 'rsvp_accepted':
+      if (metadata['age_flag'] === true) {
+        return {
+          title: 'Confirmação a rever: idade alterada',
+          body: `${guest} confirmou presença depois de alterar a data de nascimento. Reveja a confirmação.`,
+        };
+      }
       return { title: 'RSVP confirmado', body: `${guest} confirmou presença.` };
     case 'rsvp_declined':
       return { title: 'RSVP recusado', body: `${guest} recusou o convite.` };
@@ -98,7 +105,7 @@ export const notificationRepository = {
     client?: PoolClient
   ): Promise<void> {
     const runner = client ?? pool;
-    const text = activityText(data.kind, data.guestName);
+    const text = activityText(data.kind, data.guestName, data.metadata);
 
     await runner.query(
       `WITH recipients AS (
@@ -229,6 +236,7 @@ export const notificationRepository = {
            AND m.revoked_at IS NULL
       ))`;
     }
+    access = `${access} AND e.deleted_at IS NULL`;
 
     await runner.query(
       `INSERT INTO host_notifications (

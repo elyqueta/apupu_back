@@ -28,7 +28,11 @@ import { uploadProfileCover } from '../../middlewares/uploadProfileCover';
 import { validate } from '../../middlewares/validate';
 import { registerRequestCodeSchema } from '../../schemas/auth.schemas';
 import { hostCancelSchema } from '../../schemas/admin.schemas';
-import { createEventSchema, eventIdParamsSchema } from '../../schemas/event.schemas';
+import {
+  createEventSchema,
+  deleteEventSchema,
+  eventIdParamsSchema,
+} from '../../schemas/event.schemas';
 import {
   addEventManagerSchema,
   avatarSchema,
@@ -63,6 +67,8 @@ import {
 import {
   addTeamMembersSchema,
   createTeamSchema,
+  setTeamEventsSchema,
+  teamEventParamsSchema,
   deleteTeamQuerySchema,
   moveTaskSchema,
   removeTeamMemberQuerySchema,
@@ -537,7 +543,20 @@ router.post(
  * /api/v1/host/events/{eventId}:
  *   delete:
  *     tags: [Workspace]
- *     summary: Apaga um evento e os dados associados (cascata)
+ *     summary: Remove um evento (remoção lógica)
+ *     description: >
+ *       Só o proprietário pode remover. Se houver convidados com presença
+ *       confirmada, o corpo tem de trazer `confirm_name` igual ao título
+ *       do evento (comparação exacta, após trim); caso contrário devolve
+ *       422 `event_delete_confirmation_required`.
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               confirm_name: { type: string }
  *     security:
  *       - accountSession: []
  *     parameters:
@@ -557,10 +576,15 @@ router.post(
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/Error' }
+ *       422:
+ *         description: Falta confirmar o nome do evento.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
  */
 router.delete(
   '/events/:eventId',
-  validate({ params: eventIdParamsSchema }),
+  validate({ params: eventIdParamsSchema, body: deleteEventSchema }),
   asyncHandler(hostAccountAuth),
   writeLimiter,
   requireAuthCsrf,
@@ -2052,6 +2076,69 @@ router.post(
   requireAuthCsrf,
   validate({ body: createTeamSchema }),
   asyncHandler(teamController.create)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}/events:
+ *   put:
+ *     tags: [Equipas]
+ *     summary: Associa a equipa a eventos (só o criador)
+ *     description: >
+ *       Substitui os eventos geridos pela equipa (`event_ids` ou `all`). O
+ *       evento principal mantém-se sempre. Só eventos que o criador gere.
+ *     responses:
+ *       200: { description: Equipa actualizada. }
+ *       403:
+ *         description: Não é o criador.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       422:
+ *         description: Evento inválido.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.put(
+  '/teams/:teamId/events',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ params: teamIdParamsSchema, body: setTeamEventsSchema }),
+  asyncHandler(teamController.setEvents)
+);
+
+router.delete(
+  '/teams/:teamId/events/:eventId',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ params: teamEventParamsSchema }),
+  asyncHandler(teamController.removeEvent)
+);
+
+/**
+ * @openapi
+ * /api/v1/host/teams/{teamId}/leave:
+ *   post:
+ *     tags: [Equipas]
+ *     summary: Sai da equipa (qualquer membro, quando quiser)
+ *     responses:
+ *       204: { description: Saiu da equipa. }
+ *       404:
+ *         description: Não é membro.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
+router.post(
+  '/teams/:teamId/leave',
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  validate({ params: teamIdParamsSchema }),
+  asyncHandler(teamController.leave)
 );
 
 /**

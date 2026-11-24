@@ -1,3 +1,4 @@
+import { parseManifest, TemplateManifest } from '../types/templateManifest';
 import { logger } from '../config/logger';
 import { Event } from '../types/event.types';
 import { HostPublicContact } from '../types/host.types';
@@ -16,8 +17,16 @@ export interface InvitationDto {
   id: string;
   event_id: string;
   guest_name: string;
-  guest_email: string;
+  /** `null` em confirmações pelo link aberto feitas só com telefone. */
+  guest_email: string | null;
   guest_phone: string | null;
+  /** `personal` (convite individual) ou `public_link` (link aberto do evento). */
+  source: 'personal' | 'public_link';
+  /** Idade indicada na confirmação pelo link aberto (só organizadores). */
+  guest_age: number | null;
+  /** Selo "Idade alterada": a data de nascimento mudou e passou a cumprir os limites. */
+  age_flag: boolean;
+  age_flag_reason: 'birth_date_changed' | null;
   table_name: string | null;
   /** Mensagem opcional deixada ao responder (texto simples, até 500 caracteres). */
   guest_message: string | null;
@@ -30,6 +39,12 @@ export interface InvitationDto {
   send_status: string;
   send_count: number;
   last_sent_at: string | null;
+  /**
+   * Última vez que o anfitrião abriu o WhatsApp com o link deste convite.
+   * Não significa que a mensagem tenha sido enviada ou lida.
+   */
+  whatsapp_shared_at: string | null;
+  whatsapp_share_count: number;
   /**
    * Primeira vez que o convidado abriu o link do convite.
    *
@@ -84,6 +99,10 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     guest_name: invitation.guestName,
     guest_email: invitation.guestEmail,
     guest_phone: invitation.guestPhone,
+    source: invitation.source,
+    guest_age: invitation.guestAge,
+    age_flag: invitation.ageFlag,
+    age_flag_reason: invitation.ageFlagReason,
     table_name: invitation.tableName,
     guest_message: invitation.guestMessage,
     message_answer: invitation.messageAnswer,
@@ -94,6 +113,8 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     send_status: invitation.sendStatus,
     send_count: invitation.sendCount,
     last_sent_at: iso(invitation.lastSentAt),
+    whatsapp_shared_at: iso(invitation.whatsappSharedAt),
+    whatsapp_share_count: invitation.whatsappShareCount,
     opened_at: iso(invitation.claimedAt),
     invitation_url: invitationUrl(invitation),
     invitation_url_expires_at: iso(invitation.linkExpiresAt),
@@ -183,6 +204,9 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
         name: invitation.eventLocation.name,
         address: invitation.eventLocation.address,
         online_url: invitation.eventLocation.onlineUrl,
+        latitude: invitation.eventLocation.latitude ?? null,
+        longitude: invitation.eventLocation.longitude ?? null,
+        place_label: invitation.eventLocation.placeLabel ?? null,
       },
     },
   };
@@ -205,7 +229,7 @@ export interface PublicInvitationDto {
   event: PublicEventDto;
   guest: {
     name: string;
-    email: string;
+    email: string | null;
     /** `true` quando o email do convite já tem conta registada. */
     email_has_account: boolean;
     rsvp_status: string;
@@ -252,6 +276,8 @@ export interface TemplateDto {
   supported_fields: string[];
   themes: Array<{ mode: string; palette: string }>;
   is_active: boolean;
+  /** Bloco 14: manifesto validado (cai no neutro se inválido). */
+  manifest: TemplateManifest;
 }
 
 export function toTemplateDto(template: EventTemplate): TemplateDto {
@@ -264,5 +290,6 @@ export function toTemplateDto(template: EventTemplate): TemplateDto {
     supported_fields: template.supportedFields,
     themes: template.themes,
     is_active: template.isActive,
+    manifest: parseManifest(template.manifest),
   };
 }

@@ -71,6 +71,8 @@ export const reportRepository = {
       ))`;
     }
 
+    access = `${access} AND e.deleted_at IS NULL`;
+
     const result = await query<SummaryRow>(
       `SELECT e.id AS event_id, e.title, e.status, e.starts_at,
               count(i.id)::text AS total,

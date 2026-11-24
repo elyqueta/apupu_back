@@ -21,6 +21,8 @@ export const MESSAGE_TYPES = [
   'task_assigned',
   'task_completed',
   'task_reassigned',
+  // Bloco 11 — avisos de comunidade (pedido de adesão, decisão, transferência).
+  'community_notice',
 ] as const;
 export type MessageType = (typeof MESSAGE_TYPES)[number];
 
@@ -31,6 +33,7 @@ export const HOST_MESSAGE_TYPES: readonly MessageType[] = [
   'host_welcome',
   'password_reset',
   'profile_reminder',
+  'community_notice',
 ];
 
 export function isHostMessage(type: MessageType): boolean {

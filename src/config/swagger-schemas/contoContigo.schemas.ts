@@ -184,6 +184,18 @@ export const contoContigoSchemas = {
       },
       send_count: { type: 'integer' },
       last_sent_at: { type: 'string', format: 'date-time', nullable: true },
+      whatsapp_shared_at: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+        description:
+          'Última vez que o anfitrião abriu o WhatsApp com o link individual ' +
+          'deste convite. Não confirma que a mensagem foi enviada ou lida.',
+      },
+      whatsapp_share_count: {
+        type: 'integer',
+        description: 'Número de vezes que o anfitrião iniciou a partilha no WhatsApp.',
+      },
       opened_at: {
         type: 'string',
         format: 'date-time',

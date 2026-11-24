@@ -58,6 +58,16 @@ export const links = {
     return `${publicAppBaseUrl()}/convite/${token}`;
   },
 
+  /** Página de uma comunidade (Bloco 11). */
+  community(slug: string): string {
+    return `${publicAppBaseUrl()}/comunidades/${slug}`;
+  },
+
+  /** Link aberto de um evento público (Bloco 10). */
+  publicEvent(slug: string): string {
+    return `${publicAppBaseUrl()}/e/${slug}`;
+  },
+
   /** Página de aceitação de um convite de equipa. */
   teamInvite(token: string): string {
     return `${publicAppBaseUrl()}/equipas/convite/${token}`;

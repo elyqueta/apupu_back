@@ -4,6 +4,7 @@ import { EventCategory, EventLocation, EventStats, EventStatus } from '../types/
 import {
   AccountInvitation,
   Invitation,
+  InvitationSource,
   InvitationWithEvent,
   RsvpStatus,
   SendStatus,
@@ -16,8 +17,13 @@ interface InvitationRow {
   id: string;
   event_id: string;
   guest_name: string;
-  guest_email: string;
+  guest_email: string | null;
   guest_phone: string | null;
+  guest_phone_normalized: string | null;
+  source: InvitationSource;
+  guest_age: number | null;
+  age_flag: boolean;
+  age_flag_reason: 'birth_date_changed' | null;
   table_name: string | null;
   guest_message: string | null;
   message_answer: string | null;
@@ -35,6 +41,8 @@ interface InvitationRow {
   send_status: SendStatus;
   send_count: number;
   last_sent_at: Date | null;
+  whatsapp_shared_at: Date | null;
+  whatsapp_share_count: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -46,6 +54,11 @@ function toInvitation(row: InvitationRow): Invitation {
     guestName: row.guest_name,
     guestEmail: row.guest_email,
     guestPhone: row.guest_phone,
+    guestPhoneNormalized: row.guest_phone_normalized,
+    source: row.source,
+    guestAge: row.guest_age,
+    ageFlag: row.age_flag,
+    ageFlagReason: row.age_flag_reason,
     tableName: row.table_name,
     guestMessage: row.guest_message,
     messageAnswer: row.message_answer,
@@ -63,16 +76,20 @@ function toInvitation(row: InvitationRow): Invitation {
     sendStatus: row.send_status,
     sendCount: row.send_count,
     lastSentAt: row.last_sent_at,
+    whatsappSharedAt: row.whatsapp_shared_at,
+    whatsappShareCount: row.whatsapp_share_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
 const SELECT_COLUMNS = `
-  id, event_id, guest_name, guest_email, guest_phone, table_name, guest_message,
+  id, event_id, guest_name, guest_email, guest_phone, guest_phone_normalized,
+  source, guest_age, age_flag, age_flag_reason, table_name, guest_message,
   message_answer, message_answered_at, message_read_at,
   link_expires_at, token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
   rsvp_status, rsvp_responded_at, rsvp_version,
+  whatsapp_shared_at, whatsapp_share_count,
   send_status, send_count, last_sent_at, created_at, updated_at
 `;
 
@@ -183,7 +200,135 @@ export interface AccountInvitationListFilters {
   limit: number;
 }
 
+export interface InsertPublicInvitationData {
+  eventId: string;
+  guestName: string;
+  guestEmail: string | null;
+  guestPhone: string | null;
+  guestPhoneNormalized: string | null;
+  guestAge: number | null;
+  ageFlag: boolean;
+  ageFlagReason: 'birth_date_changed' | null;
+  status: Exclude<RsvpStatus, 'pending'>;
+  message: string | null;
+  linkExpiresAt: Date;
+  tokenHash: string;
+  tokenEncrypted: string;
+  /** Bloco 11: membro da comunidade que partilhou o link (`?ref=`). */
+  referrerMemberId?: string | null;
+}
+
 export const invitationRepository = {
+  /** Confirmação nova pelo link aberto do evento (`source = 'public_link'`). */
+  async createPublic(data: InsertPublicInvitationData, client?: PoolClient): Promise<Invitation> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `INSERT INTO invitations (
+         event_id, guest_name, guest_email, guest_phone, guest_phone_normalized,
+         source, guest_age, age_flag, age_flag_reason,
+         rsvp_status, rsvp_responded_at, rsvp_version, guest_message,
+         link_expires_at, token_hash, token_encrypted, referrer_member_id
+       )
+       VALUES ($1,$2,$3,$4,$5,'public_link',$6,$7,$8,$9,now(),1,$10,$11,$12,$13,$14)
+       RETURNING ${SELECT_COLUMNS}`,
+      [
+        data.eventId,
+        data.guestName,
+        data.guestEmail,
+        data.guestPhone,
+        data.guestPhoneNormalized,
+        data.guestAge,
+        data.ageFlag,
+        data.ageFlagReason,
+        data.status,
+        data.message,
+        data.linkExpiresAt,
+        data.tokenHash,
+        data.tokenEncrypted,
+        data.referrerMemberId ?? null,
+      ]
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error('Falha ao criar confirmação: nenhuma linha devolvida.');
+    return toInvitation(row);
+  },
+
+  /**
+   * Procura um convite do evento pelo mesmo contacto (email sem
+   * distinção de maiúsculas, ou telefone normalizado), com lock de linha.
+   * O email tem prioridade sobre o telefone.
+   */
+  async findByContactForUpdate(
+    eventId: string,
+    contact: { email: string | null; phoneNormalized: string | null },
+    client: PoolClient
+  ): Promise<Invitation | null> {
+    if (contact.email) {
+      const byEmail = await client.query<InvitationRow>(
+        `SELECT ${SELECT_COLUMNS}
+           FROM invitations
+          WHERE event_id = $1 AND lower(guest_email) = lower($2)
+          ORDER BY created_at ASC
+          LIMIT 1
+          FOR UPDATE`,
+        [eventId, contact.email]
+      );
+      if (byEmail.rows[0]) return toInvitation(byEmail.rows[0]);
+    }
+
+    if (contact.phoneNormalized) {
+      const byPhone = await client.query<InvitationRow>(
+        `SELECT ${SELECT_COLUMNS}
+           FROM invitations
+          WHERE event_id = $1
+            AND source = 'public_link'
+            AND guest_phone_normalized = $2
+          LIMIT 1
+          FOR UPDATE`,
+        [eventId, contact.phoneNormalized]
+      );
+      if (byPhone.rows[0]) return toInvitation(byPhone.rows[0]);
+    }
+
+    return null;
+  },
+
+  /** Actualiza a resposta de uma confirmação existente do link aberto. */
+  async updatePublicResponse(
+    id: string,
+    data: {
+      guestName: string;
+      guestAge: number | null;
+      ageFlag: boolean;
+      ageFlagReason: 'birth_date_changed' | null;
+      status: Exclude<RsvpStatus, 'pending'>;
+      message: string | null;
+    },
+    client?: PoolClient
+  ): Promise<Invitation | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `UPDATE invitations
+          SET guest_name = $2,
+              guest_age = COALESCE($3, guest_age),
+              age_flag = age_flag OR $4,
+              age_flag_reason = COALESCE(age_flag_reason, $5),
+              rsvp_status = $6,
+              guest_message = $7,
+              rsvp_responded_at = now(),
+              rsvp_version = CASE
+                WHEN rsvp_status = $6 THEN rsvp_version
+                ELSE rsvp_version + 1
+              END,
+              updated_at = now()
+        WHERE id = $1 AND source = 'public_link'
+        RETURNING ${SELECT_COLUMNS}`,
+      [id, data.guestName, data.guestAge, data.ageFlag, data.ageFlagReason, data.status, data.message]
+    );
+    const row = result.rows[0];
+    return row ? toInvitation(row) : null;
+  },
+
   async create(data: InsertInvitationData, client?: PoolClient): Promise<Invitation> {
     const runner = client ?? pool;
     const result = await runner.query<InvitationRow>(
@@ -280,6 +425,7 @@ export const invitationRepository = {
          FROM invitations i
          JOIN events e ON e.id = i.event_id
         WHERE lower(i.guest_email) = lower($1)
+          AND e.deleted_at IS NULL
           AND i.claimed_at IS NOT NULL
           AND i.claim_revoked_at IS NULL
           AND COALESCE(e.ends_at, e.starts_at) > now() - interval '30 days'
@@ -346,7 +492,7 @@ export const invitationRepository = {
     offset: number;
   }): Promise<{ items: InvitationWithEvent[]; total: number }> {
     const values: unknown[] = [filters.hostId];
-    const conditions: string[] = [];
+    const conditions: string[] = ['e.deleted_at IS NULL'];
 
     const push = (sql: string, value: unknown): void => {
       values.push(value);
@@ -514,7 +660,7 @@ export const invitationRepository = {
     filters: HostGuestListFilters
   ): Promise<{ items: InvitationWithEvent[]; total: number }> {
     const values: unknown[] = [filters.hostId];
-    let conditions = ['e.host_id = $1'];
+    let conditions = ['e.host_id = $1', 'e.deleted_at IS NULL'];
 
     if (filters.managerEmail) {
       values.push(filters.managerEmail);
@@ -526,6 +672,7 @@ export const invitationRepository = {
               AND m.email = $2::citext
               AND m.revoked_at IS NULL
          ))`,
+        'e.deleted_at IS NULL',
       ];
     }
 
@@ -617,6 +764,7 @@ export const invitationRepository = {
         FROM invitations i
         JOIN events e ON e.id = i.event_id
        WHERE (e.host_id = $1 OR e.id = $2)
+         AND e.deleted_at IS NULL
          ${qCondition}
        ORDER BY ${dedupeKey}, e.starts_at ASC NULLS LAST, i.created_at ASC, i.id ASC
     `;
@@ -685,7 +833,8 @@ export const invitationRepository = {
   async listForAccountEmail(
     filters: AccountInvitationListFilters
   ): Promise<{ items: AccountInvitation[]; total: number }> {
-    const where = 'lower(i.guest_email) = lower($1) AND i.claim_revoked_at IS NULL';
+    const where =
+      'lower(i.guest_email) = lower($1) AND i.claim_revoked_at IS NULL AND e.deleted_at IS NULL';
     const values: unknown[] = [filters.email];
     const direction = filters.order === 'asc' ? 'ASC' : 'DESC';
 
@@ -864,6 +1013,29 @@ export const invitationRepository = {
         WHERE id = $1
         RETURNING ${SELECT_COLUMNS}`,
       [id, message]
+    );
+
+    const row = result.rows[0];
+    return row ? toInvitation(row) : null;
+  },
+
+  /**
+   * Regista a partilha iniciada pelo anfitrião. O incremento é atómico para
+   * que duas aberturas simultâneas não percam uma contagem.
+   */
+  async markWhatsappShared(
+    id: string,
+    client?: PoolClient
+  ): Promise<Invitation | null> {
+    const runner = client ?? pool;
+    const result = await runner.query<InvitationRow>(
+      `UPDATE invitations
+          SET whatsapp_shared_at = now(),
+              whatsapp_share_count = whatsapp_share_count + 1,
+              updated_at = now()
+        WHERE id = $1
+        RETURNING ${SELECT_COLUMNS}`,
+      [id]
     );
 
     const row = result.rows[0];

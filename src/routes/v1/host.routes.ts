@@ -577,6 +577,41 @@ router.delete(
  *       409:
  *         description: Convite revogado ou sem link reutilizável.
  *
+ * /api/v1/host/events/{eventId}/invitations/{invitationId}/whatsapp-shared:
+ *   post:
+ *     tags: [Convidados]
+ *     summary: Regista que o anfitrião partilhou o link individual no WhatsApp
+ *     description: >
+ *       A aplicação abre o WhatsApp com a mensagem pré-preenchida; a API não
+ *       consegue confirmar o envio. O registo significa apenas que a partilha
+ *       foi iniciada para este convite. Pode ser chamada várias vezes.
+ *     security:
+ *       - hostSession: []
+ *       - accountSession: []
+ *     parameters:
+ *       - in: path
+ *         name: eventId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: path
+ *         name: invitationId
+ *         required: true
+ *         schema: { type: string, format: uuid }
+ *       - in: header
+ *         name: X-CSRF-Token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Partilha registada, com a contagem actualizada.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/InvitationEnvelope' }
+ *       404:
+ *         description: Convite não encontrado neste evento.
+ *       409:
+ *         description: Convite revogado ou sem link partilhável.
+ *
  * /api/v1/host/events/{eventId}/invitations/{invitationId}/revoke:
  *   post:
  *     tags: [Convidados]
@@ -612,6 +647,16 @@ router.post(
   requireHostCsrf,
   requireEventHost,
   asyncHandler(invitationController.resend)
+);
+
+router.post(
+  '/events/:eventId/invitations/:invitationId/whatsapp-shared',
+  validate({ params: invitationIdParamsSchema }),
+  asyncHandler(hostAuth),
+  writeLimiter,
+  requireHostCsrf,
+  requireEventHost,
+  asyncHandler(invitationController.whatsappShared)
 );
 
 router.post(

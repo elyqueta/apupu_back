@@ -55,6 +55,7 @@ export function accountOwnsInvitation(
   return Boolean(
     account &&
       account.emailVerified &&
+      invitation.guestEmail &&
       invitation.guestEmail.trim().toLowerCase() ===
         account.email.trim().toLowerCase()
   );

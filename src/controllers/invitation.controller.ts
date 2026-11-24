@@ -111,6 +111,24 @@ export const invitationController = {
     res.status(202).json({ data: { status } });
   },
 
+  whatsappShared: async (req: Request, res: Response): Promise<void> => {
+    const event = requireEvent(req);
+    const invitationId = req.params.invitationId ?? '';
+    const invitation = await invitationService.markWhatsappShared(event.id, invitationId);
+
+    await auditService.recordRequest(req, {
+      action: 'guest_whatsapp_shared',
+      hostId: auditHostId(req),
+      eventId: event.id,
+      metadata: {
+        invitation_id: invitation.id,
+        whatsapp_share_count: invitation.whatsappShareCount,
+      },
+    });
+
+    res.status(200).json({ data: toInvitationDto(invitation) });
+  },
+
   revoke: async (req: Request, res: Response): Promise<void> => {
     const event = requireEvent(req);
     const invitation = await invitationService.revoke(

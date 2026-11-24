@@ -88,6 +88,10 @@ export interface Team {
   category: TeamCategory;
   description: string | null;
   createdByHostId: string | null;
+  /** Comunidade da equipa (Bloco 11); `null` = equipa sem comunidade. */
+  communityId: string | null;
+  /** Eventos geridos pela equipa (`team_events`); inclui o evento principal. */
+  eventIds: string[];
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -166,7 +170,11 @@ export interface Task {
   priority: TaskPriority;
   status: TaskStatus;
   createdByHostId: string | null;
+  /** Nome de quem criou a tarefa (persistente, mesmo sem a conta). */
+  createdByName: string | null;
   completedByMemberId: string | null;
+  /** Nome de quem concluiu a tarefa. */
+  completedByName: string | null;
   completedAt: Date | null;
   archivedAt: Date | null;
   /** Aliases de transição: `label = title`, `done = status === 'concluida'`. */

@@ -20,7 +20,9 @@ interface TaskRow {
   priority: TaskPriority;
   status: TaskStatus;
   created_by_host_id: string | null;
+  created_by_name: string | null;
   completed_by_member_id: string | null;
+  completed_by_name: string | null;
   completed_at: Date | null;
   archived_at: Date | null;
   label: string;
@@ -49,7 +51,9 @@ function toTask(row: TaskRow): Task {
     priority: row.priority,
     status: row.status,
     createdByHostId: row.created_by_host_id,
+    createdByName: row.created_by_name,
     completedByMemberId: row.completed_by_member_id,
+    completedByName: row.completed_by_name,
     completedAt: row.completed_at,
     archivedAt: row.archived_at,
     label: row.label,
@@ -71,6 +75,8 @@ const SELECT_TASK = `
   tm.name AS team_name,
   am.email AS assignee_email,
   am.display_name AS assignee_display_name,
+  COALESCE(NULLIF(btrim(author_profile.display_name), ''), t.created_by_name) AS created_by_name,
+  cb.display_name AS completed_by_name,
   CASE
     WHEN t.assignee_member_id IS NULL THEN NULL
     WHEN am.removed_at IS NOT NULL THEN false
@@ -92,6 +98,8 @@ const FROM_TASK = `
   LEFT JOIN events e ON e.id = t.event_id
   LEFT JOIN teams tm ON tm.id = t.team_id
   LEFT JOIN team_members am ON am.id = t.assignee_member_id
+  LEFT JOIN host_profiles author_profile ON author_profile.host_id = t.created_by_host_id
+  LEFT JOIN team_members cb ON cb.id = t.completed_by_member_id
   LEFT JOIN event_managers em ON em.id = t.manager_id
 `;
 
@@ -128,6 +136,7 @@ function accessCondition(
            JOIN events access_event ON access_event.id = access_team.event_id
           WHERE access_team.id = ${alias}.team_id
             AND access_team.deleted_at IS NULL
+            AND access_event.deleted_at IS NULL
             AND (
               access_event.host_id = $${hostParam}
               OR EXISTS (
@@ -153,6 +162,7 @@ function accessCondition(
            JOIN events access_event ON access_event.id = access_team.event_id
           WHERE access_team.id = ${alias}.team_id
             AND access_team.deleted_at IS NULL
+            AND access_event.deleted_at IS NULL
             AND access_event.host_id = $${hostParam}
        ))`
     );

@@ -1,3 +1,4 @@
+import { invitePresentationService, PresentationExtras } from '../services/invitePresentation.service';
 import { Request, Response } from 'express';
 import { toPublicInvitationDto } from '../dto/invitation.dto';
 import { hostRepository } from '../repositories/host.repository';
@@ -37,7 +38,9 @@ function requireAccess(req: Request): GuestAccess {
   return req.guestAccess;
 }
 
-type PublicPresentation = ReturnType<typeof toPublicInvitationDto> & {
+type PublicPresentation = Omit<ReturnType<typeof toPublicInvitationDto>, 'event' | 'guest'> & {
+  event: ReturnType<typeof toPublicInvitationDto>['event'] & PresentationExtras;
+  guest: ReturnType<typeof toPublicInvitationDto>['guest'] & { table_name: string | null };
   csrf_token: string;
 };
 
@@ -54,9 +57,10 @@ async function present(
   invitation: Invitation,
   access: GuestAccess
 ): Promise<PublicPresentation> {
-  const [emailHasAccount, contact] = await Promise.all([
-    hostRepository.emailExists(invitation.guestEmail),
+  const [emailHasAccount, contact, extras] = await Promise.all([
+    invitation.guestEmail ? hostRepository.emailExists(invitation.guestEmail) : false,
     hostRepository.findPublicContactByEventId(event.id),
+    invitePresentationService.extras(event),
   ]);
   const hostContact = contact ?? {
     name: event.hostName,
@@ -65,14 +69,18 @@ async function present(
     avatarUrl: null,
   };
 
+  const dto = toPublicInvitationDto(
+    event,
+    invitation,
+    isRsvpDeadlinePassed(event),
+    emailHasAccount,
+    hostContact
+  );
   return {
-    ...toPublicInvitationDto(
-      event,
-      invitation,
-      isRsvpDeadlinePassed(event),
-      emailHasAccount,
-      hostContact
-    ),
+    ...dto,
+    // Bloco 14: mesa só quando o anfitrião ativou mesas no evento.
+    guest: { ...dto.guest, table_name: event.useTables ? invitation.tableName : null },
+    event: { ...dto.event, ...extras },
     csrf_token: csrfTokenFor(access.secret),
   };
 }

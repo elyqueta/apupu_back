@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { env } from '../config/env';
 import { UnauthorizedError } from '../errors';
+import { withTransaction } from '../database/pool';
+import { hostBirthDateChangeRepository } from '../repositories/hostBirthDateChange.repository';
 import { hostRepository } from '../repositories/host.repository';
 import { UpdateProfileBody } from '../schemas/host.schemas';
 import {
@@ -72,6 +74,7 @@ export const profileService = {
     if (input.locale !== undefined) changes.locale = input.locale;
     if (input.timezone !== undefined) changes.timezone = input.timezone;
     if ('cover_url' in input) changes.coverUrl = input.cover_url ?? null;
+    if (input.profile_visibility !== undefined) changes.visibility = input.profile_visibility;
 
     if ('avatar_url' in input) {
       const current = await this.get(hostId);
@@ -79,6 +82,22 @@ export const profileService = {
 
       if (current.profile.avatarUrl !== nextAvatarUrl) {
         await applyAvatarUrl(current, nextAvatarUrl);
+      }
+    }
+
+    if ('birth_date' in input) {
+      const current = await this.get(hostId);
+      const next = input.birth_date ?? null;
+
+      if (current.profile.birthDate !== next) {
+        await withTransaction(async (client) => {
+          await hostRepository.updateProfile(hostId, changes, client);
+          await hostBirthDateChangeRepository.record(
+            { hostId, oldValue: current.profile.birthDate, newValue: next },
+            client
+          );
+        });
+        return this.get(hostId);
       }
     }
 

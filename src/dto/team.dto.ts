@@ -25,6 +25,11 @@ export interface TeamDto {
   completed_task_count: number;
   open_task_count: number;
   members_preview: TeamMemberPreviewDto[];
+  /** Bloco 11: comunidade, criador e eventos geridos pela equipa. */
+  community_id: string | null;
+  creator_id: string | null;
+  event_ids: string[];
+  event_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -41,6 +46,10 @@ export function toTeamDto(team: TeamWithStats): TeamDto {
   return {
     id: team.id,
     event_id: team.eventId,
+    community_id: team.communityId ?? null,
+    creator_id: team.createdByHostId,
+    event_ids: team.eventIds ?? [team.eventId],
+    event_count: (team.eventIds ?? [team.eventId]).length,
     event_title: team.eventTitle,
     event_status: team.eventStatus,
     my_role: team.myRole ?? 'membro',

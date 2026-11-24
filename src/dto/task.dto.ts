@@ -24,7 +24,10 @@ export interface TaskDto {
   priority: string;
   status: string;
   created_by_host_id: string | null;
+  /** Autor da tarefa (persistente). */
+  created_by_name: string | null;
   completed_by_member_id: string | null;
+  completed_by_name: string | null;
   completed_at: string | null;
   archived_at: string | null;
   /** @deprecated Use `title`. */
@@ -56,7 +59,9 @@ export function toTaskDto(task: Task): TaskDto {
     priority: task.priority,
     status: task.status,
     created_by_host_id: task.createdByHostId,
+    created_by_name: task.createdByName ?? null,
     completed_by_member_id: task.completedByMemberId,
+    completed_by_name: task.completedByName ?? null,
     completed_at: task.completedAt?.toISOString() ?? null,
     archived_at: task.archivedAt?.toISOString() ?? null,
     label: task.title,

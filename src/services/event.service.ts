@@ -51,6 +51,19 @@ function assertDateOrder(event: {
   }
 }
 
+/** Slug aleatório do link público (12 caracteres base64url, 72 bits). */
+export function generatePublicSlug(): string {
+  return generateToken(9);
+}
+
+function assertAgeRange(minAge: number | null, maxAge: number | null): void {
+  if (minAge !== null && maxAge !== null && minAge > maxAge) {
+    throw new ValidationError('Dados inválidos.', {
+      max_age: ['A idade máxima deve ser maior ou igual à idade mínima.'],
+    });
+  }
+}
+
 async function assertTemplateActive(templateId: string | null | undefined): Promise<void> {
   if (!templateId) return;
 
@@ -78,6 +91,9 @@ function toLocation(location: CreateEventBody['event']['location']): EventLocati
     name: location.name,
     address: normalizeOptional(location.address),
     onlineUrl: null,
+    latitude: location.latitude ?? null,
+    longitude: location.longitude ?? null,
+    placeLabel: normalizeOptional(location.place_label),
   };
 }
 
@@ -200,7 +216,18 @@ export const eventService = {
       theme: toTheme(input.event.theme),
       contribution: toContribution(input.event.contribution),
       rsvpDeadline: input.event.rsvp_deadline ?? null,
+      visibility: input.event.visibility,
+      publicSlug: input.event.visibility === 'public' ? generatePublicSlug() : null,
+      showAttendeeCount:
+        input.event.visibility === 'public' ? input.event.show_attendee_count : false,
+      minAge: input.event.min_age ?? null,
+      maxAge: input.event.max_age ?? null,
+      communityId: input.event.community_id ?? null,
+      youtubeVideoId: input.event.youtube_url ?? null,
+      useTables: input.event.use_tables ?? false,
     };
+
+    assertAgeRange(data.minAge ?? null, data.maxAge ?? null);
 
     assertDateOrder({
       startsAt: data.startsAt,
@@ -256,7 +283,7 @@ export const eventService = {
       event: created.event,
       manageEmailStatus,
       deliveries: created.invitations.map((invitation) => ({
-        email: invitation.guestEmail,
+        email: invitation.guestEmail ?? '',
         status: 'queued' as const,
       })),
     };
@@ -377,6 +404,25 @@ export const eventService = {
       }
       if ('rsvp_deadline' in input) changes.rsvpDeadline = input.rsvp_deadline ?? null;
       if (input.status !== undefined) changes.status = input.status;
+      if ('youtube_url' in input) changes.youtubeVideoId = input.youtube_url ?? null;
+      if (input.use_tables !== undefined) changes.useTables = input.use_tables;
+
+      const visibility = input.visibility ?? current.visibility;
+      if (input.visibility !== undefined) changes.visibility = input.visibility;
+      if (visibility === 'public' && !current.publicSlug) {
+        changes.publicSlug = generatePublicSlug();
+      }
+      if (input.show_attendee_count !== undefined) {
+        changes.showAttendeeCount = input.show_attendee_count;
+      }
+      if (visibility === 'private' && current.showAttendeeCount) {
+        changes.showAttendeeCount = false;
+      }
+      const minAge = 'min_age' in input ? (input.min_age ?? null) : current.minAge;
+      const maxAge = 'max_age' in input ? (input.max_age ?? null) : current.maxAge;
+      assertAgeRange(minAge, maxAge);
+      if ('min_age' in input) changes.minAge = minAge;
+      if ('max_age' in input) changes.maxAge = maxAge;
 
       const updated = await eventRepository.update(eventId, changes, client);
 

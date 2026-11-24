@@ -15,6 +15,8 @@ export interface HostProfileDto {
   timezone: string;
   avatar_url: string | null;
   cover_url: string | null;
+  /** `private` por defeito; um perfil privado não aparece em pesquisas. */
+  profile_visibility: 'public' | 'private';
 }
 
 export interface HostDto {
@@ -58,6 +60,7 @@ export function toHostDto(host: HostWithProfile): HostDto {
       timezone: host.profile.timezone,
       avatar_url: host.profile.avatarUrl,
       cover_url: host.profile.coverUrl,
+      profile_visibility: host.profile.visibility,
     },
     profile_complete: missing.length === 0,
     missing_fields: missing,

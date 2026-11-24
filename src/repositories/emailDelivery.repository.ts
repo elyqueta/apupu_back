@@ -87,7 +87,11 @@ export interface InsertDeliveryData {
   hostId?: string | null;
   messageType: MessageType;
   reminderKind: string | null;
-  recipientEmail: string;
+  /**
+   * `null` quando o destinatário não tem email (confirmações só com
+   * telefone pelo link aberto): nada é enfileirado.
+   */
+  recipientEmail: string | null;
   scheduledFor: Date;
   idempotencyKey: string;
   /** Token cifrado para mensagens de conta. Nunca em claro. */
@@ -190,6 +194,9 @@ export const emailDeliveryRepository = {
    * repetir a operação de negócio não cria um segundo email.
    */
   async enqueue(data: InsertDeliveryData, client?: PoolClient): Promise<EmailDelivery | null> {
+    if (!data.recipientEmail) {
+      return null;
+    }
     const runner = client ?? pool;
     const result = await runner.query<DeliveryRow>(
       `INSERT INTO email_deliveries (

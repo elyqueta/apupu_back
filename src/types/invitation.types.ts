@@ -8,12 +8,25 @@ export type RsvpStatus = (typeof RSVP_STATUSES)[number];
 export const SEND_STATUSES = ['pending', 'queued', 'sent', 'failed'] as const;
 export type SendStatus = (typeof SEND_STATUSES)[number];
 
+/** Origem do convite: individual (anfitrião) ou confirmação pelo link aberto. */
+export const INVITATION_SOURCES = ['personal', 'public_link'] as const;
+export type InvitationSource = (typeof INVITATION_SOURCES)[number];
+
 export interface Invitation {
   id: string;
   eventId: string;
   guestName: string;
-  guestEmail: string;
+  /** Obrigatório em convites pessoais; pode faltar em confirmações pelo link aberto. */
+  guestEmail: string | null;
   guestPhone: string | null;
+  /** Telefone em E.164, usado para deduplicar confirmações pelo link aberto. */
+  guestPhoneNormalized: string | null;
+  source: InvitationSource;
+  /** Idade indicada (visitante) ou calculada no servidor (conta). */
+  guestAge: number | null;
+  /** Confirmação marcada para revisão pelos organizadores. */
+  ageFlag: boolean;
+  ageFlagReason: 'birth_date_changed' | null;
   tableName: string | null;
   /** Mensagem opcional deixada pelo convidado ao responder (texto simples). */
   guestMessage: string | null;
@@ -34,6 +47,13 @@ export interface Invitation {
   sendStatus: SendStatus;
   sendCount: number;
   lastSentAt: Date | null;
+  /**
+   * Última vez que o anfitrião iniciou a partilha do link no WhatsApp.
+   * Não indica que a mensagem foi enviada ou lida pelo convidado.
+   */
+  whatsappSharedAt: Date | null;
+  /** Número de vezes que o anfitrião iniciou a partilha do link no WhatsApp. */
+  whatsappShareCount: number;
   createdAt: Date;
   updatedAt: Date;
 }

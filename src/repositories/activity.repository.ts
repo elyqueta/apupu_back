@@ -105,6 +105,8 @@ export const activityRepository = {
       ))`;
     }
 
+    access = `${access} AND e.deleted_at IS NULL`;
+
     const countResult = await query<{ total: string }>(
       `SELECT count(*)::text AS total
          FROM event_activity a

@@ -1,4 +1,8 @@
-import { NotFoundError } from '../errors';
+import { ForbiddenError, NotFoundError, ValidationError } from '../errors';
+import { communityRepository } from '../repositories/community.repository';
+import { communityPermissions } from './communityPermissions';
+import { withTransaction } from '../database/pool';
+import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
 import { eventRepository } from '../repositories/event.repository';
 import { CreateEventBody } from '../schemas/event.schemas';
 import { HostEventsQuery } from '../schemas/host.schemas';
@@ -64,15 +68,82 @@ export const hostEventService = {
   },
 
   async create(hostId: string, input: CreateEventBody): Promise<CreatedEventResult> {
+    if (input.event.community_id) {
+      const member = await communityRepository.findMemberByHost(input.event.community_id, hostId);
+      const allowed = communityPermissions.canCreateEvent({
+        role: member?.role ?? null,
+        status: member?.status ?? null,
+        isHostAccount: member?.hasHostAccount ?? false,
+      });
+      if (!allowed) {
+        throw new ForbiddenError(
+          'Só gestores e o responsável criam eventos na comunidade.',
+          'community_forbidden'
+        );
+      }
+    }
     return eventService.create(input, { hostId });
   },
 
-  async remove(hostId: string, eventId: string): Promise<void> {
-    const deleted = await eventRepository.deleteForHost(eventId, hostId);
+  /**
+   * Remoção lógica pelo proprietário. Com convidados confirmados exige
+   * `confirmName` igual ao título (exacto, após trim). Gestores e outras
+   * contas recebem o mesmo 404 de um evento inexistente.
+   */
+  async remove(
+    hostId: string,
+    eventId: string,
+    confirmName?: string
+  ): Promise<{ acceptedCount: number }> {
+    return withTransaction(async (client) => {
+      const event = await eventRepository.findById(eventId, client);
+      if (!event) {
+        throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+      }
 
-    if (!deleted) {
-      throw new NotFoundError('Evento não encontrado.', 'event_not_found');
-    }
+      const acceptedCount = await eventRepository.countAccepted(eventId, client);
+
+      // Eventos pessoais: só o criador. Eventos de comunidade: gestores e
+      // responsável sem confirmados; com confirmados, só o responsável.
+      let allowed = event.hostId === hostId;
+      if (event.communityId) {
+        const member = await communityRepository.findMemberByHost(event.communityId, hostId, client);
+        const actor = {
+          role: member?.role ?? null,
+          status: member?.status ?? null,
+          isHostAccount: member?.hasHostAccount ?? false,
+        };
+        allowed = communityPermissions.canDeleteEvent(actor, acceptedCount) ||
+          (event.hostId === hostId && acceptedCount === 0);
+        if (!allowed && member?.status === 'active') {
+          throw new ForbiddenError(
+            'Só o responsável da comunidade apaga eventos com confirmados.',
+            'community_forbidden'
+          );
+        }
+      }
+      if (!allowed) {
+        throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+      }
+
+      if (acceptedCount > 0 && (confirmName ?? '').trim() !== event.title.trim()) {
+        throw new ValidationError(
+          'Escreva o nome do evento para confirmar.',
+          { confirm_name: ['Escreva o nome do evento para confirmar.'] },
+          'event_delete_confirmation_required'
+        );
+      }
+
+      const deleted = await eventRepository.softDelete(eventId, client);
+
+      if (!deleted) {
+        throw new NotFoundError('Evento não encontrado.', 'event_not_found');
+      }
+
+      await emailDeliveryRepository.cancelPendingForEvent(eventId, client);
+
+      return { acceptedCount };
+    });
   },
 
   /**

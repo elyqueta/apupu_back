@@ -371,11 +371,11 @@ describe('reportExportService', () => {
       reportExportService.eventDocument(scope, event.id, 'ticket', 'csv', {
         invitationId: invitation.id,
       })
-    ).rejects.toThrow('O bilhete só está disponível em PDF.');
+    ).rejects.toThrow('O convite só está disponível em PDF.');
 
     await expect(
       reportExportService.eventDocument(scope, event.id, 'ticket', 'pdf')
-    ).rejects.toThrow('Indica o convite do bilhete.');
+    ).rejects.toThrow('Indique o convite.');
   });
 
   it('não expõe eventos de outra conta', async () => {

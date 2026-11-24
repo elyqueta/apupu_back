@@ -61,6 +61,25 @@ function publicFormLimiter(action: 'support' | 'newsletter'): RequestHandler {
   });
 }
 
+/**
+ * Bloco 12: feed e pesquisa públicos, por IP, cada um com o seu balde (as
+ * mesmas variáveis dos endpoints públicos). Navegar no feed não consome a
+ * quota dos links de convite.
+ */
+function publicReadLimiter(action: 'feed' | 'search'): RequestHandler {
+  return rateLimit({
+    windowMs: env.PUBLIC_RATE_LIMIT_WINDOW_MS,
+    limit: env.PUBLIC_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request) => `public-${action}:${req.ip ?? 'unknown'}`,
+    handler: limitHandler,
+  });
+}
+
+export const publicFeedLimiter = publicReadLimiter('feed');
+export const publicSearchLimiter = publicReadLimiter('search');
+
 export const supportFormLimiter = publicFormLimiter('support');
 export const newsletterFormLimiter = publicFormLimiter('newsletter');
 
@@ -156,7 +175,21 @@ export const rsvpLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) =>
-    `rsvp:${req.ip ?? 'unknown'}:${req.params.token ?? 'unknown'}`,
+    `rsvp:${req.ip ?? 'unknown'}:${req.params.token ?? req.params.slug ?? 'unknown'}`,
+  handler: limitHandler,
+});
+
+/**
+ * Limite por evento do link aberto (Bloco 10): independente do IP, trava
+ * o volume total de confirmações num mesmo evento público. Usa as mesmas
+ * variáveis dos endpoints públicos — nenhuma variável nova.
+ */
+export const publicEventRsvpEventLimiter = rateLimit({
+  windowMs: env.PUBLIC_RATE_LIMIT_WINDOW_MS,
+  limit: env.PUBLIC_RATE_LIMIT_MAX * 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `public-event-rsvp:${req.params.slug ?? 'unknown'}`,
   handler: limitHandler,
 });
 
@@ -218,5 +251,18 @@ export const adminActionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: adminKey,
+  handler: limitHandler,
+});
+
+/**
+ * Bloco 14 — rascunhos guardados automaticamente (debounce de 2 s no
+ * front). Limite próprio para não esgotar o `writeLimiter` geral.
+ */
+export const eventDraftLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: writeKey,
   handler: limitHandler,
 });

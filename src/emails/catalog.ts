@@ -179,6 +179,110 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
       ),
   },
 
+  comunidade_transferencia_codigo: {
+    code: 'comunidade_transferencia_codigo',
+    email: (vars) => ({
+      subject: short('Confirma a transferência da comunidade', 50),
+      preheader: short('Usa o código para autorizares a transferência de responsabilidade.', 90),
+      title: 'Confirma a transferência',
+      greetingName: recipientName(vars),
+      paragraphs: [
+        `Pediste para transferir a responsabilidade da comunidade ${vars.comunidade ?? ''}.`.trim(),
+        'Usa este código para confirmar a operação:',
+        `O código expira ao fim de ${vars.expiraEm ?? '10 minutos'} e só pode ser usado uma vez.`,
+        'Se não fizeste este pedido, ignora este e-mail e muda a tua palavra-passe.',
+      ],
+      code: vars.codigo ?? '------',
+      reason: 'pediste um código para transferir uma comunidade',
+    }),
+    push: () =>
+      pushMessage('Código de transferência', 'Usa o código enviado para confirmares a transferência.'),
+    sms: (vars) =>
+      smsMessage(
+        `Conto Contigo: código ${vars.codigo ?? '------'}. Expira em ${vars.expiraEm ?? '10 minutos'}.`
+      ),
+  },
+
+  instituicao_codigo: {
+    code: 'instituicao_codigo',
+    email: (vars) => ({
+      subject: short('Confirma a alteração na instituição', 50),
+      preheader: short('Usa o código para confirmares a ligação ou remoção da comunidade.', 90),
+      title: 'Confirma a alteração',
+      greetingName: recipientName(vars),
+      paragraphs: [
+        `Pediste para ligar ou remover a comunidade ${vars.comunidade ?? ''} da instituição ${vars.instituicao ?? ''}.`.replace(/\s+/g, ' ').trim(),
+        'Usa este código para confirmar:',
+        `O código expira ao fim de ${vars.expiraEm ?? '10 minutos'} e só pode ser usado uma vez.`,
+        'Se não fizeste este pedido, ignora este e-mail.',
+      ],
+      code: vars.codigo ?? '------',
+      reason: 'administras uma instituição no Conto Contigo',
+    }),
+    push: () => pushMessage('Código da instituição', 'Usa o código enviado para confirmares a alteração.'),
+    sms: (vars) =>
+      smsMessage(`Conto Contigo: código ${vars.codigo ?? '------'}. Expira em ${vars.expiraEm ?? '10 minutos'}.`),
+  },
+
+  comunidade_aviso: {
+    code: 'comunidade_aviso',
+    email: (vars) => {
+      const community = vars.comunidade ?? 'a comunidade';
+      const actor = actorName(vars);
+      const texts: Record<NonNullable<EmailVars['aviso']>, { subject: string; title: string; body: string; cta: string }> = {
+        join_request_received: {
+          subject: `Novo pedido para entrar em ${community}`,
+          title: 'Novo pedido de adesão',
+          body: `${actor} pediu para entrar na comunidade ${community}.`,
+          cta: 'Ver pedidos',
+        },
+        join_request_approved: {
+          subject: `Entraste em ${community}`,
+          title: 'Pedido aprovado',
+          body: `O teu pedido para entrar na comunidade ${community} foi aprovado.`,
+          cta: 'Abrir a comunidade',
+        },
+        join_request_rejected: {
+          subject: `Pedido para ${community}`,
+          title: 'Pedido não aprovado',
+          body: `O teu pedido para entrar na comunidade ${community} não foi aprovado.`,
+          cta: 'Ver comunidades',
+        },
+        member_invited: {
+          subject: `Convite para ${community}`,
+          title: 'Foste convidado para uma comunidade',
+          body: `${actor} convidou-te para a comunidade ${community}.`,
+          cta: 'Ver o convite',
+        },
+        transfer_started: {
+          subject: `Responsabilidade de ${community}`,
+          title: 'Transferência de responsabilidade',
+          body: `${actor} quer passar-te a responsabilidade da comunidade ${community}. Abre a comunidade para aceitar.`,
+          cta: 'Abrir a comunidade',
+        },
+        transfer_completed: {
+          subject: `Transferência concluída em ${community}`,
+          title: 'Transferência concluída',
+          body: `A responsabilidade da comunidade ${community} foi transferida.`,
+          cta: 'Abrir a comunidade',
+        },
+      };
+      const text = texts[vars.aviso ?? 'member_invited'];
+      return {
+        subject: short(text.subject, 50),
+        preheader: short(text.body, 90),
+        title: text.title,
+        greetingName: recipientName(vars),
+        paragraphs: [text.body],
+        cta: vars.url ? { label: text.cta, url: vars.url } : undefined,
+        reason: `participas na comunidade ${community}`,
+        footer: { preferences: false },
+      };
+    },
+    push: (vars) => pushMessage('Comunidade', `${vars.comunidade ?? 'Comunidade'}: há uma novidade.`),
+    sms: (vars) => smsMessage(`Conto Contigo: novidade na comunidade ${vars.comunidade ?? ''}.`, vars.url),
+  },
+
   recuperar_senha: {
     code: 'recuperar_senha',
     email: (vars) => ({

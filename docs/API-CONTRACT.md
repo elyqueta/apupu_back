@@ -1476,10 +1476,12 @@ mutações continuam a exigir `X-CSRF-Token`.
 | `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | Actualiza dados | não |
 | `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | Remove convite e entregas | não |
 | `POST` | `.../{invitationId}/resend` | Reenvia o link individual | não |
+| `POST` | `.../{invitationId}/whatsapp-shared` | Regista a partilha do link no WhatsApp | não |
 | `POST` | `.../{invitationId}/revoke` | Revoga o acesso do navegador | não |
 
 Um gestor pode consultar a lista e adicionar convidados, mas não pode
-alterar, remover, reenviar nem revogar convites existentes. Essas ações
+alterar, remover, reenviar, registar partilha no WhatsApp nem revogar
+convites existentes. Essas ações
 devolvem `403 host_action_forbidden` quando a sessão é de gestor.
 
 Payload de criação/actualização:
@@ -1767,6 +1769,8 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
   "send_status": "queued",
   "send_count": 1,
   "last_sent_at": null,
+  "whatsapp_shared_at": null,
+  "whatsapp_share_count": 0,
   "opened_at": null,
   "invitation_url": "https://apupu-front.vercel.app/convite/3f9c2a7e5b1d4c8fa6e0",
   "invitation_url_expires_at": "2027-08-17T01:00:00.000Z",
@@ -1780,6 +1784,8 @@ A vista pública (`PublicEvent`) omite `host_email`, `template_id`,
 | `rsvp_status` | string | `pending`, `accepted`, `declined` |
 | `send_status` | string | `pending`, `queued`, `sent`, `failed` |
 | `send_count` | inteiro | Número de envios |
+| `whatsapp_shared_at` | string \| null | Última vez que o anfitrião abriu o WhatsApp com o link individual; não confirma envio nem leitura |
+| `whatsapp_share_count` | inteiro | Número de vezes que o anfitrião iniciou a partilha no WhatsApp |
 | `opened_at` | string \| null | Primeira vez que o convidado abriu o link; `null` enquanto nunca foi aberto |
 | `table_name` | string \| null | Visível apenas ao anfitrião |
 | `guest_message` | string \| null | Mensagem opcional do convidado ao responder; texto simples até 500 caracteres |
@@ -1798,6 +1804,10 @@ Semântica do link de partilha:
 - O anfitrião deve partilhar o URL, **não** o abrir: ao abri-lo, o
   próprio navegador do anfitrião passa a ser o reclamante.
 - `POST .../invitations/{id}/resend` mantém o mesmo token/link.
+- `POST .../invitations/{id}/whatsapp-shared` regista que o anfitrião
+  iniciou a partilha do link no WhatsApp (contagem e data). A API não
+  consegue saber se a mensagem foi enviada; convites revogados ou sem
+  link devolvem `409 invitation_not_shareable`.
 - `POST .../invitations/{id}/revoke` invalida o link para sempre; a
   resposta seguinte devolve `invitation_url: null`.
 - `GET /host/guests`, `GET /host/invitations` e
@@ -2346,6 +2356,7 @@ created_at, updated_at }`.
 | `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `200` | `{ "data": Invitation }` |
 | `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `204` | — |
 | `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/resend` | `202` | `{ "data": { "status": "queued" } }` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/whatsapp-shared` | `200` | `{ "data": Invitation }` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/revoke` | `200` | `{ "data": Invitation }` |
 
 ### Convidado público e templates
@@ -2598,6 +2609,7 @@ Valores possíveis: `verification_invalid`, `verification_required`,
 | `PATCH` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_email_duplicate`; `409 invitation_already_opened`; `409 invitation_host_email`; `422 validation_failed`; `429 rate_limited` |
 | `DELETE` | `/api/v1/host/events/{eventId}/invitations/{invitationId}` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/resend` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_not_resendable`; `429 rate_limited` |
+| `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/whatsapp-shared` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `409 invitation_not_shareable`; `429 rate_limited` |
 | `POST` | `/api/v1/host/events/{eventId}/invitations/{invitationId}/revoke` | `401 host_session_invalid`; `403 csrf_invalid`; `403 host_action_forbidden`; `404 invitation_not_found`; `429 rate_limited` |
 | `GET` | `/api/v1/host/profile` | `401 host_session_invalid` |
 | `PATCH` | `/api/v1/host/profile` | `401 host_session_invalid`; `403 csrf_invalid`; `422 validation_failed`; `429 rate_limited` |

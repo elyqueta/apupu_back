@@ -11,6 +11,8 @@ export interface EventTemplate {
   /** Temas/paletas permitidos, definidos pelo template. */
   themes: Array<{ mode: string; palette: string }>;
   isActive: boolean;
+  /** Bloco 14: manifesto v1 (jsonb, validado ao ler). */
+  manifest: unknown;
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
