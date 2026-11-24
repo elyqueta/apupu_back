@@ -61,6 +61,25 @@ function publicFormLimiter(action: 'support' | 'newsletter'): RequestHandler {
   });
 }
 
+/**
+ * Bloco 12: feed e pesquisa públicos, por IP, cada um com o seu balde (as
+ * mesmas variáveis dos endpoints públicos). Navegar no feed não consome a
+ * quota dos links de convite.
+ */
+function publicReadLimiter(action: 'feed' | 'search'): RequestHandler {
+  return rateLimit({
+    windowMs: env.PUBLIC_RATE_LIMIT_WINDOW_MS,
+    limit: env.PUBLIC_RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request) => `public-${action}:${req.ip ?? 'unknown'}`,
+    handler: limitHandler,
+  });
+}
+
+export const publicFeedLimiter = publicReadLimiter('feed');
+export const publicSearchLimiter = publicReadLimiter('search');
+
 export const supportFormLimiter = publicFormLimiter('support');
 export const newsletterFormLimiter = publicFormLimiter('newsletter');
 

@@ -156,6 +156,9 @@ export const NOTIFICATION_KINDS = [
   'team_added',
   'role_changed',
   'access_suspicious',
+  // Bloco 12: amizades.
+  'friend_request',
+  'friend_accepted',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
