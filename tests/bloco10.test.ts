@@ -360,6 +360,13 @@ describe('Bloco 10 — RSVP pelo link aberto', () => {
     );
   });
 
+  it('o anfitrião não responde ao próprio evento', async () => {
+    const body = publicEventRsvpSchema.parse({ name: 'Ana', email: 'ANA@exemplo.ao', status: 'accepted' });
+    await expect(publicEventService.rsvp('abcDEF123_-x', body, null)).rejects.toMatchObject({
+      code: 'public_rsvp_host',
+    });
+  });
+
   it('evento cancelado mantém a regra actual', async () => {
     vi.mocked(eventRepository.findByPublicSlug).mockResolvedValue(makeEvent({ status: 'cancelled' }));
     const body = publicEventRsvpSchema.parse({ name: 'Rui', email: 'r@x.ao', status: 'accepted' });

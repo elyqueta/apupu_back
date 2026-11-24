@@ -257,6 +257,14 @@ export const publicEventService = {
     assertEventOpen(event);
 
     const guest = await resolveGuest(event, body, account);
+
+    // Como nos convites individuais, o anfitrião não responde ao próprio evento.
+    if (guest.email && guest.email.trim().toLowerCase() === event.hostEmail.trim().toLowerCase()) {
+      throw new ConflictError(
+        'O anfitrião não pode responder ao próprio evento.',
+        'public_rsvp_host'
+      );
+    }
     const message = body.message ?? null;
     const linkExpiresAt = await linkValidityService.maximumFor(event);
 
