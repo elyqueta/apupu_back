@@ -19,7 +19,8 @@ export const socialController = {
   },
 
   search: async (req: Request, res: Response): Promise<void> => {
-    res.status(200).json({ data: await socialService.search(String(req.query.q ?? '')) });
+    const { q } = req.query as unknown as { q: string };
+    res.status(200).json({ data: await socialService.search(q) });
   },
 
   publicProfile: async (req: Request, res: Response): Promise<void> => {
