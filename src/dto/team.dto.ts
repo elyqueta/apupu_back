@@ -30,6 +30,8 @@ export interface TeamDto {
   creator_id: string | null;
   event_ids: string[];
   event_count: number;
+  photo_url: string | null;
+  photo_public_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,6 +63,8 @@ export function toTeamDto(team: TeamWithStats): TeamDto {
     completed_task_count: team.completedTaskCount,
     open_task_count: team.openTaskCount,
     members_preview: team.membersPreview.map(toMemberPreviewDto),
+    photo_url: team.photoUrl ?? null,
+    photo_public_id: team.photoPublicId ?? null,
     created_at: team.createdAt.toISOString(),
     updated_at: team.updatedAt.toISOString(),
   };

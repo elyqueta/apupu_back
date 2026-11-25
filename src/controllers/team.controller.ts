@@ -7,6 +7,7 @@ import {
   UpdateTeamBody,
 } from '../schemas/team.schemas';
 import { auditService } from '../services/audit.service';
+import { teamPhotoService } from '../services/teamPhoto.service';
 import { teamService } from '../services/team.service';
 import { EventAccessScope } from '../types/event.types';
 
@@ -94,6 +95,26 @@ export const teamController = {
       metadata: { team_id: req.params.teamId ?? '' },
     });
     res.status(204).send();
+  },
+
+  uploadPhoto: async (req: Request, res: Response): Promise<void> => {
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: 'missing_file', message: 'Ficheiro em falta.' });
+      return;
+    }
+    const team = await teamPhotoService.upload(
+      accessScope(req),
+      req.params.teamId ?? '',
+      file.buffer,
+      file.mimetype
+    );
+    res.status(200).json({ data: toTeamDto(team) });
+  },
+
+  removePhoto: async (req: Request, res: Response): Promise<void> => {
+    const team = await teamPhotoService.remove(accessScope(req), req.params.teamId ?? '');
+    res.status(200).json({ data: toTeamDto(team) });
   },
 
   remove: async (req: Request, res: Response): Promise<void> => {

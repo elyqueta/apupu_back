@@ -92,6 +92,8 @@ export interface Team {
   communityId: string | null;
   /** Eventos geridos pela equipa (`team_events`); inclui o evento principal. */
   eventIds: string[];
+  photoUrl: string | null;
+  photoPublicId: string | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

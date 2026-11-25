@@ -25,6 +25,7 @@ import {
 } from '../../middlewares/requireVerifiedEmail';
 import { uploadAvatar } from '../../middlewares/uploadAvatar';
 import { uploadProfileCover } from '../../middlewares/uploadProfileCover';
+import { uploadTeamPhoto } from '../../middlewares/uploadTeamPhoto';
 import { validate } from '../../middlewares/validate';
 import { registerRequestCodeSchema } from '../../schemas/auth.schemas';
 import { hostCancelSchema } from '../../schemas/admin.schemas';
@@ -2258,6 +2259,25 @@ router.patch(
   requireAuthCsrf,
   validate({ body: updateTeamSchema }),
   asyncHandler(teamController.update)
+);
+
+router.post(
+  '/teams/:teamId/photo',
+  validate({ params: teamIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  uploadTeamPhoto,
+  asyncHandler(teamController.uploadPhoto)
+);
+
+router.delete(
+  '/teams/:teamId/photo',
+  validate({ params: teamIdParamsSchema }),
+  asyncHandler(hostAccountAuth),
+  writeLimiter,
+  requireAuthCsrf,
+  asyncHandler(teamController.removePhoto)
 );
 
 router.delete(
