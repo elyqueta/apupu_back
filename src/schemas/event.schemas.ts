@@ -269,6 +269,8 @@ function validateEventDates(
   }
 }
 
+const guestKindSchema = z.enum(['male', 'female', 'couple', 'family']);
+
 const guestSchema = z
   .object({
     name: z.string().trim().min(2, 'O nome do convidado é obrigatório.').max(150),
@@ -278,6 +280,9 @@ const guestSchema = z
       .transform((value) => value.toLowerCase()),
     phone: optionalText(30),
     table_name: optionalText(100),
+    guest_kind: guestKindSchema.nullable().optional(),
+    companion_name: optionalText(150),
+    party_size: z.number().int().positive().max(50).nullable().optional(),
   })
   .strict();
 
@@ -333,6 +338,9 @@ export const updateInvitationSchema = z
       .transform((value) => value.toLowerCase()),
     phone: optionalText(30),
     table_name: optionalText(100),
+    guest_kind: guestKindSchema.nullable(),
+    companion_name: optionalText(150),
+    party_size: z.number().int().positive().max(50).nullable(),
   })
   .strict()
   .partial()

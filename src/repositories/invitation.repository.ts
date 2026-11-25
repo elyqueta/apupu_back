@@ -3,6 +3,7 @@ import { pool, query } from '../database/pool';
 import { EventCategory, EventLocation, EventStats, EventStatus } from '../types/event.types';
 import {
   AccountInvitation,
+  GuestKind,
   Invitation,
   InvitationSource,
   InvitationWithEvent,
@@ -20,6 +21,9 @@ interface InvitationRow {
   guest_email: string | null;
   guest_phone: string | null;
   guest_phone_normalized: string | null;
+  guest_kind: GuestKind | null;
+  guest_companion_name: string | null;
+  guest_party_size: number | null;
   source: InvitationSource;
   guest_age: number | null;
   age_flag: boolean;
@@ -55,6 +59,9 @@ function toInvitation(row: InvitationRow): Invitation {
     guestEmail: row.guest_email,
     guestPhone: row.guest_phone,
     guestPhoneNormalized: row.guest_phone_normalized,
+    guestKind: row.guest_kind,
+    guestCompanionName: row.guest_companion_name,
+    guestPartySize: row.guest_party_size,
     source: row.source,
     guestAge: row.guest_age,
     ageFlag: row.age_flag,
@@ -85,6 +92,7 @@ function toInvitation(row: InvitationRow): Invitation {
 
 const SELECT_COLUMNS = `
   id, event_id, guest_name, guest_email, guest_phone, guest_phone_normalized,
+  guest_kind, guest_companion_name, guest_party_size,
   source, guest_age, age_flag, age_flag_reason, table_name, guest_message,
   message_answer, message_answered_at, message_read_at,
   link_expires_at, token_hash, token_encrypted, claim_hash, claimed_at, claim_revoked_at,
@@ -153,6 +161,9 @@ export interface InsertInvitationData {
   guestEmail: string;
   guestPhone: string | null;
   tableName: string | null;
+  guestKind: GuestKind | null;
+  guestCompanionName: string | null;
+  guestPartySize: number | null;
   /** Calculado pelos serviços com `linkValidityService.maximumFor(event)`. */
   linkExpiresAt: Date;
   tokenHash: string;
@@ -208,6 +219,9 @@ export interface InsertPublicInvitationData {
   guestEmail: string | null;
   guestPhone: string | null;
   guestPhoneNormalized: string | null;
+  guestKind?: GuestKind | null;
+  guestCompanionName?: string | null;
+  guestPartySize?: number | null;
   guestAge: number | null;
   ageFlag: boolean;
   ageFlagReason: 'birth_date_changed' | null;
@@ -227,11 +241,12 @@ export const invitationRepository = {
     const result = await runner.query<InvitationRow>(
       `INSERT INTO invitations (
          event_id, guest_name, guest_email, guest_phone, guest_phone_normalized,
+         guest_kind, guest_companion_name, guest_party_size,
          source, guest_age, age_flag, age_flag_reason,
          rsvp_status, rsvp_responded_at, rsvp_version, guest_message,
          link_expires_at, token_hash, token_encrypted, referrer_member_id
        )
-       VALUES ($1,$2,$3,$4,$5,'public_link',$6,$7,$8,$9,now(),1,$10,$11,$12,$13,$14)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'public_link',$9,$10,$11,$12,now(),1,$13,$14,$15,$16,$17)
        RETURNING ${SELECT_COLUMNS}`,
       [
         data.eventId,
@@ -239,6 +254,9 @@ export const invitationRepository = {
         data.guestEmail,
         data.guestPhone,
         data.guestPhoneNormalized,
+        data.guestKind ?? null,
+        data.guestCompanionName ?? null,
+        data.guestPartySize ?? null,
         data.guestAge,
         data.ageFlag,
         data.ageFlagReason,
@@ -336,9 +354,10 @@ export const invitationRepository = {
     const result = await runner.query<InvitationRow>(
       `INSERT INTO invitations (
          event_id, guest_name, guest_email, guest_phone, table_name,
+         guest_kind, guest_companion_name, guest_party_size,
          link_expires_at, token_hash, token_encrypted
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING ${SELECT_COLUMNS}`,
       [
         data.eventId,
@@ -346,6 +365,9 @@ export const invitationRepository = {
         data.guestEmail,
         data.guestPhone,
         data.tableName,
+        data.guestKind ?? null,
+        data.guestCompanionName ?? null,
+        data.guestPartySize ?? null,
         data.linkExpiresAt,
         data.tokenHash,
         data.tokenEncrypted,
@@ -941,6 +963,18 @@ export const invitationRepository = {
     if ('tableName' in changes) {
       values.push(changes.tableName);
       set.push(`table_name = $${values.length}`);
+    }
+    if ('guestKind' in changes) {
+      values.push(changes.guestKind ?? null);
+      set.push(`guest_kind = $${values.length}`);
+    }
+    if ('guestCompanionName' in changes) {
+      values.push(changes.guestCompanionName ?? null);
+      set.push(`guest_companion_name = $${values.length}`);
+    }
+    if ('guestPartySize' in changes) {
+      values.push(changes.guestPartySize ?? null);
+      set.push(`guest_party_size = $${values.length}`);
     }
     if ('tokenHash' in changes) {
       values.push(changes.tokenHash);

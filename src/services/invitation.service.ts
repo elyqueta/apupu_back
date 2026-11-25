@@ -119,6 +119,9 @@ export const invitationService = {
             guestEmail: input.email,
             guestPhone: input.phone ?? null,
             tableName: input.table_name ?? null,
+            guestKind: input.guest_kind ?? null,
+            guestCompanionName: input.companion_name ?? null,
+            guestPartySize: input.party_size ?? null,
             linkExpiresAt,
             tokenHash: hashToken(token),
             tokenEncrypted: encryptToken(token),
@@ -192,6 +195,9 @@ export const invitationService = {
         if (input.email !== undefined) changes.guestEmail = input.email;
         if (input.phone !== undefined) changes.guestPhone = input.phone;
         if (input.table_name !== undefined) changes.tableName = input.table_name;
+        if (input.guest_kind !== undefined) changes.guestKind = input.guest_kind;
+        if (input.companion_name !== undefined) changes.guestCompanionName = input.companion_name;
+        if (input.party_size !== undefined) changes.guestPartySize = input.party_size;
 
         if (emailChanged) {
           // O link é pessoal: ao corrigir o email, o link anterior deixa

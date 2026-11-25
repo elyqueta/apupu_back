@@ -12,6 +12,9 @@ export type SendStatus = (typeof SEND_STATUSES)[number];
 export const INVITATION_SOURCES = ['personal', 'public_link'] as const;
 export type InvitationSource = (typeof INVITATION_SOURCES)[number];
 
+export const GUEST_KINDS = ['male', 'female', 'couple', 'family'] as const;
+export type GuestKind = (typeof GUEST_KINDS)[number];
+
 export interface Invitation {
   id: string;
   eventId: string;
@@ -21,6 +24,12 @@ export interface Invitation {
   guestPhone: string | null;
   /** Telefone em E.164, usado para deduplicar confirmações pelo link aberto. */
   guestPhoneNormalized: string | null;
+  /** Género/tipo de convidado (Bloco 15); null = tratamento neutro. */
+  guestKind: GuestKind | null;
+  /** Nome do cônjuge/acompanhante (casal). */
+  guestCompanionName: string | null;
+  /** Número de pessoas (família/casal); null usa padrão por tipo. */
+  guestPartySize: number | null;
   source: InvitationSource;
   /** Idade indicada (visitante) ou calculada no servidor (conta). */
   guestAge: number | null;
@@ -63,6 +72,9 @@ export interface CreateInvitationInput {
   guestEmail: string;
   guestPhone: string | null;
   tableName: string | null;
+  guestKind: GuestKind | null;
+  guestCompanionName: string | null;
+  guestPartySize: number | null;
 }
 
 export interface UpdateInvitationInput {
@@ -70,6 +82,9 @@ export interface UpdateInvitationInput {
   guestEmail?: string;
   guestPhone?: string | null;
   tableName?: string | null;
+  guestKind?: GuestKind | null;
+  guestCompanionName?: string | null;
+  guestPartySize?: number | null;
   /** Novo hash do link, usado quando o email do convidado é corrigido. */
   tokenHash?: string;
   /** Novo token cifrado, para reconstruir o link depois da alteração. */

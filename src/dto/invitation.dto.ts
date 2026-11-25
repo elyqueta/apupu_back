@@ -21,6 +21,12 @@ export interface InvitationDto {
   /** `null` em confirmações pelo link aberto feitas só com telefone. */
   guest_email: string | null;
   guest_phone: string | null;
+  /** Género/tipo de convidado (Bloco 15); null = tratamento neutro. */
+  guest_kind: 'male' | 'female' | 'couple' | 'family' | null;
+  /** Nome do cônjuge/acompanhante (casal). */
+  guest_companion_name: string | null;
+  /** Número de pessoas (família/casal). */
+  guest_party_size: number | null;
   /** `personal` (convite individual) ou `public_link` (link aberto do evento). */
   source: 'personal' | 'public_link';
   /** Idade indicada na confirmação pelo link aberto (só organizadores). */
@@ -100,6 +106,9 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     guest_name: invitation.guestName,
     guest_email: invitation.guestEmail,
     guest_phone: invitation.guestPhone,
+    guest_kind: invitation.guestKind,
+    guest_companion_name: invitation.guestCompanionName,
+    guest_party_size: invitation.guestPartySize,
     source: invitation.source,
     guest_age: invitation.guestAge,
     age_flag: invitation.ageFlag,
@@ -173,6 +182,9 @@ export interface GuestInvitationDto {
   rsvp_status: string;
   rsvp_responded_at: string | null;
   table_name: string | null;
+  guest_kind: 'male' | 'female' | 'couple' | 'family' | null;
+  guest_companion_name: string | null;
+  guest_party_size: number | null;
   invitation_url: string | null;
   invitation_url_expires_at: string | null;
   created_at: string;
@@ -193,6 +205,9 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
     rsvp_status: invitation.rsvpStatus,
     rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     table_name: invitation.tableName,
+    guest_kind: invitation.guestKind,
+    guest_companion_name: invitation.guestCompanionName,
+    guest_party_size: invitation.guestPartySize,
     invitation_url: invitationUrl(invitation),
     invitation_url_expires_at: iso(invitation.linkExpiresAt),
     created_at: invitation.createdAt.toISOString(),
