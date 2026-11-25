@@ -202,6 +202,7 @@ const envSchema = z.object({
   CLOUDINARY_API_SECRET: z.string().trim().optional(),
   CLOUDINARY_AVATAR_FOLDER: z.string().trim().min(1).default('conta-comigo/avatars'),
   CLOUDINARY_EVENT_FOLDER: z.string().trim().min(1).default('conta-comigo/events'),
+  CLOUDINARY_TEAM_FOLDER: z.string().trim().min(1).default('conta-comigo/teams'),
   CLOUDINARY_PROFILE_COVER_FOLDER: z
     .string()
     .trim()
@@ -211,6 +212,8 @@ const envSchema = z.object({
   AVATAR_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
   /** Tamanho máximo da imagem de capa do evento (8 MiB por omissão). */
   EVENT_COVER_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
+  /** Tamanho máximo da foto da equipa (8 MiB por omissão). */
+  TEAM_PHOTO_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
   /** Tamanho máximo da imagem de capa do perfil (8 MiB por omissão). */
   PROFILE_COVER_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
 

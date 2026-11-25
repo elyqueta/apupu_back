@@ -29,13 +29,15 @@ beforeEach(() => {
 });
 
 describe('Bloco 12 — feed e pesquisa (testes negativos)', () => {
-  it('eventos do feed: só públicos, não removidos, próximos ou a decorrer', async () => {
+  it('eventos do feed: só públicos, não removidos, ordenados por Bloco 15', async () => {
     await socialService.feed({ type: 'events' });
     const sql = sqlCalls().at(-1) ?? '';
     expect(sql).toContain("e.visibility = 'public'");
     expect(sql).toContain('e.deleted_at IS NULL');
-    expect(sql).toContain('>= now()');
-    expect(sql).toContain("e.status = 'scheduled'");
+    expect(sql).toContain("e.status IN ('scheduled', 'completed', 'cancelled')");
+    expect(sql).not.toContain("e.status = 'scheduled'");
+    // Bloco 15: ativos→passados→cancelados
+    expect(sql).toMatch(/ORDER BY[\s\S]*THEN 2 WHEN[\s\S]*THEN 1 ELSE 0 END/);
   });
 
   it('pessoas: só perfis públicos, activos e verificados', async () => {

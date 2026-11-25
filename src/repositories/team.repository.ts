@@ -25,6 +25,8 @@ interface TeamRow {
   description: string | null;
   created_by_host_id: string | null;
   community_id: string | null;
+  photo_url: string | null;
+  photo_public_id: string | null;
   event_ids: string[] | null;
   deleted_at: Date | null;
   created_at: Date;
@@ -49,6 +51,8 @@ function toTeam(row: TeamRow): TeamWithStats {
     createdByHostId: row.created_by_host_id,
     communityId: row.community_id ?? null,
     eventIds: row.event_ids ?? [row.event_id],
+    photoUrl: row.photo_url ?? null,
+    photoPublicId: row.photo_public_id ?? null,
     deletedAt: row.deleted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -178,7 +182,7 @@ function teamAggregateColumns(): string {
 
 const SELECT_TEAM = `
   t.id, t.event_id, t.name, t.category, t.description,
-  t.created_by_host_id, t.community_id, t.deleted_at, t.created_at, t.updated_at,
+  t.created_by_host_id, t.community_id, t.photo_url, t.photo_public_id, t.deleted_at, t.created_at, t.updated_at,
   ARRAY(
     SELECT te.event_id FROM team_events te
       JOIN events tev ON tev.id = te.event_id AND tev.deleted_at IS NULL
@@ -209,7 +213,7 @@ const FROM_TEAM = `
  */
 const SELECT_TEAM_PAGE = `
   p.id, p.event_id, p.name, p.category, p.description,
-  p.created_by_host_id, p.community_id, p.deleted_at, p.created_at, p.updated_at,
+  p.created_by_host_id, p.community_id, p.photo_url, p.photo_public_id, p.deleted_at, p.created_at, p.updated_at,
   ARRAY(
     SELECT te.event_id FROM team_events te
       JOIN events tev ON tev.id = te.event_id AND tev.deleted_at IS NULL
@@ -378,7 +382,7 @@ export function buildTeamListQuery(filters: TeamListFilters): {
       // pagam as agregações (ver comentário de SELECT_TEAM_PAGE).
       text: `WITH team_page AS (
                SELECT t.id, t.event_id, t.name, t.category, t.description,
-                      t.created_by_host_id, t.community_id, t.deleted_at, t.created_at, t.updated_at,
+                      t.created_by_host_id, t.community_id, t.photo_url, t.photo_public_id, t.deleted_at, t.created_at, t.updated_at,
                       e.starts_at,
                       e.title AS event_title,
                       ${EVENT_STATUS_SQL} AS event_status,
@@ -531,6 +535,8 @@ export const teamRepository = {
       name?: string;
       category?: TeamCategory;
       description?: string | null;
+      photoUrl?: string | null;
+      photoPublicId?: string | null;
     },
     client?: PoolClient
   ): Promise<TeamWithStats | null> {
@@ -549,6 +555,14 @@ export const teamRepository = {
     if (changes.description !== undefined) {
       values.push(changes.description);
       set.push(`description = $${values.length}`);
+    }
+    if (changes.photoUrl !== undefined) {
+      values.push(changes.photoUrl);
+      set.push(`photo_url = $${values.length}`);
+    }
+    if (changes.photoPublicId !== undefined) {
+      values.push(changes.photoPublicId);
+      set.push(`photo_public_id = $${values.length}`);
     }
 
     if (set.length === 0) {

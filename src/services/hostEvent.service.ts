@@ -9,6 +9,7 @@ import { HostEventsQuery } from '../schemas/host.schemas';
 import { EventAccessScope, EventWithStats, HostTotals } from '../types/event.types';
 import { PaginationMeta } from '../types/pagination.types';
 import { buildPaginationMeta, toPageParams } from '../utils/pagination.util';
+import { withEffectiveStatus } from '../utils/eventStatus.util';
 import { CreatedEventResult, eventService } from './event.service';
 import { ManageEmailStatus, manageLinkService } from './manageLink.service';
 
@@ -48,7 +49,7 @@ export const hostEventService = {
     });
 
     return {
-      items,
+      items: items.map((event) => withEffectiveStatus(event)),
       pagination: buildPaginationMeta(total, page.page, page.pageSize),
     };
   },
@@ -60,9 +61,14 @@ export const hostEventService = {
       eventRepository.totalsForHost(scope),
     ]);
 
+    const effectiveNext = nextEvent ? withEffectiveStatus(nextEvent) : null;
+    const effectiveUpcoming = upcoming
+      .map((event) => withEffectiveStatus(event))
+      .filter((event) => event.status !== 'completed' && event.status !== 'cancelled');
+
     return {
-      next_event: nextEvent,
-      upcoming,
+      next_event: effectiveNext?.status === 'completed' ? null : effectiveNext,
+      upcoming: effectiveUpcoming,
       totals,
     };
   },

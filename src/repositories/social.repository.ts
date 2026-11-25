@@ -17,8 +17,19 @@ export const PUBLIC_EVENT_SQL = `
   e.visibility = 'public'
   AND e.deleted_at IS NULL
   AND e.public_slug IS NOT NULL
-  AND e.status IN ('scheduled', 'completed')
+  AND e.status IN ('scheduled', 'completed', 'cancelled')
 `;
+
+const EFFECTIVE_END_SQL = `CASE WHEN e.ends_at IS NOT NULL THEN e.ends_at ELSE (((e.starts_at AT TIME ZONE COALESCE(NULLIF(e.timezone,''),'Africa/Luanda'))::date + 1)::timestamp AT TIME ZONE COALESCE(NULLIF(e.timezone,''),'Africa/Luanda')) END`;
+const EFFECTIVE_STATUS_SQL = `CASE
+  WHEN e.status = 'cancelled' THEN 'cancelled'
+  WHEN e.status = 'draft' THEN 'draft'
+  WHEN e.status = 'completed' THEN 'completed'
+  WHEN (${EFFECTIVE_END_SQL}) <= now() THEN 'completed'
+  ELSE e.status
+END`;
+const STATUS_GROUP_SQL = `CASE WHEN (${EFFECTIVE_STATUS_SQL}) = 'cancelled' THEN 2 WHEN (${EFFECTIVE_STATUS_SQL}) = 'completed' THEN 1 ELSE 0 END`;
+const BLOCO15_ORDER_SQL = `${STATUS_GROUP_SQL} ASC, CASE WHEN ${STATUS_GROUP_SQL} = 0 THEN e.starts_at END ASC, CASE WHEN ${STATUS_GROUP_SQL} > 0 THEN e.starts_at END DESC, e.id ASC`;
 
 /** Próximos ou a decorrer (fim, ou início + 6 h quando não há fim). */
 export const UPCOMING_SQL = `COALESCE(e.ends_at, e.starts_at + interval '6 hours') >= now()`;
@@ -36,6 +47,7 @@ export interface FeedEventRow {
   starts_at: Date;
   ends_at: Date | null;
   timezone: string;
+  status: string;
   location_type: 'venue' | 'online';
   location_name: string | null;
   cover_url: string | null;
@@ -70,7 +82,7 @@ export interface FeedPersonRow {
 }
 
 const EVENT_SELECT = `
-  SELECT e.id, e.title, e.category, e.starts_at, e.ends_at, e.timezone,
+  SELECT e.id, e.title, e.category, e.starts_at, e.ends_at, e.timezone, e.status,
          e.location_type, e.location_name, e.cover_url, e.template_id, e.theme,
          e.public_slug, e.host_name, e.show_attendee_count,
          (SELECT count(*)::int FROM invitations i
@@ -107,7 +119,8 @@ export const socialRepository = {
 
   async feedEvents(opts: { q?: string; category?: string; offset: number; limit: number }): Promise<FeedEventRow[]> {
     const values: unknown[] = [opts.limit, opts.offset];
-    const where = [PUBLIC_EVENT_SQL, UPCOMING_SQL, "e.status = 'scheduled'"];
+    // Bloco 15: ativos/futuros primeiro, depois passados, depois cancelados.
+    const where = [PUBLIC_EVENT_SQL];
     if (opts.q) {
       values.push(like(opts.q));
       where.push(`e.title ILIKE $${values.length} ESCAPE '\\'`);
@@ -119,7 +132,7 @@ export const socialRepository = {
     const result = await query<FeedEventRow>(
       `${EVENT_SELECT}
         WHERE ${where.join(' AND ')}
-        ORDER BY e.starts_at ASC, e.id ASC
+        ORDER BY ${BLOCO15_ORDER_SQL}
         LIMIT $1 OFFSET $2`,
       values
     );
@@ -180,11 +193,12 @@ export const socialRepository = {
   },
 
   async hostedEvents(hostId: string, past: boolean, offset: number, limit: number): Promise<FeedEventRow[]> {
+    const ended = `(${EFFECTIVE_END_SQL}) <= now() OR ${EFFECTIVE_STATUS_SQL} IN ('completed', 'cancelled')`;
     const result = await query<FeedEventRow>(
       `${EVENT_SELECT}
         WHERE e.host_id = $1 AND ${PUBLIC_EVENT_SQL}
-          AND ${past ? `NOT (${UPCOMING_SQL})` : `${UPCOMING_SQL} AND e.status = 'scheduled'`}
-        ORDER BY e.starts_at ${past ? 'DESC' : 'ASC'}, e.id ASC
+          AND ${past ? ended : `NOT (${ended})`}
+        ORDER BY ${BLOCO15_ORDER_SQL}
         LIMIT $2 OFFSET $3`,
       [hostId, limit, offset]
     );
@@ -192,11 +206,12 @@ export const socialRepository = {
   },
 
   async communityEvents(communityId: string, past: boolean, offset: number, limit: number): Promise<FeedEventRow[]> {
+    const ended = `(${EFFECTIVE_END_SQL}) <= now() OR ${EFFECTIVE_STATUS_SQL} IN ('completed', 'cancelled')`;
     const result = await query<FeedEventRow>(
       `${EVENT_SELECT}
         WHERE e.community_id = $1 AND ${PUBLIC_EVENT_SQL}
-          AND ${past ? `NOT (${UPCOMING_SQL})` : `${UPCOMING_SQL} AND e.status = 'scheduled'`}
-        ORDER BY e.starts_at ${past ? 'DESC' : 'ASC'}, e.id ASC
+          AND ${past ? ended : `NOT (${ended})`}
+        ORDER BY ${BLOCO15_ORDER_SQL}
         LIMIT $2 OFFSET $3`,
       [communityId, limit, offset]
     );

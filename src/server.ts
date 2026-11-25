@@ -6,6 +6,10 @@ import {
   startAdminReportScheduler,
   stopAdminReportScheduler,
 } from './services/adminReportScheduler';
+import {
+  startEventCompletionScheduler,
+  stopEventCompletionScheduler,
+} from './services/eventCompletionScheduler';
 import { startOutboxScheduler, stopOutboxScheduler } from './services/outbox.service';
 
 const server = app.listen(env.PORT, () => {
@@ -16,6 +20,7 @@ if (env.OUTBOX_ENABLED && env.OUTBOX_IN_API) {
   startOutboxScheduler();
 }
 startAdminReportScheduler();
+startEventCompletionScheduler();
 
 /**
  * Shutdown gracioso.
@@ -28,6 +33,7 @@ function shutdown(signal: string): void {
   logger.info(`${signal} recebido. A encerrar graciosamente...`);
   stopOutboxScheduler();
   stopAdminReportScheduler();
+  stopEventCompletionScheduler();
 
   server.close((err) => {
     if (err) {

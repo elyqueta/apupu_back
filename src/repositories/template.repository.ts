@@ -12,6 +12,7 @@ interface TemplateRow {
   is_active: boolean;
   sort_order: number;
   manifest: unknown;
+  kind?: 'system' | 'user';
   created_at: Date;
   updated_at: Date;
 }
@@ -28,6 +29,7 @@ function toTemplate(row: TemplateRow): EventTemplate {
     isActive: row.is_active,
     sortOrder: row.sort_order,
     manifest: row.manifest,
+    kind: row.kind ?? 'user',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -35,7 +37,7 @@ function toTemplate(row: TemplateRow): EventTemplate {
 
 const SELECT_COLUMNS = `
   id, slug, name, description, preview_image_url, supported_fields, themes,
-  is_active, sort_order, manifest, created_at, updated_at
+  is_active, sort_order, manifest, kind, created_at, updated_at
 `;
 
 export const templateRepository = {

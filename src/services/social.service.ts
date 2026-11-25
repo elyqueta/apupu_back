@@ -7,6 +7,8 @@ import {
   FeedPersonRow,
   socialRepository,
 } from '../repositories/social.repository';
+import { EventStatus } from '../types/event.types';
+import { effectiveEventStatus } from '../utils/eventStatus.util';
 import { links } from '../utils/links.util';
 
 export const FEED_PAGE_SIZE = 12;
@@ -30,6 +32,12 @@ export function decodeCursor(cursor: string | undefined): number {
 /* ──────────────────────────────── DTOs ──────────────────────────────── */
 
 export function toFeedEventDto(row: FeedEventRow) {
+  const status = effectiveEventStatus({
+    status: row.status as EventStatus,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    timezone: row.timezone,
+  });
   return {
     type: 'event' as const,
     id: row.id,
@@ -38,6 +46,7 @@ export function toFeedEventDto(row: FeedEventRow) {
     starts_at: row.starts_at.toISOString(),
     ends_at: row.ends_at ? row.ends_at.toISOString() : null,
     timezone: row.timezone,
+    status,
     location: row.location_type === 'online' ? null : row.location_name,
     online: row.location_type === 'online',
     cover_url: row.cover_url,

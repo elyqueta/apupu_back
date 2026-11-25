@@ -665,6 +665,20 @@ export const eventRepository = {
 
     const where = conditions.join(' AND ');
     const direction = filters.order === 'asc' ? 'ASC' : 'DESC';
+    // Bloco 15: fim efetivo = ends_at ou início do dia seguinte no fuso do evento.
+    const effectiveEnd = `CASE WHEN e.ends_at IS NOT NULL THEN e.ends_at ELSE (((e.starts_at AT TIME ZONE COALESCE(NULLIF(e.timezone,''),'Africa/Luanda'))::date + 1)::timestamp AT TIME ZONE COALESCE(NULLIF(e.timezone,''),'Africa/Luanda')) END`;
+    const effectiveStatus = `CASE
+      WHEN e.status = 'cancelled' THEN 'cancelled'
+      WHEN e.status = 'draft' THEN 'draft'
+      WHEN e.status = 'completed' THEN 'completed'
+      WHEN (${effectiveEnd}) <= now() THEN 'completed'
+      ELSE e.status
+    END`;
+    const statusGroup = `CASE WHEN (${effectiveStatus}) = 'cancelled' THEN 2 WHEN (${effectiveStatus}) = 'completed' THEN 1 ELSE 0 END`;
+    const orderBy =
+      filters.sort === 'starts_at'
+        ? `${statusGroup} ASC, CASE WHEN ${statusGroup} = 0 THEN e.starts_at END ASC, CASE WHEN ${statusGroup} > 0 THEN e.starts_at END DESC, e.id ${direction}`
+        : `e.${filters.sort} ${direction}, e.id ${direction}`;
 
     const countResult = await query<{ total: string }>(
       `SELECT count(*)::text AS total FROM events e WHERE ${where}`,
@@ -679,7 +693,7 @@ export const eventRepository = {
          FROM events e
          ${STATS_LATERAL}
         WHERE ${where}
-        ORDER BY e.${filters.sort} ${direction}, e.id ${direction}
+        ORDER BY ${orderBy}
         LIMIT $${listValues.length - 1} OFFSET $${listValues.length}`,
       listValues
     );
@@ -791,6 +805,22 @@ export const eventRepository = {
       active: Number(row?.active ?? '0'),
       cancelled: Number(row?.cancelled ?? '0'),
     };
+  },
+
+  /**
+   * Bloco 15: marca eventos terminados como `completed`.
+   * Derivação no read cobre a UI; este job persiste o estado.
+   */
+  async markEndedEventsCompleted(): Promise<number> {
+    const effectiveEnd = `CASE WHEN ends_at IS NOT NULL THEN ends_at ELSE (((starts_at AT TIME ZONE COALESCE(NULLIF(timezone,''),'Africa/Luanda'))::date + 1)::timestamp AT TIME ZONE COALESCE(NULLIF(timezone,''),'Africa/Luanda')) END`;
+    const result = await query(
+      `UPDATE events
+          SET status = 'completed', updated_at = now()
+        WHERE deleted_at IS NULL
+          AND status = 'scheduled'
+          AND (${effectiveEnd}) <= now()`
+    );
+    return result.rowCount ?? 0;
   },
 
   /** Lista global para o painel admin, com filtros opcionais. */

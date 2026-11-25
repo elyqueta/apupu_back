@@ -6,6 +6,7 @@ import { AccountInvitation, Invitation, InvitationWithEvent } from '../types/inv
 import { EmailDelivery } from '../types/emailDelivery.types';
 import { EventTemplate } from '../types/template.types';
 import { decryptToken } from '../utils/crypto.util';
+import { effectiveEventStatus } from '../utils/eventStatus.util';
 import { links } from '../utils/links.util';
 import { EventLocationDto, PublicEventDto, toPublicEventDto } from './event.dto';
 
@@ -20,6 +21,12 @@ export interface InvitationDto {
   /** `null` em confirmações pelo link aberto feitas só com telefone. */
   guest_email: string | null;
   guest_phone: string | null;
+  /** Género/tipo de convidado (Bloco 15); null = tratamento neutro. */
+  guest_kind: 'male' | 'female' | 'couple' | 'family' | null;
+  /** Nome do cônjuge/acompanhante (casal). */
+  guest_companion_name: string | null;
+  /** Número de pessoas (família/casal). */
+  guest_party_size: number | null;
   /** `personal` (convite individual) ou `public_link` (link aberto do evento). */
   source: 'personal' | 'public_link';
   /** Idade indicada na confirmação pelo link aberto (só organizadores). */
@@ -99,6 +106,9 @@ export function toInvitationDto(invitation: Invitation): InvitationDto {
     guest_name: invitation.guestName,
     guest_email: invitation.guestEmail,
     guest_phone: invitation.guestPhone,
+    guest_kind: invitation.guestKind,
+    guest_companion_name: invitation.guestCompanionName,
+    guest_party_size: invitation.guestPartySize,
     source: invitation.source,
     guest_age: invitation.guestAge,
     age_flag: invitation.ageFlag,
@@ -172,6 +182,9 @@ export interface GuestInvitationDto {
   rsvp_status: string;
   rsvp_responded_at: string | null;
   table_name: string | null;
+  guest_kind: 'male' | 'female' | 'couple' | 'family' | null;
+  guest_companion_name: string | null;
+  guest_party_size: number | null;
   invitation_url: string | null;
   invitation_url_expires_at: string | null;
   created_at: string;
@@ -180,12 +193,21 @@ export interface GuestInvitationDto {
 
 /** Vista da conta convidada ("Meus convites"). */
 export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvitationDto {
+  const status = effectiveEventStatus({
+    status: invitation.eventStatus,
+    startsAt: invitation.eventStartsAt,
+    endsAt: invitation.eventEndsAt,
+    timezone: invitation.eventTimezone,
+  });
   return {
     id: invitation.id,
     event_id: invitation.eventId,
     rsvp_status: invitation.rsvpStatus,
     rsvp_responded_at: iso(invitation.rsvpRespondedAt),
     table_name: invitation.tableName,
+    guest_kind: invitation.guestKind,
+    guest_companion_name: invitation.guestCompanionName,
+    guest_party_size: invitation.guestPartySize,
     invitation_url: invitationUrl(invitation),
     invitation_url_expires_at: iso(invitation.linkExpiresAt),
     created_at: invitation.createdAt.toISOString(),
@@ -195,7 +217,7 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
       host_name: invitation.eventHostName,
       starts_at: iso(invitation.eventStartsAt),
       timezone: invitation.eventTimezone,
-      status: invitation.eventStatus,
+      status,
       category: invitation.eventCategory,
       template_id: invitation.eventTemplateId,
       cover_url: invitation.eventCoverUrl,
@@ -239,6 +261,9 @@ export interface PublicInvitationDto {
     /** Resposta do anfitrião à mensagem (Parte F). */
     message_answer: string | null;
     message_answered_at: string | null;
+    guest_kind: 'male' | 'female' | 'couple' | 'family' | null;
+    guest_companion_name: string | null;
+    guest_party_size: number | null;
   };
   rsvp_deadline_passed: boolean;
 }
@@ -262,6 +287,9 @@ export function toPublicInvitationDto(
       message: invitation.guestMessage,
       message_answer: invitation.messageAnswer,
       message_answered_at: iso(invitation.messageAnsweredAt),
+      guest_kind: invitation.guestKind,
+      guest_companion_name: invitation.guestCompanionName,
+      guest_party_size: invitation.guestPartySize,
     },
     rsvp_deadline_passed: rsvpDeadlinePassed,
   };
@@ -276,6 +304,7 @@ export interface TemplateDto {
   supported_fields: string[];
   themes: Array<{ mode: string; palette: string }>;
   is_active: boolean;
+  kind: 'system' | 'user';
   /** Bloco 14: manifesto validado (cai no neutro se inválido). */
   manifest: TemplateManifest;
 }
@@ -290,6 +319,7 @@ export function toTemplateDto(template: EventTemplate): TemplateDto {
     supported_fields: template.supportedFields,
     themes: template.themes,
     is_active: template.isActive,
+    kind: template.kind ?? 'user',
     manifest: parseManifest(template.manifest),
   };
 }

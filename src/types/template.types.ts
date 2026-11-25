@@ -13,6 +13,8 @@ export interface EventTemplate {
   isActive: boolean;
   /** Bloco 14: manifesto v1 (jsonb, validado ao ler). */
   manifest: unknown;
+  /** Bloco 15: system = oficial da plataforma, user = criado pelo utilizador. */
+  kind: 'system' | 'user';
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
