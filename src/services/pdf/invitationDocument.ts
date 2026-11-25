@@ -197,32 +197,12 @@ async function drawQrWithLogo(
 }
 
 function isGratitude(manifest: TemplateManifest): boolean {
-  return manifest.ornaments.frame === 'gratitude' || manifest.ornaments.corners === 'gratitude';
-}
-
-function gratFitTitle(text: string): Array<{ text: string; y: number; fontSize: number }> {
-  const clean = (text || 'GRATITUDE').toUpperCase().trim();
-  const maxWidth = 920;
-  const fit = (t: string, max: number, min: number) => Math.max(min, Math.min(max, Math.floor(maxWidth / (t.length * 0.65))));
-  const single = fit(clean, 220, 72);
-  if (single >= 110 || clean.length <= 12) return [{ text: clean, y: 560, fontSize: single }];
-  const words = clean.split(/\s+/);
-  if (words.length === 1) return [{ text: clean, y: 560, fontSize: Math.max(72, single) }];
-  let best: [string, string] = [clean, ''];
-  let bestDiff = Infinity;
-  for (let i = 1; i < words.length; i++) {
-    const a = words.slice(0, i).join(' ');
-    const b = words.slice(i).join(' ');
-    const diff = Math.abs(a.length - b.length);
-    if (diff < bestDiff) { bestDiff = diff; best = [a, b]; }
-  }
-  const size = Math.min(fit(best[0], 170, 64), fit(best[1], 170, 64));
-  return [{ text: best[0], y: 500, fontSize: size }, { text: best[1], y: 500 + size * 0.92, fontSize: size }];
+  return manifest.ornaments.frame === 'gratitude' || manifest.ornaments.corners === 'gratitude' || (manifest as any).templateSlug === 'gratitude';
 }
 
 function gratLocationLines(text: string): string[] {
   const clean = (text || 'Local a confirmar').trim();
-  const max = 22;
+  const max = 24;
   if (clean.length <= max) return [clean];
   const words = clean.split(/\s+/);
   const lines: string[] = [];
@@ -233,7 +213,7 @@ function gratLocationLines(text: string): string[] {
     else { if (cur) lines.push(cur); cur = w; }
   }
   if (cur) lines.push(cur);
-  return lines.slice(0, 2);
+  return lines.slice(0, 3);
 }
 
 async function renderGratitudePdf(
@@ -242,9 +222,8 @@ async function renderGratitudePdf(
   manifest: TemplateManifest,
   invitationUrl: string | null
 ): Promise<Buffer> {
-  // 4:5 portrait (spec: 1 página 4:5)
   const width = 595.28;
-  const height = width * 1.25;
+  const height = width * 1.25; // 4:5
   const doc = new PDFDocument({ size: [width, height], margins: { top: 0, bottom: 0, left: 0, right: 0 }, info: { Title: `Convite — ${event.title}`, Author: 'Conto Contigo' } });
   registerFonts(doc);
   const chunks: Buffer[] = [];
@@ -268,10 +247,7 @@ async function renderGratitudePdf(
       return { date: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`, time: `${pad(d.getHours())}:${pad(d.getMinutes())}`, year: String(d.getFullYear()) };
     }
   })();
-  const dateShort = parts.date;
-  const timeShort = parts.time;
-  const year = parts.year;
-  const loc = gratLocationLines(event.location?.name || event.location?.address || event.location?.onlineUrl || 'Local a confirmar');
+
   const org = (event.hostName || 'IGREJA CRISTÃ REINO-CHURCH').toUpperCase();
   const rawType = (event as unknown as Record<string, unknown>)['category'] ?? (event as unknown as Record<string, unknown>)['type'];
   const eventType = typeof rawType === 'string' ? rawType : 'other';
@@ -285,75 +261,102 @@ async function renderGratitudePdf(
   const qrCustom = manifest.pdf.qr_custom_url;
   const eventPublicUrl = event.publicSlug ? links.publicEvent(event.publicSlug) : null;
   const qrUrl = qrDestination === 'custom' && qrCustom ? qrCustom : qrDestination === 'event' ? eventPublicUrl || invitationUrl : invitationUrl || eventPublicUrl;
+  const loc = gratLocationLines(event.location?.name || event.location?.address || event.location?.onlineUrl || 'Local a confirmar');
+  const locTspans = loc.map((line, i) => `<tspan x="548" dy="${i === 0 ? 0 : 28}">${escapeXml(line)}</tspan>`).join('');
 
-  const titleLines = gratFitTitle(title);
-  const titleTexts = titleLines.map((l) => `<text x="512" y="${l.y}" text-anchor="middle" font-size="${l.fontSize}" font-family="Anton" font-weight="400" letter-spacing="0">${escapeXml(l.text)}</text>`).join('');
-  const titleStrokes = titleLines.map((l) => `<text x="512" y="${l.y}" text-anchor="middle" font-size="${l.fontSize}" font-family="Anton" font-weight="400" letter-spacing="0" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linejoin="round">${escapeXml(l.text)}</text>`).join('');
-  const locTexts = loc.map((line, i) => `<text x="56" y="${42 + i * 28}" font-size="27" font-weight="700" fill="#111111">${escapeXml(line)}</text>`).join('');
-
-  const bgTile = `<pattern id="gr-bg-tile" width="48" height="48" patternUnits="userSpaceOnUse"><rect width="48" height="48" fill="none"/><path d="M24 2 L46 24 L24 46 L2 24 Z" fill="none" stroke="#DCC9A3" stroke-width="1.2"/><path d="M24 10 L38 24 L24 38 L10 24 Z" fill="none" stroke="#DCC9A3" stroke-width="1"/><path d="M24 18 L30 24 L24 30 L18 24 Z" fill="#E8D7B5" opacity="0.7"/></pattern>`;
-  const titlePattern = `<pattern id="gr-title-african" width="1200" height="420" patternUnits="userSpaceOnUse">
-    <rect width="1200" height="420" fill="#E8731A"/>
-    <rect x="0" y="-40" width="90" height="520" fill="#C8281E" transform="skewX(-18)"/>
-    <rect x="140" y="-40" width="70" height="520" fill="#1E8A3C" transform="skewX(-18)"/>
-    <rect x="260" y="-40" width="110" height="520" fill="#F2B21A" transform="skewX(-18)" opacity="0.9"/>
-    <rect x="430" y="-40" width="80" height="520" fill="#C8281E" transform="skewX(-18)"/>
-    <rect x="560" y="-40" width="120" height="520" fill="#1E8A3C" transform="skewX(-18)" opacity="0.92"/>
-    <rect x="740" y="-40" width="90" height="520" fill="#F2B21A" transform="skewX(-18)" opacity="0.9"/>
-    <rect x="890" y="-40" width="110" height="520" fill="#C8281E" transform="skewX(-18)"/>
-    <rect x="1060" y="-40" width="90" height="520" fill="#1E8A3C" transform="skewX(-18)" opacity="0.92"/>
-    <g stroke="#1A1A1A" stroke-width="6" fill="none"><path d="M0 70 L60 20 L120 70 L180 20 L240 70 L300 20 L360 70 L420 20 L480 70 L540 20 L600 70 L660 20 L720 70 L780 20 L840 70 L900 20 L960 70 L1020 20 L1080 70 L1140 20 L1200 70"/><path d="M0 350 L60 300 L120 350 L180 300 L240 350 L300 300 L360 350 L420 300 L480 350 L540 300 L600 350 L660 300 L720 350 L780 300 L840 350 L900 300 L960 350 L1020 300 L1080 350 L1140 300 L1200 350"/></g>
-    <g transform="translate(90,210)"><path d="M0 -55 L55 45 L-55 45 Z" fill="#1E8A3C" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -30 L32 26 L-32 26 Z" fill="#F2B21A" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -10 L14 12 L-14 12 Z" fill="#C8281E"/></g>
-    <g transform="translate(300,210)"><path d="M0 -55 L55 45 L-55 45 Z" fill="#C8281E" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -30 L32 26 L-32 26 Z" fill="#F2B21A" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -10 L14 12 L-14 12 Z" fill="#1E8A3C"/></g>
-    <g transform="translate(520,210)"><path d="M0 -55 L55 45 L-55 45 Z" fill="#1E8A3C" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -30 L32 26 L-32 26 Z" fill="#E8731A" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -10 L14 12 L-14 12 Z" fill="#F2B21A"/></g>
-    <g transform="translate(760,210)"><path d="M0 -55 L55 45 L-55 45 Z" fill="#C8281E" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -30 L32 26 L-32 26 Z" fill="#F2B21A" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -10 L14 12 L-14 12 Z" fill="#1E8A3C"/></g>
-    <g transform="translate(990,210)"><path d="M0 -55 L55 45 L-55 45 Z" fill="#1E8A3C" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -30 L32 26 L-32 26 Z" fill="#F2B21A" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -10 L14 12 L-14 12 Z" fill="#C8281E"/></g>
-    <g transform="translate(180,210)"><path d="M0 -48 L48 0 L0 48 L-48 0 Z" fill="#F2B21A" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -28 L28 0 L0 28 L-28 0 Z" fill="#C8281E" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -12 L12 0 L0 12 L-12 0 Z" fill="#1E8A3C"/></g>
-    <g transform="translate(410,210)"><path d="M0 -48 L48 0 L0 48 L-48 0 Z" fill="#1E8A3C" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -28 L28 0 L0 28 L-28 0 Z" fill="#F2B21A" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -12 L12 0 L0 12 L-12 0 Z" fill="#C8281E"/></g>
-    <g transform="translate(640,210)"><path d="M0 -48 L48 0 L0 48 L-48 0 Z" fill="#C8281E" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -28 L28 0 L0 28 L-28 0 Z" fill="#1E8A3C" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -12 L12 0 L0 12 L-12 0 Z" fill="#F2B21A"/></g>
-    <g transform="translate(880,210)"><path d="M0 -48 L48 0 L0 48 L-48 0 Z" fill="#F2B21A" stroke="#1A1A1A" stroke-width="3"/><path d="M0 -28 L28 0 L0 28 L-28 0 Z" fill="#E8731A" stroke="#1A1A1A" stroke-width="2"/><path d="M0 -12 L12 0 L0 12 L-12 0 Z" fill="#1A1A1A"/></g>
-    <path d="M0 150 L30 130 L60 150 L90 130 L120 150 L150 130 L180 150 L210 130 L240 150 L270 130 L300 150 L330 130 L360 150 L390 130 L420 150 L450 130 L480 150 L510 130 L540 150 L570 130 L600 150 L630 130 L660 150 L690 130 L720 150 L750 130 L780 150 L810 130 L840 150 L870 130 L900 150 L930 130 L960 150 L990 130 L1020 150 L1050 130 L1080 150 L1110 130 L1140 150 L1170 130 L1200 150 L1200 170 L1170 150 L1140 170 L1110 150 L1080 170 L1050 150 L1020 170 L990 150 L960 170 L930 150 L900 170 L870 150 L840 170 L810 150 L780 170 L750 150 L720 170 L690 150 L660 170 L630 150 L600 170 L570 150 L540 170 L510 150 L480 170 L450 150 L420 170 L390 150 L360 170 L330 150 L300 170 L270 150 L240 170 L210 150 L180 170 L150 150 L120 170 L90 150 L60 170 L30 150 L0 170 Z" fill="#1E8A3C" stroke="#1A1A1A" stroke-width="2"/>
-    <path d="M0 210 L30 190 L60 210 L90 190 L120 210 L150 190 L180 210 L210 190 L240 210 L270 190 L300 210 L330 190 L360 210 L390 190 L420 210 L450 190 L480 210 L510 190 L540 210 L570 190 L600 210 L630 190 L660 210 L690 190 L720 210 L750 190 L780 210 L810 190 L840 210 L870 190 L900 210 L930 190 L960 210 L990 190 L1020 210 L1050 190 L1080 210 L1110 190 L1140 210 L1170 190 L1200 210 L1200 230 L1170 210 L1140 230 L1110 210 L1080 230 L1050 210 L1020 230 L990 210 L960 230 L930 210 L900 230 L870 210 L840 230 L810 210 L780 230 L750 210 L720 230 L690 210 L660 230 L630 210 L600 230 L570 210 L540 230 L510 210 L480 230 L450 210 L420 230 L390 210 L360 230 L330 210 L300 230 L270 210 L240 230 L210 210 L180 230 L150 210 L120 230 L90 210 L60 230 L30 210 L0 230 Z" fill="#C8281E" stroke="#1A1A1A" stroke-width="2"/>
-  </pattern>`;
-  const ribbonPattern = `<pattern id="gr-ribbon-african" width="44" height="44" patternUnits="userSpaceOnUse"><rect width="44" height="44" fill="#C8281E"/><path d="M22 0 L44 22 L22 44 L0 22 Z" fill="#1E8A3C" stroke="#1A1A1A" stroke-width="1.5"/><path d="M22 8 L36 22 L22 36 L8 22 Z" fill="#F2B21A" stroke="#1A1A1A" stroke-width="1"/><path d="M22 15 L29 22 L22 29 L15 22 Z" fill="#E8731A"/><path d="M0 22 L22 0 M22 44 L44 22" stroke="#1A1A1A" stroke-width="1.5" opacity="0.45"/></pattern>`;
+  const afro = `<pattern id="afro" width="240" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-32) scale(1.15)">
+<g transform="translate(0,0)"><rect width="240" height="30" fill="#c8281e"/><polyline points="0,4 15,26 30,4 45,26 60,4 75,26 90,4 105,26 120,4 135,26 150,4 165,26 180,4 195,26 210,4 225,26 240,4" fill="none" stroke="#f2b21a" stroke-width="5" stroke-linejoin="miter"/></g>
+<g transform="translate(0,30)"><rect width="240" height="30" fill="#1e8a3c"/><path d="M3 27 15 4 27 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M33 27 45 4 57 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M63 27 75 4 87 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M93 27 105 4 117 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M123 27 135 4 147 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M153 27 165 4 177 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M183 27 195 4 207 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M213 27 225 4 237 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/></g>
+<g transform="translate(0,60)"><rect width="240" height="30" fill="#f2b21a"/><path d="M2 22 15 8 28 22M2 14 15 1 28 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M32 22 45 8 58 22M32 14 45 1 58 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M62 22 75 8 88 22M62 14 75 1 88 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M92 22 105 8 118 22M92 14 105 1 118 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M122 22 135 8 148 22M122 14 135 1 148 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M152 22 165 8 178 22M152 14 165 1 178 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M182 22 195 8 208 22M182 14 195 1 208 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M212 22 225 8 238 22M212 14 225 1 238 14" fill="none" stroke="#161616" stroke-width="4"/></g>
+<g transform="translate(0,90)"><rect width="240" height="30" fill="#e8731a"/><path d="M15 3 27 15 15 27 3 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="15" cy="15" r="3" fill="#f2b21a"/><path d="M45 3 57 15 45 27 33 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="45" cy="15" r="3" fill="#f2b21a"/><path d="M75 3 87 15 75 27 63 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="75" cy="15" r="3" fill="#f2b21a"/><path d="M105 3 117 15 105 27 93 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="105" cy="15" r="3" fill="#f2b21a"/><path d="M135 3 147 15 135 27 123 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="135" cy="15" r="3" fill="#f2b21a"/><path d="M165 3 177 15 165 27 153 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="165" cy="15" r="3" fill="#f2b21a"/><path d="M195 3 207 15 195 27 183 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="195" cy="15" r="3" fill="#f2b21a"/><path d="M225 3 237 15 225 27 213 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="225" cy="15" r="3" fill="#f2b21a"/></g>
+<g transform="translate(0,120)"><rect width="240" height="30" fill="#f2b21a"/><circle cx="15" cy="15" r="5" fill="#f2b21a"/><circle cx="45" cy="15" r="5" fill="#c8281e"/><circle cx="75" cy="15" r="5" fill="#f2b21a"/><circle cx="105" cy="15" r="5" fill="#c8281e"/><circle cx="135" cy="15" r="5" fill="#f2b21a"/><circle cx="165" cy="15" r="5" fill="#c8281e"/><circle cx="195" cy="15" r="5" fill="#f2b21a"/><circle cx="225" cy="15" r="5" fill="#c8281e"/></g>
+<g transform="translate(0,150)"><rect width="240" height="30" fill="#f2b21a"/><polyline points="0,4 15,26 30,4 45,26 60,4 75,26 90,4 105,26 120,4 135,26 150,4 165,26 180,4 195,26 210,4 225,26 240,4" fill="none" stroke="#c8281e" stroke-width="6" stroke-linejoin="miter"/></g>
+<g transform="translate(0,180)"><rect width="240" height="30" fill="#1e8a3c"/><path d="M2 22 15 8 28 22M2 14 15 1 28 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M32 22 45 8 58 22M32 14 45 1 58 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M62 22 75 8 88 22M62 14 75 1 88 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M92 22 105 8 118 22M92 14 105 1 118 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M122 22 135 8 148 22M122 14 135 1 148 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M152 22 165 8 178 22M152 14 165 1 178 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M182 22 195 8 208 22M182 14 195 1 208 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M212 22 225 8 238 22M212 14 225 1 238 14" fill="none" stroke="#f2b21a" stroke-width="4"/></g>
+<g transform="translate(0,210)"><rect width="240" height="30" fill="#c8281e"/><path d="M3 3 15 26 27 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M33 3 45 26 57 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M63 3 75 26 87 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M93 3 105 26 117 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M123 3 135 26 147 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M153 3 165 26 177 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M183 3 195 26 207 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M213 3 225 26 237 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/></g>
+<path d="M0 0H240" stroke="#161616" stroke-width="2"/><path d="M0 30H240" stroke="#161616" stroke-width="2"/><path d="M0 60H240" stroke="#161616" stroke-width="2"/><path d="M0 90H240" stroke="#161616" stroke-width="2"/><path d="M0 120H240" stroke="#161616" stroke-width="2"/><path d="M0 150H240" stroke="#161616" stroke-width="2"/><path d="M0 180H240" stroke="#161616" stroke-width="2"/><path d="M0 210H240" stroke="#161616" stroke-width="2"/><path d="M0 240H240" stroke="#161616" stroke-width="2"/>
+</pattern>`;
 
   const dressBlock = dress ? `
     <g data-testid="gratitude-dresscode">
-      <rect x="266" y="1063" width="492" height="115" rx="57.5" fill="#FFF3DC" stroke="#D4A017" stroke-width="3"/>
-      <g transform="translate(322,1120)" fill="#D49A1A"><path d="M-30 -24 L-11 -38 L11 -38 L30 -24 L42 -6 L26 2 L26 40 L-26 40 L-26 2 L-42 -6 Z"/></g>
-      <text x="540" y="1100" text-anchor="middle" font-size="20" font-family="Figtree" font-weight="700" fill="#111111" letter-spacing="1">DRESS-CODE:</text>
-      <text x="540" y="1142" text-anchor="middle" font-size="50" font-family="Oswald-Bold" font-weight="700" fill="#111111">${escapeXml(dress)}</text>
+      <rect x="272" y="1063" width="480" height="115" rx="57.5" fill="#FFF3DC" stroke="#D4A017" stroke-width="3"/>
+      <g transform="translate(332,1120)" fill="#D49A1A"><path d="M-30 -24 L-11 -38 L11 -38 L30 -24 L42 -6 L26 2 L26 40 L-26 40 L-26 2 L-42 -6 Z"/><path d="M-11 -38 C-6 -30 6 -30 11 -38" fill="none" stroke="#B27A0E" stroke-width="2"/></g>
+      <text x="548" y="1098" text-anchor="middle" font-size="20" font-family="Montserrat-Bold" font-weight="700" fill="#111111" letter-spacing="1">DRESS-CODE:</text>
+      <text x="548" y="1142" text-anchor="middle" font-size="50" font-family="Anton" font-weight="400" fill="#111111">${escapeXml(dress)}</text>
     </g>` : '';
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1280" width="1024" height="1280">
   <defs>
-    <radialGradient id="gr-glow" cx="50%" cy="42%" r="58%"><stop offset="0%" stop-color="#FFFDF8"/><stop offset="100%" stop-color="#FFF6EA" stop-opacity="0"/></radialGradient>
-    <linearGradient id="gr-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#8C6A1F"/><stop offset="35%" stop-color="#F3D580"/><stop offset="65%" stop-color="#F7E39A"/><stop offset="100%" stop-color="#B8862B"/></linearGradient>
-    <linearGradient id="gr-gold-shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFF4BF" stop-opacity="0.95"/><stop offset="45%" stop-color="#D4A017" stop-opacity="0.9"/><stop offset="100%" stop-color="#8C6A1F" stop-opacity="0.95"/></linearGradient>
-    ${bgTile}${titlePattern}${ribbonPattern}
-    <linearGradient id="gr-fade-tr" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="white" stop-opacity="0"/><stop offset="55%" stop-color="white" stop-opacity="0.65"/><stop offset="100%" stop-color="white" stop-opacity="1"/></linearGradient>
-    <linearGradient id="gr-fade-bl" x1="1" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="white" stop-opacity="0"/><stop offset="55%" stop-color="white" stop-opacity="0.65"/><stop offset="100%" stop-color="white" stop-opacity="1"/></linearGradient>
-    <mask id="gr-mask-tr"><rect x="560" y="0" width="464" height="420" fill="url(#gr-fade-tr)"/></mask>
-    <mask id="gr-mask-bl"><rect x="0" y="860" width="464" height="420" fill="url(#gr-fade-bl)"/></mask>
-    <clipPath id="gr-ribbon-top-clip"><path d="M-30 185 C 110 40, 250 15, 430 30 C 455 32, 455 32, 440 70 C 270 55, 140 85, 10 215 C -10 235, -30 220, -30 185 Z"/></clipPath>
-    <clipPath id="gr-ribbon-bottom-clip"><path d="M570 1265 C 650 1110, 760 1020, 1055 990 C 1075 987, 1085 995, 1080 1025 C 820 1055, 720 1135, 640 1285 C 625 1305, 590 1295, 570 1265 Z"/></clipPath>
-    <clipPath id="gr-title-clip">${titleTexts}</clipPath>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8c6a1f"/><stop offset=".35" stop-color="#f3d580"/><stop offset=".65" stop-color="#b8862b"/><stop offset="1" stop-color="#f7e3a0"/></linearGradient>
+    <pattern id="geo" width="90" height="90" patternUnits="userSpaceOnUse"><path d="M45 6 84 45 45 84 6 45Z M45 24 66 45 45 66 24 45Z M0 0 45 45 90 0M0 90 45 45 90 90" fill="none" stroke="#e9d3a6" stroke-width="5"/></pattern>
+    <radialGradient id="rTR" gradientUnits="userSpaceOnUse" cx="1024" cy="0" r="460"><stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#000"/></radialGradient>
+    <radialGradient id="rBL" gradientUnits="userSpaceOnUse" cx="0" cy="1280" r="460"><stop offset="0" stop-color="#fff"/><stop offset=".55" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#000"/></radialGradient>
+    <mask id="mTR"><rect width="1024" height="1280" fill="url(#rTR)"/></mask>
+    <mask id="mBL"><rect width="1024" height="1280" fill="url(#rBL)"/></mask>
+    <pattern id="rib" width="240" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-30) scale(.9)">
+      <g transform="translate(0,0)"><rect width="240" height="30" fill="#c8281e"/><polyline points="0,4 15,26 30,4 45,26 60,4 75,26 90,4 105,26 120,4 135,26 150,4 165,26 180,4 195,26 210,4 225,26 240,4" fill="none" stroke="#f2b21a" stroke-width="5"/></g>
+      <g transform="translate(0,30)"><rect width="240" height="30" fill="#1e8a3c"/><path d="M3 27 15 4 27 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M33 27 45 4 57 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M63 27 75 4 87 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M93 27 105 4 117 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M123 27 135 4 147 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M153 27 165 4 177 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M183 27 195 4 207 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/><path d="M213 27 225 4 237 27Z" fill="#e8731a" stroke="#161616" stroke-width="2.4"/></g>
+      <g transform="translate(0,60)"><rect width="240" height="30" fill="#9a1d15"/><path d="M2 22 15 8 28 22M2 14 15 1 28 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M32 22 45 8 58 22M32 14 45 1 58 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M62 22 75 8 88 22M62 14 75 1 88 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M92 22 105 8 118 22M92 14 105 1 118 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M122 22 135 8 148 22M122 14 135 1 148 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M152 22 165 8 178 22M152 14 165 1 178 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M182 22 195 8 208 22M182 14 195 1 208 14" fill="none" stroke="#161616" stroke-width="4"/><path d="M212 22 225 8 238 22M212 14 225 1 238 14" fill="none" stroke="#161616" stroke-width="4"/></g>
+      <g transform="translate(0,90)"><rect width="240" height="30" fill="#161616"/><path d="M15 3 27 15 15 27 3 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="15" cy="15" r="3" fill="#f2b21a"/><path d="M45 3 57 15 45 27 33 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="45" cy="15" r="3" fill="#f2b21a"/><path d="M75 3 87 15 75 27 63 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="75" cy="15" r="3" fill="#f2b21a"/><path d="M105 3 117 15 105 27 93 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="105" cy="15" r="3" fill="#f2b21a"/><path d="M135 3 147 15 135 27 123 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="135" cy="15" r="3" fill="#f2b21a"/><path d="M165 3 177 15 165 27 153 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="165" cy="15" r="3" fill="#f2b21a"/><path d="M195 3 207 15 195 27 183 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="195" cy="15" r="3" fill="#f2b21a"/><path d="M225 3 237 15 225 27 213 15Z" fill="#1e8a3c" stroke="#161616" stroke-width="2.4"/><circle cx="225" cy="15" r="3" fill="#f2b21a"/></g>
+      <g transform="translate(0,120)"><rect width="240" height="30" fill="#9a1d15"/><circle cx="15" cy="15" r="5" fill="#f2b21a"/><circle cx="45" cy="15" r="5" fill="#c8281e"/><circle cx="75" cy="15" r="5" fill="#f2b21a"/><circle cx="105" cy="15" r="5" fill="#c8281e"/><circle cx="135" cy="15" r="5" fill="#f2b21a"/><circle cx="165" cy="15" r="5" fill="#c8281e"/><circle cx="195" cy="15" r="5" fill="#f2b21a"/><circle cx="225" cy="15" r="5" fill="#c8281e"/></g>
+      <g transform="translate(0,150)"><rect width="240" height="30" fill="#9a1d15"/><polyline points="0,4 15,26 30,4 45,26 60,4 75,26 90,4 105,26 120,4 135,26 150,4 165,26 180,4 195,26 210,4 225,26 240,4" fill="none" stroke="#f2b21a" stroke-width="6"/></g>
+      <g transform="translate(0,180)"><rect width="240" height="30" fill="#1e8a3c"/><path d="M2 22 15 8 28 22M2 14 15 1 28 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M32 22 45 8 58 22M32 14 45 1 58 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M62 22 75 8 88 22M62 14 75 1 88 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M92 22 105 8 118 22M92 14 105 1 118 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M122 22 135 8 148 22M122 14 135 1 148 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M152 22 165 8 178 22M152 14 165 1 178 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M182 22 195 8 208 22M182 14 195 1 208 14" fill="none" stroke="#f2b21a" stroke-width="4"/><path d="M212 22 225 8 238 22M212 14 225 1 238 14" fill="none" stroke="#f2b21a" stroke-width="4"/></g>
+      <g transform="translate(0,210)"><rect width="240" height="30" fill="#c8281e"/><path d="M3 3 15 26 27 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M33 3 45 26 57 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M63 3 75 26 87 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M93 3 105 26 117 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M123 3 135 26 147 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M153 3 165 26 177 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M183 3 195 26 207 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/><path d="M213 3 225 26 237 3Z" fill="#f2b21a" stroke="#161616" stroke-width="2.4"/></g>
+      <path d="M0 0H240" stroke="#161616" stroke-width="2"/><path d="M0 30H240" stroke="#161616" stroke-width="2"/><path d="M0 60H240" stroke="#161616" stroke-width="2"/><path d="M0 90H240" stroke="#161616" stroke-width="2"/><path d="M0 120H240" stroke="#161616" stroke-width="2"/><path d="M0 150H240" stroke="#161616" stroke-width="2"/><path d="M0 180H240" stroke="#161616" stroke-width="2"/><path d="M0 210H240" stroke="#161616" stroke-width="2"/><path d="M0 240H240" stroke="#161616" stroke-width="2"/>
+    </pattern>
+    ${afro}
   </defs>
-  <rect width="1024" height="1280" fill="#FFF6EA"/><rect width="1024" height="1280" fill="url(#gr-glow)"/>
-  <g fill="none" stroke="#EADFC8" stroke-width="1.2" opacity="0.35"><circle cx="512" cy="560" r="250"/><circle cx="512" cy="560" r="330"/><circle cx="512" cy="560" r="410"/></g>
-  <g opacity="0.13"><rect x="600" y="-20" width="460" height="440" fill="url(#gr-bg-tile)" mask="url(#gr-mask-tr)"/><rect x="-30" y="860" width="460" height="440" fill="url(#gr-bg-tile)" mask="url(#gr-mask-bl)"/></g>
-  <g clip-path="url(#gr-ribbon-top-clip)"><rect x="-60" y="-20" width="560" height="320" fill="url(#gr-ribbon-african)"/><path d="M-30 185 C 110 40, 250 15, 430 30 L 440 70 C 270 55, 140 85, 10 215 Z" fill="url(#gr-gold-shine)" opacity="0.28"/><path d="M-30 185 C 110 40, 250 15, 430 30 C 438 31, 442 38, 440 46 C 270 31, 130 60, -10 200 C -18 210, -30 200, -30 185 Z" fill="url(#gr-gold)"/><path d="M10 215 C 140 85, 270 55, 440 70 C 448 71, 450 78, 446 86 C 275 71, 150 101, 30 225 C 22 233, 10 225, 10 215 Z" fill="url(#gr-gold)" opacity="0.95"/></g>
-  <g clip-path="url(#gr-ribbon-bottom-clip)"><rect x="520" y="940" width="560" height="380" fill="url(#gr-ribbon-african)"/><path d="M570 1265 C 650 1110, 760 1020, 1055 990 L 1080 1025 C 820 1055, 720 1135, 640 1285 Z" fill="url(#gr-gold-shine)" opacity="0.28"/><path d="M570 1265 C 650 1110, 760 1020, 1055 990 C 1065 988, 1072 994, 1070 1002 C 800 1032, 700 1115, 620 1272 C 612 1284, 580 1280, 570 1265 Z" fill="url(#gr-gold)"/><path d="M640 1285 C 720 1135, 820 1055, 1080 1025 C 1088 1024, 1092 1031, 1088 1040 C 830 1068, 740 1148, 660 1292 C 654 1300, 644 1295, 640 1285 Z" fill="url(#gr-gold)" opacity="0.95"/></g>
-  <text x="512" y="262" text-anchor="middle" font-size="31" font-family="Figtree" font-weight="500" letter-spacing="7.7" fill="#222222">${escapeXml(org)}</text>
-  <text x="512" y="325" text-anchor="middle" font-size="49" font-family="Figtree" font-weight="700" letter-spacing="0.5" fill="#111111">${escapeXml(subtitle)}</text>
-  <g><g clip-path="url(#gr-title-clip)"><rect x="0" y="300" width="1024" height="360" fill="url(#gr-title-african)"/></g>${titleStrokes}</g>
-  <text text-anchor="middle" font-size="90" font-family="CormorantGaramond-Bold" font-weight="700" fill="#B3121A" transform="translate(512,678) skewX(-10)"><tspan x="0" y="0">${escapeXml(year)}</tspan></text>
-  <g font-family="Figtree" fill="#111111">
-    <line x1="276" y1="846" x2="276" y2="936" stroke="#D4A017" stroke-width="2"/><line x1="430" y1="846" x2="430" y2="936" stroke="#D4A017" stroke-width="2"/><line x1="730" y1="846" x2="730" y2="936" stroke="#D4A017" stroke-width="2"/>
-    <g transform="translate(72,872)"><rect x="0" y="0" width="44" height="38" rx="5" fill="none" stroke="#111111" stroke-width="3"/><line x1="0" y1="12" x2="44" y2="12" stroke="#111111" stroke-width="3"/><line x1="12" y1="-5" x2="12" y2="6" stroke="#111111" stroke-width="3" stroke-linecap="round"/><line x1="32" y1="-5" x2="32" y2="6" stroke="#111111" stroke-width="3" stroke-linecap="round"/><text x="58" y="30" font-size="44" font-weight="500" fill="#111111">${escapeXml(dateShort)}</text></g>
-    <g transform="translate(318,870)"><circle cx="22" cy="22" r="22" fill="none" stroke="#111111" stroke-width="3"/><path d="M22 10 V24 L33 32" fill="none" stroke="#111111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><text x="56" y="32" font-size="44" font-weight="500" fill="#111111">${escapeXml(timeShort)}</text></g>
-    <g transform="translate(468,862)"><path d="M22 0 C10 0 0 10 0 22 C0 40 22 62 22 62 C22 62 44 40 44 22 C44 10 34 0 22 0 Z" fill="none" stroke="#111111" stroke-width="3"/><circle cx="22" cy="22" r="8" fill="none" stroke="#111111" stroke-width="3"/><text x="56" y="18" font-size="20" font-weight="700" fill="#111111">LOCAL:</text>${locTexts}</g>
-    <g><text x="877" y="842" text-anchor="middle" font-size="24" font-weight="700" fill="#111111">${escapeXml(qrLabel)}</text><rect x="812" y="852" width="130" height="130" rx="14" fill="#FFFFFF" stroke="#D4A017" stroke-width="3"/></g>
+  <rect width="1024" height="1280" fill="#FFF6EA"/>
+  <rect width="1024" height="1280" fill="url(#geo)" mask="url(#mTR)" opacity=".4"/>
+  <rect width="1024" height="1280" fill="url(#geo)" mask="url(#mBL)" opacity=".4"/>
+  <path d="M0 0H440C330 78 190 160 0 236Z" fill="url(#rib)"/>
+  <path d="M440 0C330 78 190 160 0 236" fill="none" stroke="url(#gold)" stroke-width="26"/>
+  <path d="M410 0C305 74 178 150 0 220" fill="none" stroke="#fff3c4" stroke-opacity=".85" stroke-width="4"/>
+  <path d="M1024 1280H540C700 1215 900 1110 1024 1000Z" fill="url(#rib)"/>
+  <path d="M540 1280C700 1215 900 1110 1024 1000" fill="none" stroke="url(#gold)" stroke-width="30"/>
+  <path d="M580 1280C735 1222 915 1125 1024 1030" fill="none" stroke="#fff3c4" stroke-opacity=".85" stroke-width="4"/>
+
+  <circle cx="512" cy="128" r="70" fill="#FFFAF0" stroke="#D4A017" stroke-width="4"/>
+  <circle cx="512" cy="128" r="58" fill="none" stroke="#E3C57A" stroke-width="1.5" stroke-dasharray="2 3"/>
+  <path d="M492 124 L498 108 L506 118 L512 104 L518 118 L526 108 L532 124 Z" fill="#C99A2E"/>
+  <text x="512" y="144" text-anchor="middle" font-size="14" font-family="Anton" fill="#C99A2E">LOGO</text>
+
+  <text x="512" y="260" text-anchor="middle" font-size="31" font-family="Montserrat-Medium" font-weight="500" letter-spacing="7.7" fill="#1B1B1B">${escapeXml(org)}</text>
+  <text x="512" y="315" text-anchor="middle" font-size="49" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${escapeXml(subtitle)}</text>
+
+  <text x="512" y="560" text-anchor="middle" font-size="210" font-family="Anton" font-weight="400" fill="url(#afro)" stroke="#161616" stroke-width="2.2" paint-order="stroke fill" stroke-linejoin="round">${escapeXml(title)}</text>
+
+  <text text-anchor="middle" font-size="87" font-family="Montserrat-ExtraBoldItalic" font-style="italic" font-weight="800" fill="#B3121A" transform="translate(512,742) skewX(-8)">${escapeXml(parts.year)}</text>
+
+  <g font-family="Montserrat" fill="#111111">
+    <line x1="276" y1="883" x2="276" y2="973" stroke="#D4A017" stroke-width="1.5"/>
+    <line x1="430" y1="883" x2="430" y2="973" stroke="#D4A017" stroke-width="1.5"/>
+    <line x1="740" y1="883" x2="740" y2="973" stroke="#D4A017" stroke-width="1.5"/>
+
+    <g transform="translate(62,909)">
+      <rect x="0" y="0" width="44" height="38" rx="5" fill="none" stroke="#111111" stroke-width="2.5"/>
+      <line x1="0" y1="12" x2="44" y2="12" stroke="#111111" stroke-width="2.5"/>
+      <line x1="12" y1="-5" x2="12" y2="6" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
+      <line x1="32" y1="-5" x2="32" y2="6" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
+      <text x="58" y="30" font-size="44" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.date)}</text>
+    </g>
+
+    <g transform="translate(310,907)">
+      <circle cx="22" cy="22" r="22" fill="none" stroke="#111111" stroke-width="2.5"/>
+      <path d="M22 10 V24 L33 32" fill="none" stroke="#111111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="54" y="32" font-size="40" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.time)}</text>
+    </g>
+
+    <g transform="translate(468,899)">
+      <path d="M22 0 C10 0 0 10 0 22 C0 40 22 62 22 62 C22 62 44 40 44 22 C44 10 34 0 22 0 Z" fill="none" stroke="#111111" stroke-width="2.5"/>
+      <circle cx="22" cy="22" r="8" fill="none" stroke="#111111" stroke-width="2.5"/>
+      <text x="56" y="18" font-size="18" font-family="Montserrat-Bold" font-weight="700" fill="#111111">LOCAL:</text>
+      <text x="56" y="44" font-size="24" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${locTspans.replace(/x="548"/g, 'x="56"').replace('dy="0"', 'dy="0"')}</text>
+    </g>
+
+    <g>
+      <text x="877" y="900" text-anchor="middle" font-size="24" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${escapeXml(qrLabel)}</text>
+      <rect x="814" y="914" width="126" height="126" rx="12" fill="#FFFFFF" stroke="#D4A017" stroke-width="3"/>
+    </g>
   </g>
   ${dressBlock}
   </svg>`;
@@ -361,10 +364,9 @@ async function renderGratitudePdf(
   SVGtoPDF(doc, svg, 0, 0, { width, height, preserveAspectRatio: 'xMidYMid meet' });
 
   if (qrUrl) {
-    // Cartão QR no SVG: x=812 y=852 w=130 h=130 (canvas 1024x1280) => 12.7% largura
-    const qrSize = width * (130 / 1024);
-    const qrX = width * (812 / 1024);
-    const qrY = height * (852 / 1280);
+    const qrSize = width * (126 / 1024);
+    const qrX = width * (814 / 1024);
+    const qrY = height * (914 / 1280);
     await drawQrWithLogo(doc, qrX, qrY, qrSize, qrUrl, '#111111', '#D4A017', undefined);
   }
 
