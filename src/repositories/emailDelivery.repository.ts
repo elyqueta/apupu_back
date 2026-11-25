@@ -72,6 +72,7 @@ const CONTEXT_COLUMNS = `
   e.host_email,
   i.guest_name,
   i.guest_email,
+  i.guest_kind,
   i.token_encrypted             AS invitation_token_encrypted,
   i.rsvp_status,
   i.claim_revoked_at,
@@ -124,6 +125,7 @@ export interface DeliveryContext extends EmailDelivery {
   hostEmail: string | null;
   guestName: string | null;
   guestEmail: string | null;
+  guestKind: 'male' | 'female' | 'couple' | 'family' | null;
   invitationTokenEncrypted: string | null;
   rsvpStatus: string | null;
   claimRevokedAt: Date | null;
@@ -150,6 +152,7 @@ interface DeliveryContextRow extends DeliveryRow {
   host_email: string | null;
   guest_name: string | null;
   guest_email: string | null;
+  guest_kind: 'male' | 'female' | 'couple' | 'family' | null;
   invitation_token_encrypted: string | null;
   rsvp_status: string | null;
   claim_revoked_at: Date | null;
@@ -178,6 +181,7 @@ function toContext(row: DeliveryContextRow): DeliveryContext {
     hostEmail: row.host_email,
     guestName: row.guest_name,
     guestEmail: row.guest_email,
+    guestKind: row.guest_kind ?? null,
     invitationTokenEncrypted: row.invitation_token_encrypted,
     rsvpStatus: row.rsvp_status,
     claimRevokedAt: row.claim_revoked_at,

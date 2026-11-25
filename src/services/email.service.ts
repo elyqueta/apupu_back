@@ -457,6 +457,7 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         vars: eventVars(context, event, {
           nome: context.guestName ?? undefined,
           convidado: context.guestName ?? undefined,
+          convidadoTipo: context.guestKind ?? undefined,
           url: links.invitation(inviteToken(context)),
           contribuicao: context.eventContributionEnabled === true,
         }),
@@ -472,6 +473,7 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         vars: eventVars(context, event, {
           nome: context.guestName ?? undefined,
           convidado: context.guestName ?? undefined,
+          convidadoTipo: context.guestKind ?? undefined,
           url: links.invitation(inviteToken(context)),
           confirmado: context.rsvpStatus === 'accepted',
           dias: reminderDays(context.reminderKind),
@@ -502,6 +504,7 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         vars: eventVars(context, event, {
           nome: context.guestName ?? undefined,
           convidado: context.guestName ?? undefined,
+          convidadoTipo: context.guestKind ?? undefined,
         }),
       };
     }
@@ -616,6 +619,7 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         vars: eventVars(context, event, {
           nome: context.guestName ?? undefined,
           convidado: context.guestName ?? undefined,
+          convidadoTipo: context.guestKind ?? undefined,
           resposta: payloadString(context, 'answer'),
         }),
       };
@@ -630,6 +634,7 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
         vars: eventVars(context, event, {
           nome: context.guestName ?? undefined,
           convidado: context.guestName ?? undefined,
+          convidadoTipo: context.guestKind ?? undefined,
           canceladoPor:
             payloadString(context, 'cancelledBy') === 'plataforma'
               ? 'plataforma'

@@ -48,6 +48,10 @@ function recipientName(vars: EmailVars): string | undefined {
   return vars.nome?.trim() || undefined;
 }
 
+function guestIsPlural(vars: EmailVars): boolean {
+  return vars.convidadoTipo === 'couple' || vars.convidadoTipo === 'family';
+}
+
 /**
  * Nome de quem executou a acção.
  *
@@ -94,9 +98,18 @@ function smsMessage(text: string, url?: string): string {
 }
 
 function reminderParagraphs(vars: EmailVars): string[] {
+  const plural = guestIsPlural(vars);
   const paragraphs = vars.confirmado
-    ? ['A tua presença está confirmada. Aqui ficam os detalhes do evento.']
-    : ['Ainda não respondeste. Confirma ou atualiza a tua resposta.'];
+    ? [
+        plural
+          ? 'A vossa presença está confirmada. Aqui ficam os detalhes do evento.'
+          : 'A tua presença está confirmada. Aqui ficam os detalhes do evento.',
+      ]
+    : [
+        plural
+          ? 'Ainda não responderam. Confirmem ou atualizem a vossa resposta.'
+          : 'Ainda não respondeste. Confirma ou atualiza a tua resposta.',
+      ];
 
   if (vars.vestuario) {
     paragraphs.push(`Código de vestuário: ${vars.vestuario}.`);
@@ -306,9 +319,12 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
   convite_recebido: {
     code: 'convite_recebido',
     email: (vars) => {
+      const plural = guestIsPlural(vars);
       const paragraphs = [
-        `${hostName(vars)} convidou-te para ${eventName(vars)}.`,
-        'Confirma a tua presença para que possamos contar contigo.',
+        `${hostName(vars)} ${plural ? 'convidou-vos' : 'convidou-te'} para ${eventName(vars)}.`,
+        plural
+          ? 'Confirmem a vossa presença para que possamos contar convosco.'
+          : 'Confirma a tua presença para que possamos contar contigo.',
       ];
 
       if (vars.vestuario) {
@@ -320,29 +336,33 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
       }
 
       return {
-        subject: short(`${hostName(vars)} convidou-te para ${eventName(vars)}`, 50),
+        subject: short(`${hostName(vars)} ${plural ? 'convidou-vos' : 'convidou-te'} para ${eventName(vars)}`, 50),
         preheader: short(
-          `${hostName(vars)} convidou-te para ${eventName(vars)}. Confirma a tua presença.`,
+          `${hostName(vars)} ${plural ? 'convidou-vos' : 'convidou-te'} para ${eventName(vars)}. ${plural ? 'Confirmem a vossa presença.' : 'Confirma a tua presença.'}`,
           90
         ),
-        title: 'Tens um convite',
+        title: plural ? 'Têm um convite' : 'Tens um convite',
         greetingName: recipientName(vars),
         paragraphs,
         details: eventDetails(vars),
         cta: vars.url ? { label: 'Ver convite', url: vars.url } : undefined,
-        reason: `${hostName(vars)} convidou-te para este evento`,
+        reason: `${hostName(vars)} ${plural ? 'convidou-vos' : 'convidou-te'} para este evento`,
       };
     },
-    push: (vars) =>
-      pushMessage(
-        `${hostName(vars)} convidou-te`,
-        `Convite para ${eventName(vars)}. Confirma a tua presença.`
-      ),
-    sms: (vars) =>
-      smsMessage(
-        `Conto Contigo: ${hostName(vars)} convidou-te para ${eventName(vars)}. Responde aqui:`,
+    push: (vars) => {
+      const plural = guestIsPlural(vars);
+      return pushMessage(
+        `${hostName(vars)} ${plural ? 'convidou-vos' : 'convidou-te'}`,
+        `Convite para ${eventName(vars)}. ${plural ? 'Confirmem a vossa presença.' : 'Confirma a tua presença.'}`
+      );
+    },
+    sms: (vars) => {
+      const plural = guestIsPlural(vars);
+      return smsMessage(
+        `Conto Contigo: ${hostName(vars)} ${plural ? 'convidou-vos' : 'convidou-te'} para ${eventName(vars)}. ${plural ? 'Respondam aqui:' : 'Responde aqui:'}`,
         vars.url
-      ),
+      );
+    },
   },
 
   presenca_confirmada: {
@@ -373,34 +393,53 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
 
   lembrete_24h: {
     code: 'lembrete_24h',
-    email: (vars) => ({
-      subject: short(`Amanhã: ${eventName(vars)}`, 50),
-      preheader: short(`${eventName(vars)} é amanhã. Vê os detalhes e confirma a tua presença.`, 90),
-      title: 'O evento é amanhã',
-      greetingName: recipientName(vars),
-      paragraphs: reminderParagraphs(vars),
-      details: eventDetails(vars),
-      cta: reminderCta(vars, 'Ver detalhes'),
-      reason: 'estás convidado para este evento',
-    }),
-    push: (vars) =>
-      pushMessage(`Amanhã: ${eventName(vars)}`, 'Vê os detalhes e confirma a tua presença.'),
-    sms: (vars) =>
-      smsMessage(`Conto Contigo: ${eventName(vars)} é amanhã. Vê os detalhes:`, vars.url),
+    email: (vars) => {
+      const plural = guestIsPlural(vars);
+      return {
+        subject: short(`Amanhã: ${eventName(vars)}`, 50),
+        preheader: short(
+          `${eventName(vars)} é amanhã. ${plural ? 'Vejam os detalhes e confirmem a vossa presença.' : 'Vê os detalhes e confirma a tua presença.'}`,
+          90,
+        ),
+        title: 'O evento é amanhã',
+        greetingName: recipientName(vars),
+        paragraphs: reminderParagraphs(vars),
+        details: eventDetails(vars),
+        cta: reminderCta(vars, 'Ver detalhes'),
+        reason: plural ? 'estão convidados para este evento' : 'estás convidado para este evento',
+      };
+    },
+    push: (vars) => {
+      const plural = guestIsPlural(vars);
+      return pushMessage(
+        `Amanhã: ${eventName(vars)}`,
+        plural ? 'Vejam os detalhes e confirmem a vossa presença.' : 'Vê os detalhes e confirma a tua presença.',
+      );
+    },
+    sms: (vars) => {
+      const plural = guestIsPlural(vars);
+      return smsMessage(
+        `Conto Contigo: ${eventName(vars)} é amanhã. ${plural ? 'Vejam os detalhes:' : 'Vê os detalhes:'}`,
+        vars.url,
+      );
+    },
   },
 
   lembrete_2h: {
     code: 'lembrete_2h',
-    email: (vars) => ({
-      subject: short(`Daqui a 2 horas: ${eventName(vars)}`, 50),
-      preheader: short(`${eventName(vars)} começa daqui a 2 horas.`, 90),
-      title: 'O evento começa daqui a 2 horas',
-      greetingName: recipientName(vars),
-      paragraphs: reminderParagraphs(vars),
-      details: eventDetails(vars),
-      cta: reminderCta(vars, vars.online ? 'Entrar no evento' : 'Ver como chegar'),
-      reason: 'estás convidado para este evento',
-    }),
+    email: (vars) => {
+      const plural = guestIsPlural(vars);
+      return {
+        subject: short(`Daqui a 2 horas: ${eventName(vars)}`, 50),
+        preheader: short(`${eventName(vars)} começa daqui a 2 horas.`, 90),
+        title: 'O evento começa daqui a 2 horas',
+        greetingName: recipientName(vars),
+        paragraphs: reminderParagraphs(vars),
+        details: eventDetails(vars),
+        cta: reminderCta(vars, vars.online ? 'Entrar no evento' : 'Ver como chegar'),
+        reason: plural ? 'estão convidados para este evento' : 'estás convidado para este evento',
+      };
+    },
     push: (vars) =>
       pushMessage(`Daqui a 2 horas: ${eventName(vars)}`, 'O evento está quase a começar.'),
     sms: (vars) =>
@@ -409,19 +448,24 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
 
   evento_alterado: {
     code: 'evento_alterado',
-    email: (vars) => ({
-      subject: short(`Atualização: ${eventName(vars)} mudou`, 50),
-      preheader: short(`A data, a hora ou o local de ${eventName(vars)} mudou.`, 90),
-      title: 'O evento mudou',
-      greetingName: recipientName(vars),
-      paragraphs: [
-        'O anfitrião atualizou os detalhes do evento.',
-        'Confirma a nova data, hora e local antes de responderes.',
-      ],
-      details: eventDetails(vars),
-      cta: vars.url ? { label: 'Ver alterações', url: vars.url } : undefined,
-      reason: 'estás convidado para este evento',
-    }),
+    email: (vars) => {
+      const plural = guestIsPlural(vars);
+      return {
+        subject: short(`Atualização: ${eventName(vars)} mudou`, 50),
+        preheader: short(`A data, a hora ou o local de ${eventName(vars)} mudou.`, 90),
+        title: 'O evento mudou',
+        greetingName: recipientName(vars),
+        paragraphs: [
+          'O anfitrião atualizou os detalhes do evento.',
+          plural
+            ? 'Confirmem a nova data, hora e local antes de responderem.'
+            : 'Confirma a nova data, hora e local antes de responderes.',
+        ],
+        details: eventDetails(vars),
+        cta: vars.url ? { label: 'Ver alterações', url: vars.url } : undefined,
+        reason: plural ? 'estão convidados para este evento' : 'estás convidado para este evento',
+      };
+    },
     push: (vars) =>
       pushMessage(`Atualização: ${eventName(vars)}`, 'A data, a hora ou o local mudou.'),
     sms: (vars) =>
