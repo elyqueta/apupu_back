@@ -65,7 +65,16 @@ export function invitationLines(
         break;
     }
   }
-  lines.push({ block: 'guest', label: 'Convidado', text: invitation.guestName });
+  const guestKind = invitation.guestKind ?? null;
+  const guestLabel =
+    guestKind === 'couple' || guestKind === 'family'
+      ? 'Convidados'
+      : guestKind === 'female'
+        ? 'Convidada'
+        : guestKind === 'male'
+          ? 'Convidado'
+          : 'Convidado(a)';
+  lines.push({ block: 'guest', label: guestLabel, text: invitation.guestName });
   if (event.useTables && invitation.tableName?.trim()) {
     lines.push({ block: 'table', label: 'Mesa', text: invitation.tableName.trim() });
   }
