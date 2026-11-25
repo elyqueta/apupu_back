@@ -13,6 +13,11 @@ export const COVER_MODES = ['hero', 'framed', 'none'] as const;
 export const LAYOUT_BLOCKS = ['title', 'host', 'datetime', 'location', 'deadline', 'message'] as const;
 export const QR_POSITIONS = ['bottom-center', 'bottom-right', 'bottom-left'] as const;
 
+const templateBlockSchema = z.object({ id: z.string(), type: z.string() }).passthrough();
+const templateDocumentSchema = z
+  .object({ version: z.literal(2), blocks: z.array(templateBlockSchema) })
+  .passthrough();
+
 export const templateManifestSchema = z
   .object({
     version: z.literal(1),
@@ -43,6 +48,8 @@ export const templateManifestSchema = z
         qr_custom_url: z.string().max(500).optional(),
       })
       .strict(),
+    /** Bloco 15, Passo 2: documento de blocos (editor/convite/PDF). */
+    document: templateDocumentSchema.optional(),
   })
   .strict();
 
