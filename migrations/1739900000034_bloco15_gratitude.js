@@ -44,7 +44,7 @@ const FIELDS = [
 
 exports.up = (pgm) => {
   pgm.addColumns('event_templates', {
-    kind: { type: 'text', notNull: true, default: "'user'" },
+    kind: { type: 'text', notNull: true, default: 'user' },
   });
   pgm.addConstraint('event_templates', 'event_templates_kind_check', {
     check: "kind IN ('system', 'user')",
