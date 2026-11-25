@@ -261,6 +261,9 @@ export interface PublicInvitationDto {
     /** Resposta do anfitrião à mensagem (Parte F). */
     message_answer: string | null;
     message_answered_at: string | null;
+    guest_kind: 'male' | 'female' | 'couple' | 'family' | null;
+    guest_companion_name: string | null;
+    guest_party_size: number | null;
   };
   rsvp_deadline_passed: boolean;
 }
@@ -284,6 +287,9 @@ export function toPublicInvitationDto(
       message: invitation.guestMessage,
       message_answer: invitation.messageAnswer,
       message_answered_at: iso(invitation.messageAnsweredAt),
+      guest_kind: invitation.guestKind,
+      guest_companion_name: invitation.guestCompanionName,
+      guest_party_size: invitation.guestPartySize,
     },
     rsvp_deadline_passed: rsvpDeadlinePassed,
   };
