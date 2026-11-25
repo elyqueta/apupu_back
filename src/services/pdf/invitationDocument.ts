@@ -381,6 +381,65 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
+type RenderableLine = { block: string; label?: string; text: string; style?: any };
+
+function documentToLines(manifest: TemplateManifest, event: EventRecord, invitation: Invitation): RenderableLine[] | null {
+  const doc = (manifest as any).document;
+  if (!doc || doc.version !== 2 || !Array.isArray(doc.blocks)) return null;
+  const lines: RenderableLine[] = [];
+  for (const b of doc.blocks as any[]) {
+    if (!b || b.visible === false) continue;
+    const style = b.style;
+    switch (b.type) {
+      case 'title':
+        lines.push({ block: 'title', text: String(b.text || event.title || ''), style });
+        break;
+      case 'text':
+      case 'message':
+        if (b.text) lines.push({ block: b.type, label: b.label, text: String(b.text), style });
+        break;
+      case 'datetime':
+        lines.push({ block: 'datetime', label: 'Quando', text: formatDisplayDateTime(event.startsAt), style });
+        break;
+      case 'location': {
+        const txt = locationText(event);
+        if (txt) lines.push({ block: 'location', label: 'Onde', text: txt, style });
+        break;
+      }
+      case 'dress_code':
+        if (b.text || event.dressCode) lines.push({ block: 'text', label: 'Dress code', text: String(b.text || event.dressCode || ''), style });
+        break;
+      case 'divider':
+        lines.push({ block: 'divider', text: '', style });
+        break;
+      case 'countdown':
+      case 'timeline':
+      case 'gifts':
+      case 'image':
+      case 'gallery':
+      case 'music_video':
+      case 'qr':
+      case 'buttons':
+      case 'ornament':
+        // Render simple placeholder/label for unsupported rich blocks in PDF for now
+        if (b.text) lines.push({ block: 'text', text: String(b.text), style });
+        break;
+      default:
+        if (b.text) lines.push({ block: 'text', text: String(b.text), style });
+    }
+  }
+  // ensure guest/table present
+  if (!lines.some((l) => l.block === 'guest')) {
+    const guestKind = invitation.guestKind ?? null;
+    const guestLabel = guestKind === 'couple' || guestKind === 'family' ? 'Convidados' : guestKind === 'female' ? 'Convidada' : guestKind === 'male' ? 'Convidado' : 'Convidado(a)';
+    lines.push({ block: 'guest', label: guestLabel, text: invitation.guestName });
+  }
+  if (event.useTables && invitation.tableName?.trim() && !lines.some((l) => l.block === 'table')) {
+    lines.push({ block: 'table', label: 'Mesa', text: invitation.tableName.trim() });
+  }
+  return lines;
+}
+
 export function renderInvitationPdf(
   event: EventRecord,
   invitation: Invitation,
@@ -425,28 +484,41 @@ export function renderInvitationPdf(
       doc.text(display === 'cap' ? 'CONVITE' : 'Convite', margin, margin, { width, align, characterSpacing: 2 });
       doc.moveDown(0.8);
 
-      for (const line of invitationLines(event, invitation, manifest)) {
+      const docLines = documentToLines(manifest, event, invitation) ?? invitationLines(event, invitation, manifest);
+      for (const line of docLines as any[]) {
+        const st = line.style ?? {};
+        const lineAlign = st.align || align;
+        const lineColor = st.color || ink;
+        const fontRole = st.fontFamily || (line.block === 'title' ? display : body);
+        const fontWeight = st.fontWeight === 'bold' ? 'bold' : line.block === 'title' ? 'bold' : 'regular';
+        if (line.block === 'divider') {
+          drawDivider(doc, manifest, margin, width);
+          continue;
+        }
         if (line.block === 'title') {
-          const text = display === 'cap' ? line.text.toUpperCase() : line.text;
-          doc.font(fontFor(display, 'bold')).fontSize(display === 'script' ? 34 : 28).fillColor(ink);
-          doc.text(text, margin, doc.y, { width, align, lineGap: 2 });
+          const text = display === 'cap' && !st.fontFamily ? line.text.toUpperCase() : line.text;
+          const size = typeof st.fontSize === 'number' ? st.fontSize : display === 'script' ? 34 : 28;
+          doc.font(fontFor(fontRole, 'bold')).fontSize(size).fillColor(lineColor);
+          doc.text(text, margin, doc.y, { width, align: lineAlign, lineGap: 2 });
           drawDivider(doc, manifest, margin, width);
           continue;
         }
         if (line.block === 'message') {
           doc.moveDown(0.4);
-          doc.font(fontFor(body, 'regular')).fontSize(11).fillColor(ink);
-          doc.text(line.text, margin, doc.y, { width, align, lineGap: 3 });
+          const size = typeof st.fontSize === 'number' ? st.fontSize : 11;
+          doc.font(fontFor(fontRole, fontWeight)).fontSize(size).fillColor(lineColor);
+          doc.text(line.text, margin, doc.y, { width, align: lineAlign, lineGap: 3 });
           doc.moveDown(0.6);
           continue;
         }
         if (line.block === 'guest') drawDivider(doc, manifest, margin, width);
         if (line.label) {
           doc.font(fontFor(body, 'bold')).fontSize(9).fillColor(accent);
-          doc.text(line.label.toUpperCase(), margin, doc.y, { width, align, characterSpacing: 1.2 });
+          doc.text(String(line.label).toUpperCase(), margin, doc.y, { width, align: lineAlign, characterSpacing: 1.2 });
         }
-        doc.font(fontFor(body, 'regular')).fontSize(line.block === 'guest' ? 15 : 12.5).fillColor(ink);
-        doc.text(line.text, margin, doc.y, { width, align, lineGap: 2 });
+        const size = typeof st.fontSize === 'number' ? st.fontSize : line.block === 'guest' ? 15 : 12.5;
+        doc.font(fontFor(fontRole, fontWeight)).fontSize(size).fillColor(lineColor);
+        doc.text(line.text, margin, doc.y, { width, align: lineAlign, lineGap: 2 });
         doc.moveDown(0.7);
       }
 
