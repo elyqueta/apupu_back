@@ -94,9 +94,36 @@ describe('Bloco 14 — PDF "Convite"', () => {
     );
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
     const raw = buffer.toString('latin1');
-    // Fontes embutidas aparecem como objetos FontFile2/FontDescriptor/BaseFont
     expect(raw).toMatch(/FontFile2|FontDescriptor/);
     for (const font of ['Oswald', 'CormorantGaramond', 'Figtree']) {
+      expect(raw).toContain(font);
+    }
+  });
+
+  it('Bloco 15: Gratitude PDF 4:5 portrait com fontes embutidas', async () => {
+    const manifest: TemplateManifest = {
+      ...DEFAULT_MANIFEST,
+      palette: { bg: '#FFF6EA', surface: '#FFFDF8', ink: '#1A120B', accent: '#C8922A', muted: '#7A6248' },
+      fonts: { display: 'condensed', body: 'sans' },
+      ornaments: { frame: 'gratitude', corners: 'gratitude', divider: 'gratitude' },
+      layout: { align: 'center', blocks: ['title', 'host', 'datetime', 'location', 'message'] },
+      pdf: { frame: 'none', qr_position: 'bottom-right', show_ornaments: true, qr_label: 'Informação', qr_destination: 'event' },
+    };
+    const buffer = await renderInvitationPdf(
+      event({ title: 'GRATITUDE', hostName: 'IGREJA CRISTÃ REINO-CHURCH', dressCode: 'TRAJE AFRICANO' }),
+      invitation,
+      manifest,
+      'https://contocontigo.example/i/abc'
+    );
+    expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    const raw = buffer.toString('latin1');
+    // 1 página 4:5 (595.28 x 744.1)
+    expect(raw).toContain('/MediaBox [0 0 595.28 744.1]');
+    const pageCount = (raw.match(/\/Type \/Page[^s]/g) || []).length;
+    expect(pageCount).toBe(1);
+    // Fontes embutidas
+    expect(raw).toMatch(/FontFile2|FontDescriptor/);
+    for (const font of ['Anton', 'Figtree', 'CormorantGaramond']) {
       expect(raw).toContain(font);
     }
   });
