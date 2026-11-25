@@ -35,6 +35,7 @@ export const FONT_CATALOG = {
   cap: { regular: 'Cinzel', bold: 'Cinzel-Bold', extraBold: 'Cinzel-Bold' },
   script: { regular: 'PinyonScript', bold: 'PinyonScript', extraBold: 'PinyonScript' },
   condensed: { regular: 'Oswald', bold: 'Oswald-Bold', extraBold: 'Oswald-Bold' },
+  anton: { regular: 'Anton', bold: 'Anton', extraBold: 'Anton' },
 } as const;
 
 export type PdfFontRole = keyof typeof FONT_CATALOG;
@@ -117,6 +118,7 @@ export function registerFonts(doc: PDFKit.PDFDocument): void {
     ['PinyonScript', 'PinyonScript-400.ttf'],
     ['Oswald', 'Oswald-400.ttf'],
     ['Oswald-Bold', 'Oswald-700.ttf'],
+    ['Anton', 'Anton-400.ttf'],
   ];
   for (const [name, file] of files) {
     const full = fontAssetPath(file);

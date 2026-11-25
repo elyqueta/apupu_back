@@ -7,7 +7,7 @@ import { z } from 'zod';
  */
 const hex = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 
-export const TEMPLATE_FONTS = ['sans', 'serif', 'cap', 'script', 'condensed'] as const;
+export const TEMPLATE_FONTS = ['sans', 'serif', 'cap', 'script', 'condensed', 'anton'] as const;
 export const OPEN_STYLES = ['none', 'envelope', 'curtain', 'fade', 'fold'] as const;
 export const COVER_MODES = ['hero', 'framed', 'none'] as const;
 export const LAYOUT_BLOCKS = ['title', 'host', 'datetime', 'location', 'deadline', 'message'] as const;
