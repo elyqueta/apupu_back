@@ -63,6 +63,7 @@ interface EventRow {
   latitude: string | null;
   longitude: string | null;
   place_label: string | null;
+  place_name: string | null;
   use_tables: boolean;
   created_at: Date;
   updated_at: Date;
@@ -85,6 +86,7 @@ function toEvent(row: EventRow): EventRecord {
     latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
     longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
     placeLabel: row.place_label ?? null,
+    placeName: row.place_name ?? null,
   };
 
   const contribution: EventContribution = {
@@ -162,7 +164,7 @@ const SELECT_COLUMNS = `
   contribution_account_reference, cover_url, cover_hash, cover_public_id,
   rsvp_deadline, status, cancelled_at, cancelled_reason, cancelled_by,
   visibility, public_slug, show_attendee_count, min_age, max_age, deleted_at, community_id,
-  youtube_video_id, latitude, longitude, place_label, use_tables,
+  youtube_video_id, latitude, longitude, place_label, place_name, use_tables,
   created_at, updated_at
 `;
 
@@ -256,7 +258,7 @@ export const eventRepository = {
          contribution_account_holder, contribution_account_reference,
          rsvp_deadline, cover_url, status,
          visibility, public_slug, show_attendee_count, min_age, max_age, community_id,
-         youtube_video_id, latitude, longitude, place_label, use_tables
+         youtube_video_id, latitude, longitude, place_label, place_name, use_tables
        )
        VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'scheduled',
@@ -299,6 +301,7 @@ export const eventRepository = {
         data.location.latitude ?? null,
         data.location.longitude ?? null,
         data.location.placeLabel ?? null,
+        data.location.placeName ?? null,
         data.useTables ?? false,
       ]
     );
@@ -464,6 +467,8 @@ export const eventRepository = {
       set.push(`longitude = $${values.length}`);
       values.push(changes.location.placeLabel ?? null);
       set.push(`place_label = $${values.length}`);
+      values.push(changes.location.placeName ?? null);
+      set.push(`place_name = $${values.length}`);
     }
 
     if ('theme' in changes && changes.theme) {

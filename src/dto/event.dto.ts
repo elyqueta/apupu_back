@@ -27,6 +27,7 @@ export interface EventLocationDto {
   latitude: number | null;
   longitude: number | null;
   place_label: string | null;
+  place_name: string | null;
 }
 
 export interface EventThemeDto {
@@ -140,6 +141,7 @@ export function toEventDto(
       latitude: event.location.latitude ?? null,
       longitude: event.location.longitude ?? null,
       place_label: event.location.placeLabel ?? null,
+      place_name: event.location.placeName ?? null,
     },
     message: event.message,
     rules: event.rules,
@@ -205,6 +207,7 @@ export function toPublicEventDto(
       latitude: event.location.latitude ?? null,
       longitude: event.location.longitude ?? null,
       place_label: event.location.placeLabel ?? null,
+      place_name: event.location.placeName ?? null,
     },
     message: event.message,
     rules: event.rules,

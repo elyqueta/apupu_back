@@ -36,6 +36,7 @@ export interface EventLocation {
   latitude?: number | null;
   longitude?: number | null;
   placeLabel?: string | null;
+  placeName?: string | null;
 }
 
 export interface EventTheme {

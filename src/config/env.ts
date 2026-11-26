@@ -208,6 +208,7 @@ const envSchema = z.object({
     .trim()
     .min(1)
     .default('conta-comigo/profile-covers'),
+  CLOUDINARY_TEMPLATE_FOLDER: z.string().trim().min(1).default('conta-comigo/templates'),
   /** Tamanho máximo do ficheiro de avatar (5 MiB por omissão). */
   AVATAR_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
   /** Tamanho máximo da imagem de capa do evento (8 MiB por omissão). */
@@ -216,6 +217,18 @@ const envSchema = z.object({
   TEAM_PHOTO_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
   /** Tamanho máximo da imagem de capa do perfil (8 MiB por omissão). */
   PROFILE_COVER_MAX_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
+  /** Tamanho máximo de assets de template (logótipo/QR, 2 MiB por omissão). */
+  TEMPLATE_ASSET_MAX_BYTES: z.coerce.number().int().positive().default(2 * 1024 * 1024),
+
+  /** Task B: geocoding (Nominatim por defeito), sem PII nos logs. */
+  GEOCODER_BASE_URL: z
+    .string()
+    .url('GEOCODER_BASE_URL deve ser uma URL válida')
+    .default('https://nominatim.openstreetmap.org'),
+  GEOCODER_USER_AGENT: z.string().trim().min(1).default('ContoContigo/1.0 (contact@contocontigo.app)'),
+  GEOCODER_COUNTRYCODES: z.string().trim().default('ao'),
+  GEOCODER_RATE_LIMIT_MS: z.coerce.number().int().positive().default(1000),
+
 
   /** Parâmetros do Argon2id. Ajustáveis por ambiente, nunca por pedido. */
   ARGON2_MEMORY_KIB: z.coerce.number().int().min(8 * 1024).default(19456),
