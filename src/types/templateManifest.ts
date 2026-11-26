@@ -46,6 +46,18 @@ export const templateManifestSchema = z
         qr_label: z.string().max(40).optional(),
         qr_destination: z.enum(['event', 'invite', 'custom']).optional(),
         qr_custom_url: z.string().max(500).optional(),
+        // Bloco 15: logo e QR configuráveis
+        logo_url: z.string().max(2048).optional(),
+        logo_public_id: z.string().max(512).optional(),
+        logo_shape: z.enum(['circle', 'original']).optional(),
+        logo_size: z.enum(['sm', 'md', 'lg']).optional(),
+        qr_mode: z.enum(['invite', 'event', 'whatsapp', 'custom', 'image']).optional(),
+        qr_whatsapp_phone: z.string().max(32).optional(),
+        qr_whatsapp_message: z.string().max(500).optional(),
+        qr_image_url: z.string().max(2048).optional(),
+        qr_image_public_id: z.string().max(512).optional(),
+        qr_icon: z.enum(['none', 'whatsapp', 'brand']).optional(),
+        qr_size: z.enum(['md', 'lg']).optional(),
       })
       .strict(),
     /** Bloco 15, Passo 2: documento de blocos (editor/convite/PDF). */

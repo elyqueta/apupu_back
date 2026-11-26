@@ -58,6 +58,8 @@ export interface EmailVars {
   anfitriao?: string;
   /** Nome do convidado. */
   convidado?: string;
+  /** Tipo de destinatário do convite (Bloco 15). */
+  convidadoTipo?: 'male' | 'female' | 'couple' | 'family' | null;
   /** Nome do evento. */
   evento?: string;
   /** Data já formatada, ex.: "sáb, 21 nov 2026". */
