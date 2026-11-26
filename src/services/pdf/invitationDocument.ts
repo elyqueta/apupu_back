@@ -338,27 +338,91 @@ async function renderGratitudePdf(
   const logoSizeKey = (manifest.pdf as any).logo_size === 'sm' ? 'sm' : (manifest.pdf as any).logo_size === 'lg' ? 'lg' : 'md';
   const logoPx = { sm: W * 0.14, md: W * 0.19, lg: W * 0.23 }[logoSizeKey];
   const hasLogo = Boolean(logoUrl);
+  const hasDress = Boolean(dress);
 
-  // Vertical layout in canvas percentages (user spec)
-  const orgY = H * 0.194;
-  const subY = H * 0.224;
-  const titleTop = H * 0.286;
-  const titleBottom = H * 0.493;
-  const titleH = titleBottom - titleTop; // 20.7%
-  const yearY = H * 0.498;
-  const infoY = H * 0.629;
-  const dressY = H * 0.787;
+  // Proportional vertical layout in useful zone (between ribbons).
+  const zoneTop = H * 0.10;
+  const zoneBottom = H * 0.89;
+  const zoneH = zoneBottom - zoneTop;
+  const logoH = hasLogo ? logoPx : 0;
+  const orgH = H * 0.035;
+  const subH = H * 0.045;
+  const titleH = H * 0.207;
+  const yearH = H * 0.075;
+  const infoH = H * 0.09;
+  const dressH = hasDress ? H * 0.09 : 0;
+  const gapLogoOrg = hasLogo ? H * 0.018 : 0;
+  const gapOrgSub = H * 0.012; // min 1.2%
+  const gapSubTitle = H * 0.018;
+  const gapTitleYear = H * 0.008;
+  const gapYearInfo = hasDress ? H * 0.045 : H * 0.065;
+  const gapInfoDress = hasDress ? H * 0.03 : 0;
+  const contentH = logoH + gapLogoOrg + orgH + gapOrgSub + subH + gapSubTitle + titleH + gapTitleYear + yearH + gapYearInfo + infoH + gapInfoDress + dressH;
+  const free = Math.max(0, zoneH - contentH);
+  const topPad = free * 0.45;
+  const bottomPad = free - topPad;
+  void bottomPad;
+  let y = zoneTop + topPad;
+  const logoCenterY = hasLogo ? y + logoH / 2 : 0;
+  if (hasLogo) y += logoH + gapLogoOrg;
+  const orgYp = y + orgH * 0.85;
+  y += orgH + gapOrgSub;
+  const subYp = y + subH * 0.82;
+  y += subH + gapSubTitle;
+  const titleTopP = y;
+  y += titleH + gapTitleYear;
+  const yearYp = y + yearH * 0.72;
+  y += yearH + gapYearInfo;
+  const infoYp = y + infoH / 2;
+  y += infoH + gapInfoDress;
+  const dressY = hasDress ? y + dressH / 2 : 0;
 
-  // Close space when no logo: shift content up slightly
-  const shiftUp = hasLogo ? 0 : H * 0.055;
-  const orgYp = orgY - shiftUp;
-  const subYp = subY - shiftUp;
-  const titleTopP = titleTop - shiftUp;
-  const yearYp = yearY - shiftUp;
-  const infoYp = dress ? infoY - shiftUp : infoY - shiftUp + H * 0.02;
+  // Info row layout: 4 columns with gap>=2%W, icon-text gap>=1.4%W
+  const infoLeft = W * 0.05;
+  const infoRight = W * 0.95;
+  const qrCardSize = (qrConfig.url || qrConfig.imageUrl) ? (qrConfig.size === 'lg' ? W * 0.155 : W * 0.14) : 0;
+  const qrGap = qrCardSize ? W * 0.02 : 0;
+  const qrCardX = infoRight - qrCardSize;
+  const qrCardY = infoYp - qrCardSize * 0.5;
+  const qrPad = qrCardSize * 0.08;
+  const qrInner = Math.max(0, qrCardSize - qrPad * 2);
+  const colsRight = qrCardSize ? qrCardX - qrGap : infoRight;
+  const colGap = W * 0.02;
+  const iconTextGap = W * 0.014;
+  const dateIconW = 44;
+  const timeIconW = 44;
+  const locIconW = 44;
+  const dateTextW = 132; // fits 20/12 at 44px
+  const timeTextW = 116; // fits 18:00 at 40px
+  const dateColW = dateIconW + iconTextGap + dateTextW;
+  const timeColW = timeIconW + iconTextGap + timeTextW;
+  const locColX = infoLeft + dateColW + colGap + timeColW + colGap;
+  const locColW = Math.max(W * 0.18, colsRight - locColX); // own width for location column
+  const col1X = infoLeft;
+  const col2X = infoLeft + dateColW + colGap;
+  const col3X = locColX;
+  const sepH = H * 0.07;
+  const sepY1 = infoYp - sepH / 2;
+  const sepY2 = infoYp + sepH / 2;
+  const sep1X = col2X - colGap / 2;
+  const sep2X = col3X - colGap / 2;
+  const sep3X = qrCardSize ? colsRight + qrGap / 2 : 0;
 
-  const loc = gratLocationLines(event.location?.name || event.location?.address || event.location?.onlineUrl || 'Local a confirmar', 26);
-  const locTspans = loc.map((line, i) => `<tspan x="0" dy="${i === 0 ? 0 : 30}">${escapeXml(line)}</tspan>`).join('');
+  // Location: wrap 2-3 lines, auto-reduce font down to min 12px equivalent (20.6 canvas units)
+  const locMinFont = 20.6;
+  const locTextW = Math.max(40, locColW - locIconW - iconTextGap);
+  let locFont = 24;
+  let locMaxChars = Math.max(10, Math.floor(locTextW / (locFont * 0.56)));
+  let loc = gratLocationLines(event.location?.name || event.location?.address || event.location?.onlineUrl || 'Local a confirmar', locMaxChars);
+  for (let fs = 24; fs >= locMinFont; fs -= 2) {
+    locMaxChars = Math.max(10, Math.floor(locTextW / (fs * 0.56)));
+    loc = gratLocationLines(event.location?.name || event.location?.address || event.location?.onlineUrl || 'Local a confirmar', locMaxChars);
+    if (loc.length <= 3) { locFont = fs; break; }
+    locFont = fs;
+  }
+  loc = loc.slice(0, 3);
+  const locLineH = locFont * 1.25;
+  const locTspans = loc.map((line, i) => `<tspan x="0" dy="${i === 0 ? 0 : locLineH}">${escapeXml(line)}</tspan>`).join('');
 
   const afro = `<pattern id="afro" width="240" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-32) scale(1.15)">
 <g transform="translate(0,0)"><rect width="240" height="30" fill="#c8281e"/><polyline points="0,4 15,26 30,4 45,26 60,4 75,26 90,4 105,26 120,4 135,26 150,4 165,26 180,4 195,26 210,4 225,26 240,4" fill="none" stroke="#f2b21a" stroke-width="5" stroke-linejoin="miter"/></g>
@@ -372,24 +436,7 @@ async function renderGratitudePdf(
 <path d="M0 0H240" stroke="#161616" stroke-width="2"/><path d="M0 30H240" stroke="#161616" stroke-width="2"/><path d="M0 60H240" stroke="#161616" stroke-width="2"/><path d="M0 90H240" stroke="#161616" stroke-width="2"/><path d="M0 120H240" stroke="#161616" stroke-width="2"/><path d="M0 150H240" stroke="#161616" stroke-width="2"/><path d="M0 180H240" stroke="#161616" stroke-width="2"/><path d="M0 210H240" stroke="#161616" stroke-width="2"/><path d="M0 240H240" stroke="#161616" stroke-width="2"/>
 </pattern>`;
 
-  const qrCardSize = qrConfig.size === 'lg' ? W * 0.155 : W * 0.14;
-  const qrCardX = W - W * 0.05 - qrCardSize;
-  const qrCardY = infoYp - qrCardSize * 0.55;
-  const qrPad = qrCardSize * 0.08;
-  const qrInner = qrCardSize - qrPad * 2;
-  const infoRightLimit = qrCardX - W * 0.03;
-
-  // Info line columns: date, time, location, qr
-  const col1X = W * 0.06;
-  const col2X = W * 0.29;
-  const col3X = W * 0.455;
-  const sepY1 = infoYp - H * 0.035;
-  const sepY2 = infoYp + H * 0.035;
-  const sep1X = col2X - W * 0.018;
-  const sep2X = col3X - W * 0.022;
-  const sep3X = infoRightLimit - W * 0.01;
-
-  const dressBlock = dress ? `
+  const dressBlock = hasDress ? `
     <g data-testid="gratitude-dresscode">
       <rect x="${W * 0.266}" y="${dressY - H * 0.04}" width="${W * 0.468}" height="${H * 0.09}" rx="${H * 0.045}" fill="#FFF3DC" stroke="#D4A017" stroke-width="3"/>
       <g transform="translate(${W * 0.324},${dressY + H * 0.005})" fill="#D49A1A"><path d="M-30 -24 L-11 -38 L11 -38 L30 -24 L42 -6 L26 2 L26 40 L-26 40 L-26 2 L-42 -6 Z"/><path d="M-11 -38 C-6 -30 6 -30 11 -38" fill="none" stroke="#B27A0E" stroke-width="2"/></g>
@@ -397,7 +444,6 @@ async function renderGratitudePdf(
       <text x="${W * 0.535}" y="${dressY + H * 0.026}" text-anchor="middle" font-size="48" font-family="Anton" font-weight="400" fill="#111111">${escapeXml(dress)}</text>
     </g>` : '';
 
-  const logoCenterY = H * 0.119 - shiftUp;
   const logoBlock = hasLogo
     ? `<g data-testid="gratitude-logo"><defs><clipPath id="logoClip"><${logoShape === 'circle' ? `circle cx="${W / 2}" cy="${logoCenterY}" r="${logoPx / 2}"` : `rect x="${(W - logoPx) / 2}" y="${logoCenterY - logoPx / 2}" width="${logoPx}" height="${logoPx}" rx="12"`}/></clipPath></defs><image href="${escapeXml(logoUrl)}" x="${(W - logoPx) / 2}" y="${logoCenterY - logoPx / 2}" width="${logoPx}" height="${logoPx}" preserveAspectRatio="xMidYMid slice" clip-path="url(#logoClip)"/>${logoShape === 'circle' ? `<circle cx="${W / 2}" cy="${logoCenterY}" r="${logoPx / 2}" fill="none" stroke="#D4A017" stroke-width="4"/>` : ''}</g>`
     : '';
@@ -459,20 +505,20 @@ async function renderGratitudePdf(
       <line x1="0" y1="12" x2="44" y2="12" stroke="#111111" stroke-width="2.5"/>
       <line x1="12" y1="-5" x2="12" y2="6" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
       <line x1="32" y1="-5" x2="32" y2="6" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
-      <text x="58" y="30" font-size="44" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.date)}</text>
+      <text x="${dateIconW + iconTextGap}" y="30" font-size="44" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.date)}</text>
     </g>
 
     <g transform="translate(${col2X},${infoYp - 30})">
       <circle cx="22" cy="22" r="22" fill="none" stroke="#111111" stroke-width="2.5"/>
       <path d="M22 10 V24 L33 32" fill="none" stroke="#111111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="54" y="32" font-size="40" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.time)}</text>
+      <text x="${timeIconW + iconTextGap}" y="32" font-size="40" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.time)}</text>
     </g>
 
     <g transform="translate(${col3X},${infoYp - 38})">
       <path d="M22 0 C10 0 0 10 0 22 C0 40 22 62 22 62 C22 62 44 40 44 22 C44 10 34 0 22 0 Z" fill="none" stroke="#111111" stroke-width="2.5"/>
       <circle cx="22" cy="22" r="8" fill="none" stroke="#111111" stroke-width="2.5"/>
-      <text x="56" y="18" font-size="18" font-family="Montserrat-Bold" font-weight="700" fill="#111111">LOCAL:</text>
-      <text x="56" y="44" font-size="24" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${locTspans}</text>
+      <text x="${locIconW + iconTextGap}" y="18" font-size="18" font-family="Montserrat-Bold" font-weight="700" fill="#111111">LOCAL:</text>
+      <text x="${locIconW + iconTextGap}" y="44" font-size="${locFont}" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${locTspans}</text>
     </g>
 
     ${qrCardBlock}
@@ -502,7 +548,6 @@ async function renderGratitudePdf(
   if (hasLogo) {
     const logoBuf = await fetchImageBuffer(logoUrl);
     if (logoBuf) {
-      const logoCenterY = H * 0.119 - shiftUp;
       const lx = ((W - logoPx) / 2) / W * width;
       const ly = (logoCenterY - logoPx / 2) / H * height;
       const ls = logoPx / W * width;
