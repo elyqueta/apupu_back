@@ -344,68 +344,151 @@ async function renderGratitudePdf(
   const zoneTop = H * 0.10;
   const zoneBottom = H * 0.89;
   const zoneH = zoneBottom - zoneTop;
+  const marginX = W * 0.04;
+
+  // Bottom ribbon curve: M540,1280 C700,1215 900,1110 1024,1000
+  const ribbonBez = (t: number) => {
+    const mt = 1 - t;
+    const x = mt * mt * mt * 540 + 3 * mt * mt * t * 700 + 3 * mt * t * t * 900 + t * t * t * 1024;
+    const y = mt * mt * mt * 1280 + 3 * mt * mt * t * 1215 + 3 * mt * t * t * 1110 + t * t * t * 1000;
+    return { x, y };
+  };
+  const ribbonYAtX = (px: number): number => {
+    // sample bezier; curve x is monotonic increasing here
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      const x = ribbonBez(mid).x;
+      if (x < px) lo = mid; else hi = mid;
+    }
+    return ribbonBez((lo + hi) / 2).y;
+  };
+
+  // Group heights (content only; internal gaps fixed)
   const logoH = hasLogo ? logoPx : 0;
   const orgH = H * 0.035;
   const subH = H * 0.045;
+  const orgSubGap = H * 0.012; // min 1.2%
+  const orgSubGroupH = orgH + orgSubGap + subH;
   const titleH = H * 0.207;
   const yearH = H * 0.075;
-  const infoH = H * 0.09;
+  const titleYearGap = H * 0.015; // ~1.5%
+  const titleYearGroupH = titleH + titleYearGap + yearH;
+  const infoH = H * 0.10;
   const dressH = hasDress ? H * 0.09 : 0;
-  const gapLogoOrg = hasLogo ? H * 0.018 : 0;
-  const gapOrgSub = H * 0.012; // min 1.2%
-  const gapSubTitle = H * 0.032;
-  const gapTitleYear = H * 0.030;
-  const gapYearInfo = hasDress ? H * 0.045 : H * 0.13;
-  const gapInfoDress = hasDress ? H * 0.03 : 0;
-  const contentH = logoH + gapLogoOrg + orgH + gapOrgSub + subH + gapSubTitle + titleH + gapTitleYear + yearH + gapYearInfo + infoH + gapInfoDress + dressH;
-  const free = Math.max(0, zoneH - contentH);
-  const topPad = free * (hasDress ? 0.45 : 0.62);
-  const bottomPad = free - topPad;
-  void bottomPad;
-  let y = zoneTop + topPad;
-  const logoCenterY = hasLogo ? y + logoH / 2 : 0;
-  if (hasLogo) y += logoH + gapLogoOrg;
-  const orgYp = y + orgH * 0.85;
-  y += orgH + gapOrgSub;
-  const subYp = y + subH * 0.82;
-  y += subH + gapSubTitle;
-  const titleTopP = y;
-  y += titleH + gapTitleYear;
-  const yearYp = y + yearH * 0.72;
-  y += yearH + gapYearInfo;
-  const infoYp = y + infoH / 2;
-  y += infoH + gapInfoDress;
-  const dressY = hasDress ? y + dressH / 2 : 0;
 
-  // Info row layout: 4 columns with gap>=2%W, icon-text gap>=1.4%W
-  const infoLeft = W * 0.05;
-  const infoRight = W * 0.95;
+  // Groups: [logo?] [org+sub] [title+year] [info] [dress?]
+  const groups: number[] = [];
+  if (hasLogo) groups.push(logoH);
+  groups.push(orgSubGroupH, titleYearGroupH, infoH);
+  if (hasDress) groups.push(dressH);
+  const contentH = groups.reduce((a, b) => a + b, 0);
+  const gapsCount = Math.max(1, groups.length - 1);
+  let gapBetween = Math.max(H * 0.012, (zoneH - contentH) / gapsCount);
+
+  // Compute info row center with constraints
   const qrCardSize = (qrConfig.url || qrConfig.imageUrl) ? (qrConfig.size === 'lg' ? W * 0.155 : W * 0.14) : 0;
+  const qrLegendH = qrCardSize ? 34 : 0; // ~24px font + spacing
+  const qrCardH = qrCardSize;
+  const infoRowH = Math.max(infoH, qrCardH + qrLegendH);
+  const infoCenterWithDress = H * 0.70;
+  const infoCenterNoDressMax = H * 0.72;
+
+  // Place groups with space-evenly, then clamp info row
+  const placeGroups = (g: number) => {
+    let yy = zoneTop + g;
+    const pos: number[] = [];
+    for (const gh of groups) { pos.push(yy); yy += gh + g; }
+    return pos;
+  };
+  let gPositions = placeGroups(gapBetween);
+  let infoGroupIdx = (hasLogo ? 3 : 2);
+  let infoTop = gPositions[infoGroupIdx];
+  let infoCenter = infoTop + infoRowH / 2;
+  const desiredInfoCenter = hasDress ? infoCenterWithDress : Math.min(infoCenter, infoCenterNoDressMax);
+  // Clamp info: don't push below desired; but also ensure QR clears ribbon
+  if (hasDress) {
+    infoCenter = desiredInfoCenter;
+  } else {
+    infoCenter = Math.min(Math.max(infoCenter, H * 0.62), infoCenterNoDressMax);
+  }
+  // QR ribbon clearance test
+  if (qrCardSize) {
+    const qrBottomMargin = H * 0.015;
+    const qrRight = W * 0.96;
+    for (let tries = 0; tries < 20; tries++) {
+      const qrTop = infoCenter - (qrCardH + qrLegendH) / 2 + qrLegendH;
+      const qrBottom = qrTop + qrCardH + qrBottomMargin;
+      const curveY = ribbonYAtX(qrRight);
+      if (qrBottom <= curveY) break;
+      infoCenter -= H * 0.005;
+    }
+  }
+  // Rebuild positions: distribute space above info and below info separately
+  const infoGroupH = groups[infoGroupIdx];
+  infoTop = infoCenter - infoRowH / 2;
+  // Above info: groups before infoGroupIdx
+  const before = groups.slice(0, infoGroupIdx);
+  const beforeH = before.reduce((a, b) => a + b, 0);
+  const spaceBefore = infoTop - zoneTop - beforeH;
+  const gapsBefore = before.length; // gaps before each group incl top? use space-evenly among before+info boundary
+  const gapBefore = gapsBefore > 0 ? Math.max(H * 0.01, spaceBefore / (gapsBefore + 1)) : 0;
+  // Below info
+  const after = groups.slice(infoGroupIdx + 1);
+  const afterH = after.reduce((a, b) => a + b, 0);
+  const infoBottom = infoTop + infoGroupH;
+  const spaceAfter = zoneBottom - infoBottom - afterH;
+  const gapsAfter = after.length;
+  const gapAfter = gapsAfter > 0 ? Math.max(H * 0.01, spaceAfter / (gapsAfter + 1)) : 0;
+
+  const finalPos: number[] = new Array(groups.length).fill(0);
+  let cy2 = zoneTop + gapBefore;
+  for (let i = 0; i < infoGroupIdx; i++) { finalPos[i] = cy2; cy2 += groups[i] + gapBefore; }
+  finalPos[infoGroupIdx] = infoTop;
+  cy2 = infoBottom + gapAfter;
+  for (let i = infoGroupIdx + 1; i < groups.length; i++) { finalPos[i] = cy2; cy2 += groups[i] + gapAfter; }
+
+  // Unpack positions
+  let gi = 0;
+  const logoTop = hasLogo ? finalPos[gi++] : 0;
+  const logoCenterY = hasLogo ? logoTop + logoH / 2 : 0;
+  const orgSubTop = finalPos[gi++];
+  const orgYp = orgSubTop + orgH * 0.85;
+  const subYp = orgSubTop + orgH + orgSubGap + subH * 0.82;
+  const titleYearTop = finalPos[gi++];
+  const titleTopP = titleYearTop;
+  const yearYp = titleYearTop + titleH + titleYearGap + yearH * 0.72;
+  gi++; // info
+  const dressY = hasDress ? finalPos[gi++] + dressH / 2 : 0;
+  const infoYp = infoCenter;
+
+  // Info row: margins ~4%, space-between date/hour/local(flex)/QR
+  const infoLeft = W * 0.04;
+  const infoRight = W * 0.96;
+  const iconW = W * 0.054; // ~5.4%
+  const iconTextGap = W * 0.014; // 1.4%
+  const dateIconW = iconW;
+  const timeIconW = iconW;
+  const locIconW = iconW;
   const qrGap = qrCardSize ? W * 0.02 : 0;
   const qrCardX = infoRight - qrCardSize;
-  const qrCardY = infoYp - qrCardSize * 0.5;
+  const qrCardY = infoYp - (qrCardH + qrLegendH) / 2 + qrLegendH;
   const qrPad = qrCardSize * 0.08;
   const qrInner = Math.max(0, qrCardSize - qrPad * 2);
   const colsRight = qrCardSize ? qrCardX - qrGap : infoRight;
-  const colGap = W * 0.02;
-  const iconTextGap = W * 0.014;
-  const dateIconW = 44;
-  const timeIconW = 44;
-  const locIconW = 44;
-  const dateTextW = 132; // fits 20/12 at 44px
-  const timeTextW = 116; // fits 18:00 at 40px
+  const dateTextW = 132;
+  const timeTextW = 116;
   const dateColW = dateIconW + iconTextGap + dateTextW;
   const timeColW = timeIconW + iconTextGap + timeTextW;
-  const locColX = infoLeft + dateColW + colGap + timeColW + colGap;
-  const locColW = Math.max(W * 0.18, colsRight - locColX); // own width for location column
   const col1X = infoLeft;
-  const col2X = infoLeft + dateColW + colGap;
-  const col3X = locColX;
-  const sepH = H * 0.07;
+  const col2X = infoLeft + dateColW + W * 0.02;
+  const col3X = col2X + timeColW + W * 0.02;
+  const locColW = Math.max(W * 0.18, colsRight - col3X);
+  const sepH = Math.max(H * 0.05, qrCardSize ? (qrCardH - 10) : H * 0.07);
   const sepY1 = infoYp - sepH / 2;
   const sepY2 = infoYp + sepH / 2;
-  const sep1X = col2X - colGap / 2;
-  const sep2X = col3X - colGap / 2;
+  const sep1X = col2X - W * 0.01;
+  const sep2X = col3X - W * 0.01;
   const sep3X = qrCardSize ? colsRight + qrGap / 2 : 0;
 
   // Location: wrap 2-3 lines, auto-reduce font down to min 12px equivalent (20.6 canvas units)
@@ -437,6 +520,7 @@ async function renderGratitudePdf(
 </pattern>`;
 
   const dressBlock = hasDress ? `
+    <g data-testid="gratitude-dresscode">  const dressBlock = hasDress ? `
     <g data-testid="gratitude-dresscode">
       <rect x="${W * 0.266}" y="${dressY - H * 0.04}" width="${W * 0.468}" height="${H * 0.09}" rx="${H * 0.045}" fill="#FFF3DC" stroke="#D4A017" stroke-width="3"/>
       <g transform="translate(${W * 0.324},${dressY + H * 0.005})" fill="#D49A1A"><path d="M-30 -24 L-11 -38 L11 -38 L30 -24 L42 -6 L26 2 L26 40 L-26 40 L-26 2 L-42 -6 Z"/><path d="M-11 -38 C-6 -30 6 -30 11 -38" fill="none" stroke="#B27A0E" stroke-width="2"/></g>
@@ -500,23 +584,29 @@ async function renderGratitudePdf(
     <line x1="${sep2X}" y1="${sepY1}" x2="${sep2X}" y2="${sepY2}" stroke="#D4A017" stroke-width="1.5"/>
     ${qrCardBlock ? `<line x1="${sep3X}" y1="${sepY1}" x2="${sep3X}" y2="${sepY2}" stroke="#D4A017" stroke-width="1.5"/>` : ''}
 
-    <g transform="translate(${col1X},${infoYp - 28})">
-      <rect x="0" y="0" width="44" height="38" rx="5" fill="none" stroke="#111111" stroke-width="2.5"/>
-      <line x1="0" y1="12" x2="44" y2="12" stroke="#111111" stroke-width="2.5"/>
-      <line x1="12" y1="-5" x2="12" y2="6" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="32" y1="-5" x2="32" y2="6" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
-      <text x="${dateIconW + iconTextGap}" y="30" font-size="44" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.date)}</text>
+    <g transform="translate(${col1X},${infoYp - (iconW * 43 / 44) / 2})">
+      <g transform="scale(${iconW / 44})">
+        <rect x="0" y="0" width="44" height="38" rx="5" fill="none" stroke="#111111" stroke-width="2.5"/>
+        <line x1="0" y1="12" x2="44" y2="12" stroke="#111111" stroke-width="2.5"/>
+        <line x1="12" y1="-5" x2="12" y2="6" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="32" y1="-5" x2="32" y2="6" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
+      </g>
+      <text x="${dateIconW + iconTextGap}" y="${(iconW * 43 / 44) * 0.72}" font-size="44" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.date)}</text>
     </g>
 
-    <g transform="translate(${col2X},${infoYp - 30})">
-      <circle cx="22" cy="22" r="22" fill="none" stroke="#111111" stroke-width="2.5"/>
-      <path d="M22 10 V24 L33 32" fill="none" stroke="#111111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="${timeIconW + iconTextGap}" y="32" font-size="40" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.time)}</text>
+    <g transform="translate(${col2X},${infoYp - iconW / 2})">
+      <g transform="scale(${iconW / 44})">
+        <circle cx="22" cy="22" r="22" fill="none" stroke="#111111" stroke-width="2.5"/>
+        <path d="M22 10 V24 L33 32" fill="none" stroke="#111111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <text x="${timeIconW + iconTextGap}" y="${iconW * 0.72}" font-size="40" font-family="Montserrat-Medium" font-weight="500" fill="#111111">${escapeXml(parts.time)}</text>
     </g>
 
-    <g transform="translate(${col3X},${infoYp - 38})">
-      <path d="M22 0 C10 0 0 10 0 22 C0 40 22 62 22 62 C22 62 44 40 44 22 C44 10 34 0 22 0 Z" fill="none" stroke="#111111" stroke-width="2.5"/>
-      <circle cx="22" cy="22" r="8" fill="none" stroke="#111111" stroke-width="2.5"/>
+    <g transform="translate(${col3X},${infoYp - (iconW * 62 / 44) / 2})">
+      <g transform="scale(${iconW / 44})">
+        <path d="M22 0 C10 0 0 10 0 22 C0 40 22 62 22 62 C22 62 44 40 44 22 C44 10 34 0 22 0 Z" fill="none" stroke="#111111" stroke-width="2.5"/>
+        <circle cx="22" cy="22" r="8" fill="none" stroke="#111111" stroke-width="2.5"/>
+      </g>
       <text x="${locIconW + iconTextGap}" y="18" font-size="18" font-family="Montserrat-Bold" font-weight="700" fill="#111111">LOCAL:</text>
       <text x="${locIconW + iconTextGap}" y="44" font-size="${locFont}" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${locTspans}</text>
     </g>
