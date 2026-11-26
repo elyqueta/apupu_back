@@ -336,7 +336,7 @@ async function renderGratitudePdf(
   const logoUrl = String((manifest.pdf as any).logo_url || '').trim();
   const logoShape = (manifest.pdf as any).logo_shape === 'original' ? 'original' : 'circle';
   const logoSizeKey = (manifest.pdf as any).logo_size === 'sm' ? 'sm' : (manifest.pdf as any).logo_size === 'lg' ? 'lg' : 'md';
-  const logoPx = { sm: W * 0.14, md: W * 0.19, lg: W * 0.23 }[logoSizeKey];
+  const logoPx = { sm: W * 0.14, md: W * 0.16, lg: W * 0.22 }[logoSizeKey];
   const hasLogo = Boolean(logoUrl);
   const hasDress = Boolean(dress);
 
@@ -344,7 +344,6 @@ async function renderGratitudePdf(
   const zoneTop = H * 0.10;
   const zoneBottom = H * 0.89;
   const zoneH = zoneBottom - zoneTop;
-  const marginX = W * 0.04;
 
   // Bottom ribbon curve: M540,1280 C700,1215 900,1110 1024,1000
   const ribbonBez = (t: number) => {
@@ -366,15 +365,15 @@ async function renderGratitudePdf(
 
   // Group heights (content only; internal gaps fixed)
   const logoH = hasLogo ? logoPx : 0;
-  const orgH = H * 0.035;
-  const subH = H * 0.045;
+  const orgH = H * 0.032;
+  const subH = H * 0.042;
   const orgSubGap = H * 0.012; // min 1.2%
   const orgSubGroupH = orgH + orgSubGap + subH;
-  const titleH = H * 0.207;
-  const yearH = H * 0.075;
-  const titleYearGap = H * 0.015; // ~1.5%
+  const titleH = H * 0.20;
+  const yearH = H * 0.046;
+  const titleYearGap = H * 0.03; // ~3%, max per spec
   const titleYearGroupH = titleH + titleYearGap + yearH;
-  const infoH = H * 0.10;
+  const infoH = H * 0.072;
   const dressH = hasDress ? H * 0.09 : 0;
 
   // Groups: [logo?] [org+sub] [title+year] [info] [dress?]
@@ -391,7 +390,7 @@ async function renderGratitudePdf(
   const qrLegendH = qrCardSize ? 34 : 0; // ~24px font + spacing
   const qrCardH = qrCardSize;
   const infoRowH = Math.max(infoH, qrCardH + qrLegendH);
-  const infoCenterWithDress = H * 0.70;
+  const infoCenterWithDress = H * 0.712;
   const infoCenterNoDressMax = H * 0.72;
 
   // Place groups with space-evenly, then clamp info row
@@ -403,7 +402,7 @@ async function renderGratitudePdf(
   };
   let gPositions = placeGroups(gapBetween);
   let infoGroupIdx = (hasLogo ? 3 : 2);
-  let infoTop = gPositions[infoGroupIdx];
+  let infoTop = gPositions[infoGroupIdx] ?? 0;
   let infoCenter = infoTop + infoRowH / 2;
   const desiredInfoCenter = hasDress ? infoCenterWithDress : Math.min(infoCenter, infoCenterNoDressMax);
   // Clamp info: don't push below desired; but also ensure QR clears ribbon
@@ -414,7 +413,7 @@ async function renderGratitudePdf(
   }
   // QR ribbon clearance test
   if (qrCardSize) {
-    const qrBottomMargin = H * 0.015;
+    const qrBottomMargin = H * 0.012;
     const qrRight = W * 0.96;
     for (let tries = 0; tries < 20; tries++) {
       const qrTop = infoCenter - (qrCardH + qrLegendH) / 2 + qrLegendH;
@@ -425,41 +424,53 @@ async function renderGratitudePdf(
     }
   }
   // Rebuild positions: distribute space above info and below info separately
-  const infoGroupH = groups[infoGroupIdx];
+  const infoGroupH = groups[infoGroupIdx] ?? infoH;
   infoTop = infoCenter - infoRowH / 2;
   // Above info: groups before infoGroupIdx
   const before = groups.slice(0, infoGroupIdx);
   const beforeH = before.reduce((a, b) => a + b, 0);
-  const spaceBefore = infoTop - zoneTop - beforeH;
-  const gapsBefore = before.length; // gaps before each group incl top? use space-evenly among before+info boundary
-  const gapBefore = gapsBefore > 0 ? Math.max(H * 0.01, spaceBefore / (gapsBefore + 1)) : 0;
+  const gapsBefore = before.length;
+  let gapBefore = gapsBefore > 0 ? Math.max(H * 0.024, (infoTop - zoneTop - beforeH) / (gapsBefore + 1)) : 0;
   // Below info
   const after = groups.slice(infoGroupIdx + 1);
   const afterH = after.reduce((a, b) => a + b, 0);
-  const infoBottom = infoTop + infoGroupH;
-  const spaceAfter = zoneBottom - infoBottom - afterH;
   const gapsAfter = after.length;
-  const gapAfter = gapsAfter > 0 ? Math.max(H * 0.01, spaceAfter / (gapsAfter + 1)) : 0;
+  let gapAfter = gapsAfter > 0 ? Math.max(H * 0.016, (zoneBottom - (infoTop + infoGroupH) - afterH) / (gapsAfter + 1)) : 0;
+  // If pushing info down violates QR ribbon, pull it up and reduce gapBefore
+  if (qrCardSize) {
+    const qrBottomMargin = H * 0.012;
+    const qrRight = W * 0.96;
+    for (let t = 0; t < 30; t++) {
+      const qrTop = infoCenter - (qrCardH + qrLegendH) / 2 + qrLegendH;
+      const qrBottom = qrTop + qrCardH + qrBottomMargin;
+      if (qrBottom <= ribbonYAtX(qrRight)) break;
+      infoCenter -= H * 0.004;
+      infoTop = infoCenter - infoRowH / 2;
+      gapBefore = gapsBefore > 0 ? Math.max(H * 0.012, (infoTop - zoneTop - beforeH) / (gapsBefore + 1)) : 0;
+      gapAfter = gapsAfter > 0 ? Math.max(H * 0.012, (zoneBottom - (infoTop + infoGroupH) - afterH) / (gapsAfter + 1)) : 0;
+    }
+  }
+  const infoBottom = infoTop + infoGroupH;
 
   const finalPos: number[] = new Array(groups.length).fill(0);
   let cy2 = zoneTop + gapBefore;
-  for (let i = 0; i < infoGroupIdx; i++) { finalPos[i] = cy2; cy2 += groups[i] + gapBefore; }
+  for (let i = 0; i < infoGroupIdx; i++) { finalPos[i] = cy2; cy2 += (groups[i] ?? 0) + gapBefore; }
   finalPos[infoGroupIdx] = infoTop;
   cy2 = infoBottom + gapAfter;
-  for (let i = infoGroupIdx + 1; i < groups.length; i++) { finalPos[i] = cy2; cy2 += groups[i] + gapAfter; }
+  for (let i = infoGroupIdx + 1; i < groups.length; i++) { finalPos[i] = cy2; cy2 += (groups[i] ?? 0) + gapAfter; }
 
   // Unpack positions
   let gi = 0;
-  const logoTop = hasLogo ? finalPos[gi++] : 0;
+  const logoTop = hasLogo ? (finalPos[gi++] ?? 0) : 0;
   const logoCenterY = hasLogo ? logoTop + logoH / 2 : 0;
-  const orgSubTop = finalPos[gi++];
+  const orgSubTop = finalPos[gi++] ?? 0;
   const orgYp = orgSubTop + orgH * 0.85;
   const subYp = orgSubTop + orgH + orgSubGap + subH * 0.82;
-  const titleYearTop = finalPos[gi++];
+  const titleYearTop = finalPos[gi++] ?? 0;
   const titleTopP = titleYearTop;
-  const yearYp = titleYearTop + titleH + titleYearGap + yearH * 0.72;
+  const yearYp = titleYearTop + titleH + titleYearGap + yearH * 0.92;
   gi++; // info
-  const dressY = hasDress ? finalPos[gi++] + dressH / 2 : 0;
+  const dressY = hasDress ? (finalPos[gi++] ?? 0) + dressH / 2 : 0;
   const infoYp = infoCenter;
 
   // Info row: margins ~4%, space-between date/hour/local(flex)/QR
@@ -505,7 +516,7 @@ async function renderGratitudePdf(
   }
   loc = loc.slice(0, 3);
   const locLineH = locFont * 1.25;
-  const locTspans = loc.map((line, i) => `<tspan x="0" dy="${i === 0 ? 0 : locLineH}">${escapeXml(line)}</tspan>`).join('');
+  const locTspans = loc.map((line, i) => `<tspan x="${locIconW + iconTextGap}" dy="${i === 0 ? 0 : locLineH}">${escapeXml(line)}</tspan>`).join('');
 
   const afro = `<pattern id="afro" width="240" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-32) scale(1.15)">
 <g transform="translate(0,0)"><rect width="240" height="30" fill="#c8281e"/><polyline points="0,4 15,26 30,4 45,26 60,4 75,26 90,4 105,26 120,4 135,26 150,4 165,26 180,4 195,26 210,4 225,26 240,4" fill="none" stroke="#f2b21a" stroke-width="5" stroke-linejoin="miter"/></g>
@@ -520,12 +531,11 @@ async function renderGratitudePdf(
 </pattern>`;
 
   const dressBlock = hasDress ? `
-    <g data-testid="gratitude-dresscode">  const dressBlock = hasDress ? `
     <g data-testid="gratitude-dresscode">
       <rect x="${W * 0.266}" y="${dressY - H * 0.04}" width="${W * 0.468}" height="${H * 0.09}" rx="${H * 0.045}" fill="#FFF3DC" stroke="#D4A017" stroke-width="3"/>
       <g transform="translate(${W * 0.324},${dressY + H * 0.005})" fill="#D49A1A"><path d="M-30 -24 L-11 -38 L11 -38 L30 -24 L42 -6 L26 2 L26 40 L-26 40 L-26 2 L-42 -6 Z"/><path d="M-11 -38 C-6 -30 6 -30 11 -38" fill="none" stroke="#B27A0E" stroke-width="2"/></g>
-      <text x="${W * 0.535}" y="${dressY - H * 0.012}" text-anchor="middle" font-size="20" font-family="Montserrat-Bold" font-weight="700" fill="#111111" letter-spacing="1">DRESS-CODE:</text>
-      <text x="${W * 0.535}" y="${dressY + H * 0.026}" text-anchor="middle" font-size="48" font-family="Anton" font-weight="400" fill="#111111">${escapeXml(dress)}</text>
+      <text x="${W * 0.535}" y="${dressY - H * 0.018}" text-anchor="middle" font-size="20" font-family="Montserrat-Bold" font-weight="700" fill="#111111" letter-spacing="1">DRESS-CODE:</text>
+      <text x="${W * 0.535}" y="${dressY + H * 0.032}" text-anchor="middle" font-size="48" font-family="Anton" font-weight="400" fill="#111111">${escapeXml(dress)}</text>
     </g>` : '';
 
   const logoBlock = hasLogo
@@ -575,7 +585,7 @@ async function renderGratitudePdf(
   <text x="${W / 2}" y="${orgYp}" text-anchor="middle" font-size="31" font-family="Montserrat-Medium" font-weight="500" letter-spacing="7.7" fill="#1B1B1B">${escapeXml(org)}</text>
   <text x="${W / 2}" y="${subYp}" text-anchor="middle" font-size="49" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${escapeXml(subtitle)}</text>
 
-  <text x="${W / 2}" y="${titleTopP + titleH * 0.80}" text-anchor="middle" font-size="210" font-family="Anton" font-weight="400" fill="url(#afro)" stroke="#161616" stroke-width="2.2" paint-order="stroke fill" stroke-linejoin="round">${escapeXml(title)}</text>
+  <text x="${W / 2}" y="${titleTopP + titleH * 0.80}" text-anchor="middle" font-size="195" font-family="Anton" font-weight="400" fill="url(#afro)" stroke="#161616" stroke-width="2.2" paint-order="stroke fill" stroke-linejoin="round">${escapeXml(title)}</text>
 
   <text text-anchor="middle" font-size="87" font-family="Montserrat-ExtraBoldItalic" font-style="italic" font-weight="800" fill="#B3121A" transform="translate(${W / 2},${yearYp}) skewX(-8)">${escapeXml(parts.year)}</text>
 
@@ -607,8 +617,8 @@ async function renderGratitudePdf(
         <path d="M22 0 C10 0 0 10 0 22 C0 40 22 62 22 62 C22 62 44 40 44 22 C44 10 34 0 22 0 Z" fill="none" stroke="#111111" stroke-width="2.5"/>
         <circle cx="22" cy="22" r="8" fill="none" stroke="#111111" stroke-width="2.5"/>
       </g>
-      <text x="${locIconW + iconTextGap}" y="18" font-size="18" font-family="Montserrat-Bold" font-weight="700" fill="#111111">LOCAL:</text>
-      <text x="${locIconW + iconTextGap}" y="44" font-size="${locFont}" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${locTspans}</text>
+      <text x="${locIconW + iconTextGap}" y="14" font-size="18" font-family="Montserrat-Bold" font-weight="700" fill="#111111">LOCAL:</text>
+      <text x="${locIconW + iconTextGap}" y="46" font-size="${locFont}" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${locTspans}</text>
     </g>
 
     ${qrCardBlock}
