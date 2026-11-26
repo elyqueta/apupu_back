@@ -353,13 +353,13 @@ async function renderGratitudePdf(
   const dressH = hasDress ? H * 0.09 : 0;
   const gapLogoOrg = hasLogo ? H * 0.018 : 0;
   const gapOrgSub = H * 0.012; // min 1.2%
-  const gapSubTitle = H * 0.018;
-  const gapTitleYear = H * 0.008;
-  const gapYearInfo = hasDress ? H * 0.045 : H * 0.065;
+  const gapSubTitle = H * 0.032;
+  const gapTitleYear = H * 0.030;
+  const gapYearInfo = hasDress ? H * 0.045 : H * 0.13;
   const gapInfoDress = hasDress ? H * 0.03 : 0;
   const contentH = logoH + gapLogoOrg + orgH + gapOrgSub + subH + gapSubTitle + titleH + gapTitleYear + yearH + gapYearInfo + infoH + gapInfoDress + dressH;
   const free = Math.max(0, zoneH - contentH);
-  const topPad = free * 0.45;
+  const topPad = free * (hasDress ? 0.45 : 0.62);
   const bottomPad = free - topPad;
   void bottomPad;
   let y = zoneTop + topPad;
@@ -491,7 +491,7 @@ async function renderGratitudePdf(
   <text x="${W / 2}" y="${orgYp}" text-anchor="middle" font-size="31" font-family="Montserrat-Medium" font-weight="500" letter-spacing="7.7" fill="#1B1B1B">${escapeXml(org)}</text>
   <text x="${W / 2}" y="${subYp}" text-anchor="middle" font-size="49" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${escapeXml(subtitle)}</text>
 
-  <text x="${W / 2}" y="${titleTopP + titleH * 0.72}" text-anchor="middle" font-size="210" font-family="Anton" font-weight="400" fill="url(#afro)" stroke="#161616" stroke-width="2.2" paint-order="stroke fill" stroke-linejoin="round">${escapeXml(title)}</text>
+  <text x="${W / 2}" y="${titleTopP + titleH * 0.80}" text-anchor="middle" font-size="210" font-family="Anton" font-weight="400" fill="url(#afro)" stroke="#161616" stroke-width="2.2" paint-order="stroke fill" stroke-linejoin="round">${escapeXml(title)}</text>
 
   <text text-anchor="middle" font-size="87" font-family="Montserrat-ExtraBoldItalic" font-style="italic" font-weight="800" fill="#B3121A" transform="translate(${W / 2},${yearYp}) skewX(-8)">${escapeXml(parts.year)}</text>
 
