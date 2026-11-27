@@ -12,6 +12,15 @@ export const OPEN_STYLES = ['none', 'envelope', 'curtain', 'fade', 'fold'] as co
 export const COVER_MODES = ['hero', 'framed', 'none'] as const;
 export const LAYOUT_BLOCKS = ['title', 'host', 'datetime', 'location', 'deadline', 'message'] as const;
 export const QR_POSITIONS = ['bottom-center', 'bottom-right', 'bottom-left'] as const;
+/** Bloco 15B: apresentação da miniatura; não altera o documento de blocos. */
+export const TEMPLATE_ORIENTATIONS = [
+  'strip',
+  'card45',
+  'a5',
+  'a4',
+  'landscape',
+  'story',
+] as const;
 
 const templateBlockSchema = z.object({ id: z.string(), type: z.string() }).passthrough();
 const templateDocumentSchema = z
@@ -62,6 +71,10 @@ export const templateManifestSchema = z
       .strict(),
     /** Bloco 15, Passo 2: documento de blocos (editor/convite/PDF). */
     document: templateDocumentSchema.optional(),
+    /** Bloco 15B: forma da miniatura/pré-visualização. */
+    orientation: z.enum(TEMPLATE_ORIENTATIONS).optional(),
+    /** Bloco 15B: conteúdo de exemplo, sempre texto simples. */
+    previewData: z.record(z.string(), z.string()).optional(),
   })
   .strict();
 

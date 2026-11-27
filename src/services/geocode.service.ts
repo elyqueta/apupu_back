@@ -40,19 +40,23 @@ async function rateLimitWait(): Promise<void> {
   lastRequestAt = Date.now();
 }
 
-function toResult(item: any): GeocodeResult | null {
-  const lat = Number(item?.lat);
-  const lon = Number(item?.lon);
+/** Resposta externa (Nominatim): campos são validados explicitamente antes de uso. */
+type NominatimItem = Record<string, unknown>;
+
+function toResult(item: unknown): GeocodeResult | null {
+  const raw: NominatimItem = item !== null && item !== undefined ? (item as NominatimItem) : {};
+  const lat = Number(raw['lat']);
+  const lon = Number(raw['lon']);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
-  const displayName = typeof item?.display_name === 'string' ? item.display_name.trim().slice(0, 200) : '';
+  const displayName = typeof raw['display_name'] === 'string' ? raw['display_name'].trim().slice(0, 200) : '';
   if (!displayName) return null;
   return {
     displayName,
     latitude: Math.round(lat * 1e6) / 1e6,
     longitude: Math.round(lon * 1e6) / 1e6,
-    type: typeof item?.type === 'string' ? item.type : null,
-    importance: typeof item?.importance === 'number' ? item.importance : null,
+    type: typeof raw['type'] === 'string' ? raw['type'] : null,
+    importance: typeof raw['importance'] === 'number' ? raw['importance'] : null,
   };
 }
 

@@ -351,6 +351,16 @@ export const communityRepository = {
     return row ? toCommunityWithStats(row) : null;
   },
 
+  /** Nome da comunidade para rotular convites de eventos de comunidade. */
+  async findNameById(id: string, client?: Runner): Promise<string | null> {
+    const runner: Runner = client ?? pool;
+    const result = await runner.query<{ name: string }>(
+      'SELECT name FROM communities WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+    return result.rows[0]?.name ?? null;
+  },
+
   async findBySlug(slug: string, viewerId: string): Promise<CommunityWithStats | null> {
     const result = await query<CommunityStatsRow>(
       `SELECT ${STATS_SELECT} FROM communities c ${ME_JOIN}

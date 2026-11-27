@@ -1,0 +1,3507 @@
+[
+  {
+    "slug": "t01-papel-creme",
+    "name": "Papel creme com fio",
+    "description": "Tira romântica em papel creme, com fio ondulado, calendário e painel de confirmação.",
+    "sortOrder": 10,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#F4EFE6",
+        "surface": "#FFFDF8",
+        "ink": "#4A3B32",
+        "accent": "#8B2E2E",
+        "muted": "#7A6656"
+      },
+      "fonts": {
+        "display": "script",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "leaf",
+        "divider": "wave"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "hero",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "single",
+        "qr_position": "bottom-right",
+        "show_ornaments": true,
+        "qr_label": "Informação"
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t01-ornament-top",
+            "type": "ornament",
+            "ornament": "leaf"
+          },
+          {
+            "id": "t01-title",
+            "type": "title",
+            "text": "Ana & João",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 38
+            }
+          },
+          {
+            "id": "t01-kicker",
+            "type": "text",
+            "text": "Convite de casamento",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10
+            }
+          },
+          {
+            "id": "t01-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t01-photo",
+            "type": "image",
+            "alt": "Fotografia do casal com margem creme"
+          },
+          {
+            "id": "t01-welcome",
+            "type": "text",
+            "text": "Queridos familiares e amigos, queremos partilhar convosco este dia.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t01-date-label",
+            "type": "text",
+            "text": "Sábado, 14 de junho · 16:00",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t01-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true
+          },
+          {
+            "id": "t01-timeline",
+            "type": "timeline",
+            "items": [
+              {
+                "time": "16:00",
+                "label": "Chegada",
+                "icon": "pin"
+              },
+              {
+                "time": "16:30",
+                "label": "Cerimónia",
+                "icon": "heart"
+              },
+              {
+                "time": "18:00",
+                "label": "Cocktail",
+                "icon": "glass"
+              },
+              {
+                "time": "19:30",
+                "label": "Jantar",
+                "icon": "plate"
+              },
+              {
+                "time": "22:00",
+                "label": "Fim",
+                "icon": "star"
+              }
+            ]
+          },
+          {
+            "id": "t01-venue-label",
+            "type": "text",
+            "text": "Onde tudo vai acontecer",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t01-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t01-buttons-map",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "location",
+                "label": "Abrir mapa"
+              },
+              {
+                "action": "gifts",
+                "label": "Desejos"
+              }
+            ]
+          },
+          {
+            "id": "t01-divider-2",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t01-dress-label",
+            "type": "text",
+            "text": "Dress code",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t01-dress",
+            "type": "text",
+            "text": "Tons creme e vinho, com pequenos laços.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t01-gifts",
+            "type": "gifts",
+            "text": "O melhor presente é a vossa presença.",
+            "qr": false
+          },
+          {
+            "id": "t01-countdown",
+            "type": "countdown"
+          },
+          {
+            "id": "t01-closing",
+            "type": "message",
+            "text": "Confirmamos a vossa presença até ao dia do evento.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t01-buttons-rsvp",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "rsvp",
+                "label": "Enviar"
+              }
+            ]
+          },
+          {
+            "id": "t01-ornament-bottom",
+            "type": "ornament",
+            "ornament": "leaf"
+          }
+        ]
+      },
+      "orientation": "strip",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t01-papel-creme",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t03-hacienda-marfim",
+    "name": "Hacienda marfim",
+    "description": "Cartão minimalista elegante em marfim e areia, com monograma, cronograma e QR de presentes.",
+    "sortOrder": 30,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#F7F3EA",
+        "surface": "#E7DDCB",
+        "ink": "#3A322B",
+        "accent": "#8A7761",
+        "muted": "#6F6152"
+      },
+      "fonts": {
+        "display": "serif",
+        "body": "sans"
+      },
+      "ornaments": {
+        "frame": "thin",
+        "corners": "arch",
+        "divider": "line"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "curtain",
+      "pdf": {
+        "frame": "double",
+        "qr_position": "bottom-center",
+        "show_ornaments": true,
+        "qr_label": "Presentes"
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t03-ornament-top",
+            "type": "ornament",
+            "ornament": "arch"
+          },
+          {
+            "id": "t03-monogram",
+            "type": "text",
+            "text": "A  |  J",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t03-title",
+            "type": "title",
+            "text": "Ana & João",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 30
+            }
+          },
+          {
+            "id": "t03-title-caps",
+            "type": "text",
+            "text": "Nos casamos",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11,
+              "color": "#2F2A26"
+            }
+          },
+          {
+            "id": "t03-divider-1",
+            "type": "divider",
+            "variant": "line"
+          },
+          {
+            "id": "t03-photo",
+            "type": "image",
+            "alt": "Fotografia com bordo inferior rasgado"
+          },
+          {
+            "id": "t03-short",
+            "type": "text",
+            "text": "Uma celebração simples e cheia de afeto.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t03-music",
+            "type": "music_video"
+          },
+          {
+            "id": "t03-ceremony",
+            "type": "text",
+            "text": "Cerimónia · 16:00",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t03-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true
+          },
+          {
+            "id": "t03-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t03-reception",
+            "type": "text",
+            "text": "Receção · 18:30",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t03-timeline",
+            "type": "timeline",
+            "items": [
+              {
+                "time": "16:00",
+                "label": "Chegada",
+                "icon": "pin"
+              },
+              {
+                "time": "16:30",
+                "label": "Cerimónia",
+                "icon": "heart"
+              },
+              {
+                "time": "18:00",
+                "label": "Cocktail",
+                "icon": "glass"
+              },
+              {
+                "time": "19:30",
+                "label": "Jantar",
+                "icon": "plate"
+              },
+              {
+                "time": "22:00",
+                "label": "Fim",
+                "icon": "star"
+              }
+            ]
+          },
+          {
+            "id": "t03-dress",
+            "type": "text",
+            "text": "Dress code: três tons — marfim, areia e castanho.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t03-qr",
+            "type": "qr",
+            "label": "O nosso melhor presente",
+            "destination": "custom"
+          },
+          {
+            "id": "t03-gifts",
+            "type": "gifts",
+            "text": "Presentes opcionais; a vossa companhia basta.",
+            "qr": true
+          },
+          {
+            "id": "t03-buttons",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "rsvp",
+                "label": "Confirmar assistência"
+              },
+              {
+                "action": "location",
+                "label": "Ver localização"
+              }
+            ]
+          },
+          {
+            "id": "t03-recommendations",
+            "type": "text",
+            "text": "Recomendações: carro, calçado confortável e câmara.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t03-ornament-bottom",
+            "type": "ornament",
+            "ornament": "arch"
+          }
+        ]
+      },
+      "orientation": "card45",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t03-hacienda-marfim",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t05-foto-desvanece",
+    "name": "Fotografia que desvanece",
+    "description": "Tira moderna em branco, com foto que dissolve no fundo, nomes em script e quatro botões em pílula.",
+    "sortOrder": 50,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#FFFFFF",
+        "surface": "#F7F7F5",
+        "ink": "#2B2B2B",
+        "accent": "#2B2B2B",
+        "muted": "#6B7280"
+      },
+      "fonts": {
+        "display": "script",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "gradient-rings",
+        "divider": "line"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "hero",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "none",
+        "qr_position": "bottom-right",
+        "show_ornaments": false
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t05-photo",
+            "type": "image",
+            "alt": "Fotografia que desvanece em branco"
+          },
+          {
+            "id": "t05-quote",
+            "type": "text",
+            "text": "O amor é a única coisa que se multiplica quando se partilha.",
+            "style": {
+              "fontFamily": "serif",
+              "fontStyle": "italic",
+              "align": "center"
+            }
+          },
+          {
+            "id": "t05-name-1",
+            "type": "title",
+            "text": "Ana",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 38,
+              "align": "right"
+            }
+          },
+          {
+            "id": "t05-name-2",
+            "type": "title",
+            "text": "e João",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 38,
+              "align": "left"
+            }
+          },
+          {
+            "id": "t05-invite",
+            "type": "text",
+            "text": "Convidam para a cerimónia do seu casamento",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10,
+              "align": "center"
+            }
+          },
+          {
+            "id": "t05-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true,
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10,
+              "align": "center"
+            }
+          },
+          {
+            "id": "t05-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t05-click",
+            "type": "text",
+            "text": "Clique nos botões:",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15,
+              "align": "center"
+            }
+          },
+          {
+            "id": "t05-buttons",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "location",
+                "label": "Localização"
+              },
+              {
+                "action": "gifts",
+                "label": "Lista de presentes"
+              },
+              {
+                "action": "rsvp",
+                "label": "Confirmar presença"
+              },
+              {
+                "action": "site",
+                "label": "O nosso site"
+              }
+            ]
+          },
+          {
+            "id": "t05-ornament",
+            "type": "ornament",
+            "ornament": "leaf"
+          }
+        ]
+      },
+      "orientation": "strip",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t05-foto-desvanece",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t08-salvia-eucalipto",
+    "name": "Sálvia e eucalipto",
+    "description": "Tira de jardim em sálvia e creme, com ramos de eucalipto, aguarela e itinerário de atividades.",
+    "sortOrder": 80,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#F7F2E8",
+        "surface": "#CFD8C4",
+        "ink": "#3E4A2F",
+        "accent": "#8C9A7A",
+        "muted": "#5E6B4A"
+      },
+      "fonts": {
+        "display": "script",
+        "body": "cap"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "leaf",
+        "divider": "leaf"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "hero",
+      "open_style": "envelope",
+      "pdf": {
+        "frame": "single",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t08-eucalyptus-top",
+            "type": "ornament",
+            "ornament": "leaf"
+          },
+          {
+            "id": "t08-title",
+            "type": "title",
+            "text": "Rafaela & Josué",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 34
+            }
+          },
+          {
+            "id": "t08-label",
+            "type": "text",
+            "text": "O nosso casamento",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t08-quote",
+            "type": "text",
+            "text": "Tudo o que temos é graça; tudo o que damos é amor.",
+            "style": {
+              "fontFamily": "serif",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "id": "t08-photo",
+            "type": "image",
+            "alt": "Fotografia com bordo inferior rasgado"
+          },
+          {
+            "id": "t08-parents",
+            "type": "text",
+            "text": "Pais do noivo · pais da noiva",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 10
+            }
+          },
+          {
+            "id": "t08-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true,
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t08-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t08-buttons-location",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "location",
+                "label": "Ver localização"
+              }
+            ]
+          },
+          {
+            "id": "t08-watercolor",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t08-itinerary",
+            "type": "text",
+            "text": "Itinerário de atividades",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t08-timeline",
+            "type": "timeline",
+            "items": [
+              {
+                "time": "16:00",
+                "label": "Chegada",
+                "icon": "pin"
+              },
+              {
+                "time": "16:30",
+                "label": "Cerimónia",
+                "icon": "heart"
+              },
+              {
+                "time": "18:00",
+                "label": "Cocktail",
+                "icon": "glass"
+              },
+              {
+                "time": "19:30",
+                "label": "Jantar",
+                "icon": "plate"
+              },
+              {
+                "time": "22:00",
+                "label": "Fim",
+                "icon": "star"
+              }
+            ]
+          },
+          {
+            "id": "t08-seats",
+            "type": "text",
+            "text": "Lugares reservados para a família.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t08-gifts",
+            "type": "gifts",
+            "text": "Sugestão de presente: envelopes.",
+            "qr": true
+          },
+          {
+            "id": "t08-buttons-rsvp",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "rsvp",
+                "label": "Enviar mensagem"
+              }
+            ]
+          },
+          {
+            "id": "t08-adults",
+            "type": "text",
+            "text": "Só adultos, com aviso gentil.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t08-eucalyptus-bottom",
+            "type": "ornament",
+            "ornament": "leaf"
+          },
+          {
+            "id": "t08-photo-final",
+            "type": "image",
+            "alt": "Fotografia final com bordo rasgado"
+          }
+        ]
+      },
+      "orientation": "strip",
+      "previewData": {
+        "title": "Rafaela & Josué",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t08-salvia-eucalipto",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t11-preto-dourado",
+    "name": "Preto e dourado, canto enrolado",
+    "description": "Convite de gala preto e dourado, com cantos enrolados, laço de fita e moldura fina.",
+    "sortOrder": 110,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#121212",
+        "surface": "#1C1A17",
+        "ink": "#D4AF6A",
+        "accent": "#B8903E",
+        "muted": "#C6A970"
+      },
+      "fonts": {
+        "display": "script",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "thin-gold",
+        "corners": "gold-corners",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "curtain",
+      "pdf": {
+        "frame": "double",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t11-corners",
+            "type": "ornament",
+            "ornament": "gold-corners"
+          },
+          {
+            "id": "t11-family",
+            "type": "text",
+            "text": "A família de...",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 22,
+              "color": "#D4AF6A"
+            }
+          },
+          {
+            "id": "t11-host",
+            "type": "text",
+            "text": "Ana",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11,
+              "color": "#D4AF6A"
+            }
+          },
+          {
+            "id": "t11-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t11-invites",
+            "type": "text",
+            "text": "Convida para",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15,
+              "color": "#D4AF6A"
+            }
+          },
+          {
+            "id": "t11-title",
+            "type": "title",
+            "text": "Celebrar",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 42,
+              "color": "#D4AF6A"
+            }
+          },
+          {
+            "id": "t11-children",
+            "type": "text",
+            "text": "dos seus filhos",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 13,
+              "color": "#D4AF6A"
+            }
+          },
+          {
+            "id": "t11-names",
+            "type": "text",
+            "text": "ANA  |  JOÃO",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 20,
+              "color": "#D4AF6A",
+              "letterSpacing": 1.5
+            }
+          },
+          {
+            "id": "t11-divider-2",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t11-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true
+          },
+          {
+            "id": "t11-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t11-details",
+            "type": "text",
+            "text": "Cerimónia e jantar, com música até tarde.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 14
+            }
+          }
+        ]
+      },
+      "orientation": "card45",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t11-preto-dourado",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t13-gradiente-verde-azul",
+    "name": "Gradiente verde-azul gravado",
+    "description": "Cartão A5 com gradiente verde-floresta a azul-marinho, círculos gravados e data empilhada.",
+    "sortOrder": 130,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#1E3A2B",
+        "surface": "#0C1B33",
+        "ink": "#EFE6D6",
+        "accent": "#7FA08A",
+        "muted": "#B9C3B6"
+      },
+      "fonts": {
+        "display": "cap",
+        "body": "sans"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "gradient-rings",
+        "divider": "line"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "single",
+        "qr_position": "bottom-right",
+        "show_ornaments": false
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t13-invite",
+            "type": "text",
+            "text": "Têm a alegria de vos convidar para o seu casamento",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 10,
+              "letterSpacing": 2,
+              "color": "#B9C3B6"
+            }
+          },
+          {
+            "id": "t13-divider-1",
+            "type": "divider",
+            "variant": "line"
+          },
+          {
+            "id": "t13-name-1",
+            "type": "title",
+            "text": "ANA",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 34,
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t13-amp",
+            "type": "text",
+            "text": "&",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 28,
+              "color": "#7FA08A"
+            }
+          },
+          {
+            "id": "t13-name-2",
+            "type": "title",
+            "text": "JOÃO",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 34,
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t13-divider-2",
+            "type": "divider",
+            "variant": "line"
+          },
+          {
+            "id": "t13-stack",
+            "type": "text",
+            "text": "14\nJUNHO\n2026",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 20,
+              "color": "#7FA08A"
+            }
+          },
+          {
+            "id": "t13-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true,
+            "style": {
+              "color": "#B9C3B6",
+              "fontSize": 12
+            }
+          },
+          {
+            "id": "t13-location",
+            "type": "location",
+            "showMap": true,
+            "style": {
+              "color": "#7FA08A"
+            }
+          },
+          {
+            "id": "t13-schedule",
+            "type": "text",
+            "text": "Cerimónia, jantar e festa até ao fim da noite.",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 12,
+              "color": "#B9C3B6"
+            }
+          }
+        ]
+      },
+      "orientation": "a5",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t13-gradiente-verde-azul",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t17-confraternizacao-dourada",
+    "name": "Confraternização dourada",
+    "description": "Story vertical de confraternização, com fitas douradas, balões e título condensado em duas linhas.",
+    "sortOrder": 170,
+    "supportedFields": [
+      "title",
+      "starts_at",
+      "timezone",
+      "location",
+      "message"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#F6F0E6",
+        "surface": "#FFFBF2",
+        "ink": "#7A4B2A",
+        "accent": "#C79A52",
+        "muted": "#6B4A32"
+      },
+      "fonts": {
+        "display": "condensed",
+        "body": "sans"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "ribbons",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "hero",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "none",
+        "qr_position": "bottom-right",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t17-balloons",
+            "type": "ornament",
+            "ornament": "ribbons"
+          },
+          {
+            "id": "t17-title-1",
+            "type": "title",
+            "text": "CONFRA",
+            "style": {
+              "fontFamily": "condensed",
+              "fontSize": 40,
+              "letterSpacing": 1
+            }
+          },
+          {
+            "id": "t17-title-2",
+            "type": "title",
+            "text": "TERNIZAÇÃO",
+            "style": {
+              "fontFamily": "condensed",
+              "fontSize": 40,
+              "letterSpacing": 1
+            }
+          },
+          {
+            "id": "t17-script",
+            "type": "text",
+            "text": "Convite",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 26,
+              "color": "#C79A52"
+            }
+          },
+          {
+            "id": "t17-thanks",
+            "type": "message",
+            "text": "Agradecemos a dedicação de cada pessoa que fez deste ano um sucesso.",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 14
+            }
+          },
+          {
+            "id": "t17-pill",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t17-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true,
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 13
+            }
+          },
+          {
+            "id": "t17-location",
+            "type": "location",
+            "showMap": true,
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 13
+            }
+          },
+          {
+            "id": "t17-invite",
+            "type": "text",
+            "text": "Esperamos-vos para celebrar em conjunto.",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 22,
+              "color": "#C79A52"
+            }
+          },
+          {
+            "id": "t17-buttons",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "rsvp",
+                "label": "Confirmar presença"
+              },
+              {
+                "action": "site",
+                "label": "Site"
+              }
+            ]
+          },
+          {
+            "id": "t17-footer",
+            "type": "text",
+            "text": "A sua logo · @empresa · www.exemplo.ao",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 10,
+              "letterSpacing": 1
+            }
+          }
+        ]
+      },
+      "orientation": "story",
+      "previewData": {
+        "title": "Confraternização",
+        "hostName": "A equipa",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Salão de festas",
+        "message": "Agradecemos a dedicação de cada pessoa que fez deste ano um sucesso.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t17-confraternizacao-dourada",
+        "type": "corporate"
+      }
+    }
+  },
+  {
+    "slug": "t02-envelope-terracota",
+    "name": "Envelope terracota",
+    "description": "Tira boho em terracota e creme, com monograma, leitor de música e contagem decrescente.",
+    "sortOrder": 20,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#785644",
+        "surface": "#FAF6F0",
+        "ink": "#FAF6F0",
+        "accent": "#FAF6F0",
+        "muted": "#E4D6C8"
+      },
+      "fonts": {
+        "display": "script",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "thin",
+        "corners": "leaf",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "envelope",
+      "pdf": {
+        "frame": "double",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t02-envelope",
+            "type": "text",
+            "text": "Ana  |  João",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t02-title",
+            "type": "title",
+            "text": "Ana & João",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 38,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t02-date",
+            "type": "text",
+            "text": "Sábado, 14 de junho · 16:00",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t02-branches",
+            "type": "ornament",
+            "ornament": "leaf"
+          },
+          {
+            "id": "t02-announcement",
+            "type": "message",
+            "text": "Casamo-nos! Juntamos as nossas vidas num novo capítulo.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t02-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t02-photo",
+            "type": "image",
+            "alt": "Fotografia dos noivos com legenda"
+          },
+          {
+            "id": "t02-music",
+            "type": "music_video"
+          },
+          {
+            "id": "t02-blessing",
+            "type": "text",
+            "text": "Que a nossa alegria seja também a vossa.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15,
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "id": "t02-countdown",
+            "type": "countdown"
+          },
+          {
+            "id": "t02-calendar",
+            "type": "text",
+            "text": "14 · junho · 2026",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t02-gallery",
+            "type": "gallery",
+            "urls": []
+          },
+          {
+            "id": "t02-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t02-buttons-location",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "location",
+                "label": "Ver localização"
+              }
+            ]
+          },
+          {
+            "id": "t02-dress",
+            "type": "text",
+            "text": "Código de vestimenta: traje casual elegante.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t02-gifts",
+            "type": "gifts",
+            "text": "Sugestão de presente: envelope ou transferência.",
+            "qr": true
+          },
+          {
+            "id": "t02-qr",
+            "type": "qr",
+            "label": "Dados para presentes",
+            "destination": "custom"
+          },
+          {
+            "id": "t02-buttons-rsvp",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "rsvp",
+                "label": "Confirmar presença"
+              }
+            ]
+          },
+          {
+            "id": "t02-kids",
+            "type": "text",
+            "text": "Sem crianças, com todo o carinho.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t02-final",
+            "type": "ornament",
+            "ornament": "leaf"
+          }
+        ]
+      },
+      "orientation": "strip",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t02-envelope-terracota",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t04-marfim-folhas",
+    "name": "Marfim com folhas",
+    "description": "Variante delicada do cartão marfim, com ramo de folhas, bordo rasgado e QR sobre faixa bege.",
+    "sortOrder": 40,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#F5F1EA",
+        "surface": "#D9CBB6",
+        "ink": "#332F2A",
+        "accent": "#8D7F70",
+        "muted": "#6F6459"
+      },
+      "fonts": {
+        "display": "serif",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "leaf",
+        "divider": "leaf"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "envelope",
+      "pdf": {
+        "frame": "single",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t04-monogram-leaves",
+            "type": "ornament",
+            "ornament": "leaf"
+          },
+          {
+            "id": "t04-monogram",
+            "type": "text",
+            "text": "A  |  J",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t04-title",
+            "type": "title",
+            "text": "Ana & João",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 29
+            }
+          },
+          {
+            "id": "t04-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t04-photo",
+            "type": "image",
+            "alt": "Fotografia com bordo rasgado branco"
+          },
+          {
+            "id": "t04-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true
+          },
+          {
+            "id": "t04-ceremony",
+            "type": "text",
+            "text": "Cerimónia · 16:00",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t04-reception",
+            "type": "text",
+            "text": "Receção · 18:30",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t04-timeline",
+            "type": "timeline",
+            "items": [
+              {
+                "time": "16:00",
+                "label": "Chegada",
+                "icon": "pin"
+              },
+              {
+                "time": "16:30",
+                "label": "Cerimónia",
+                "icon": "heart"
+              },
+              {
+                "time": "18:00",
+                "label": "Cocktail",
+                "icon": "glass"
+              },
+              {
+                "time": "19:30",
+                "label": "Jantar",
+                "icon": "plate"
+              },
+              {
+                "time": "22:00",
+                "label": "Fim",
+                "icon": "star"
+              }
+            ]
+          },
+          {
+            "id": "t04-qr",
+            "type": "qr",
+            "label": "Presentes",
+            "destination": "custom"
+          },
+          {
+            "id": "t04-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t04-buttons-location",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "location",
+                "label": "Ver localização"
+              }
+            ]
+          },
+          {
+            "id": "t04-recommendations",
+            "type": "text",
+            "text": "Carro · calçado confortável · câmara",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t04-final-leaves",
+            "type": "ornament",
+            "ornament": "leaf"
+          }
+        ]
+      },
+      "orientation": "card45",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t04-marfim-folhas",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t06-bordo-envelope",
+    "name": "Bordô com envelope",
+    "description": "Tira clássica bordô e rosa seco, com aba de envelope, leitor de música e itinerário alternado.",
+    "sortOrder": 60,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#5B2030",
+        "surface": "#F3EEE8",
+        "ink": "#F3EEE8",
+        "accent": "#8A4A57",
+        "muted": "#D8C3C8"
+      },
+      "fonts": {
+        "display": "script",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "thin-gold",
+        "corners": "leaf",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "envelope",
+      "pdf": {
+        "frame": "double",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t06-envelope",
+            "type": "text",
+            "text": "M  |  M",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t06-title",
+            "type": "title",
+            "text": "Ana & João",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 38,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t06-date",
+            "type": "text",
+            "text": "Sábado, 06 de dezembro · 16:00",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t06-floral-1",
+            "type": "ornament",
+            "ornament": "leaf"
+          },
+          {
+            "id": "t06-quote",
+            "type": "text",
+            "text": "O senhor é o meu pastor; nada me faltará.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15,
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "id": "t06-monogram",
+            "type": "text",
+            "text": "A  |  J",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t06-married",
+            "type": "text",
+            "text": "Nos casamos!",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 26,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t06-photo",
+            "type": "image",
+            "alt": "Fotografia retangular do casal"
+          },
+          {
+            "id": "t06-floral-2",
+            "type": "ornament",
+            "ornament": "leaf"
+          },
+          {
+            "id": "t06-music",
+            "type": "music_video"
+          },
+          {
+            "id": "t06-parents",
+            "type": "text",
+            "text": "As famílias unem as suas vidas no sacramento do matrimónio.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t06-countdown",
+            "type": "countdown"
+          },
+          {
+            "id": "t06-big-date",
+            "type": "text",
+            "text": "Sábado · 06 · dezembro",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 16
+            }
+          },
+          {
+            "id": "t06-gallery",
+            "type": "gallery",
+            "urls": []
+          },
+          {
+            "id": "t06-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t06-buttons-location",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "location",
+                "label": "Ver localização"
+              }
+            ]
+          },
+          {
+            "id": "t06-timeline",
+            "type": "timeline",
+            "items": [
+              {
+                "time": "16:00",
+                "label": "Chegada",
+                "icon": "pin"
+              },
+              {
+                "time": "16:30",
+                "label": "Cerimónia",
+                "icon": "heart"
+              },
+              {
+                "time": "18:00",
+                "label": "Cocktail",
+                "icon": "glass"
+              },
+              {
+                "time": "19:30",
+                "label": "Jantar",
+                "icon": "plate"
+              },
+              {
+                "time": "22:00",
+                "label": "Fim",
+                "icon": "star"
+              }
+            ]
+          },
+          {
+            "id": "t06-dress",
+            "type": "text",
+            "text": "Código de vestimenta: evitar preto e branco.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t06-gifts",
+            "type": "gifts",
+            "text": "Sugestão de presentes e alojamento.",
+            "qr": true
+          },
+          {
+            "id": "t06-buttons-rsvp",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "rsvp",
+                "label": "Confirmar assistência"
+              }
+            ]
+          },
+          {
+            "id": "t06-photo-final",
+            "type": "image",
+            "alt": "Fotografia final"
+          }
+        ]
+      },
+      "orientation": "strip",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t06-bordo-envelope",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t07-preto-branco-rasgado",
+    "name": "Preto e branco, papel rasgado",
+    "description": "Tira urbana a preto e branco, com bordas rasgadas, contagem decrescente e botões pretos.",
+    "sortOrder": 70,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#FBFAF7",
+        "surface": "#FFFFFF",
+        "ink": "#111111",
+        "accent": "#111111",
+        "muted": "#5C5C5C"
+      },
+      "fonts": {
+        "display": "sans",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "none",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "hero",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "none",
+        "qr_position": "bottom-right",
+        "show_ornaments": false
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t07-cover",
+            "type": "image",
+            "alt": "Fotografia de capa a preto e branco"
+          },
+          {
+            "id": "t07-title",
+            "type": "title",
+            "text": "Nos casamos",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t07-missing",
+            "type": "text",
+            "text": "Faltam:",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10
+            }
+          },
+          {
+            "id": "t07-countdown",
+            "type": "countdown"
+          },
+          {
+            "id": "t07-wait",
+            "type": "text",
+            "text": "Esperamos-vos para celebrar",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t07-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true
+          },
+          {
+            "id": "t07-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t07-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t07-buttons",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "location",
+                "label": "Como chegar"
+              },
+              {
+                "action": "rsvp",
+                "label": "Confirmar"
+              }
+            ]
+          },
+          {
+            "id": "t07-timeline",
+            "type": "timeline",
+            "items": [
+              {
+                "time": "16:00",
+                "label": "Chegada",
+                "icon": "pin"
+              },
+              {
+                "time": "16:30",
+                "label": "Cerimónia",
+                "icon": "heart"
+              },
+              {
+                "time": "18:00",
+                "label": "Cocktail",
+                "icon": "glass"
+              },
+              {
+                "time": "19:30",
+                "label": "Jantar",
+                "icon": "plate"
+              },
+              {
+                "time": "22:00",
+                "label": "Fim",
+                "icon": "star"
+              }
+            ]
+          },
+          {
+            "id": "t07-photo",
+            "type": "image",
+            "alt": "Segunda fotografia com bordo rasgado"
+          },
+          {
+            "id": "t07-social",
+            "type": "text",
+            "text": "Partilhe com a hashtag do evento.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t07-buttons-social",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "share",
+                "label": "@o-nosso-dia"
+              }
+            ]
+          },
+          {
+            "id": "t07-playlist",
+            "type": "music_video"
+          }
+        ]
+      },
+      "orientation": "strip",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t07-preto-branco-rasgado",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t09-arco-bordo-dourado",
+    "name": "Arco bordô e dourado",
+    "description": "Cartão com arco dourado sobre bordô, nomes em script e faixa bordô para a cerimónia.",
+    "sortOrder": 90,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#7A1230",
+        "surface": "#F7F3F1",
+        "ink": "#F7F3F1",
+        "accent": "#C9A55B",
+        "muted": "#E7D4D9"
+      },
+      "fonts": {
+        "display": "script",
+        "body": "sans"
+      },
+      "ornaments": {
+        "frame": "thin-gold",
+        "corners": "arch",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "envelope",
+      "pdf": {
+        "frame": "double",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t09-arch",
+            "type": "ornament",
+            "ornament": "arch"
+          },
+          {
+            "id": "t09-families",
+            "type": "text",
+            "text": "Juntamente com as suas famílias",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t09-title",
+            "type": "title",
+            "text": "Ana & João",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 38,
+              "color": "#C9A55B"
+            }
+          },
+          {
+            "id": "t09-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t09-request",
+            "type": "text",
+            "text": "Pedem a sua presença na cerimónia de casamento",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t09-band",
+            "type": "text",
+            "text": "Celebração de casamento",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10,
+              "color": "#C9A55B"
+            }
+          },
+          {
+            "id": "t09-day",
+            "type": "text",
+            "text": "14",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 36,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t09-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true,
+            "style": {
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t09-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t09-buttons",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "rsvp",
+                "label": "RSVP"
+              }
+            ]
+          },
+          {
+            "id": "t09-contacts",
+            "type": "text",
+            "text": "Confirmação: 923 000 000 · 924 000 000",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15,
+              "color": "#FFFFFF"
+            }
+          }
+        ]
+      },
+      "orientation": "card45",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t09-arco-bordo-dourado",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t10-forma-organica-verde",
+    "name": "Forma orgânica verde e dourado",
+    "description": "Cartão verde-floresta com forma orgânica creme, fio dourado e selo de cera.",
+    "sortOrder": 100,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#2F3A2A",
+        "surface": "#EFE7DA",
+        "ink": "#EFE7DA",
+        "accent": "#B8975A",
+        "muted": "#C8CBB4"
+      },
+      "fonts": {
+        "display": "cap",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "organic",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "single",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t10-verse",
+            "type": "text",
+            "text": "O amor é paciente, o amor é bondoso.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15,
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "id": "t10-families",
+            "type": "text",
+            "text": "Juntamente com as suas famílias",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t10-name-1",
+            "type": "title",
+            "text": "ANA",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 32,
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t10-amp",
+            "type": "text",
+            "text": "&",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 28,
+              "color": "#B8975A"
+            }
+          },
+          {
+            "id": "t10-name-2",
+            "type": "title",
+            "text": "JOÃO",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 32,
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t10-honour",
+            "type": "text",
+            "text": "Solicitam a honra da sua presença",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t10-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true,
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t10-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t10-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t10-blessing",
+            "type": "text",
+            "text": "Com a bênção das nossas famílias.",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 20
+            }
+          },
+          {
+            "id": "t10-seal",
+            "type": "ornament",
+            "ornament": "organic"
+          }
+        ]
+      },
+      "orientation": "card45",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t10-forma-organica-verde",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t12-papel-recortado-rosa",
+    "name": "Papel recortado rosa e pérola",
+    "description": "Cartão pérola com relevo de papel recortado em camadas, texto alinhado à direita e RSVP.",
+    "sortOrder": 120,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#F6F1EE",
+        "surface": "#C9A596",
+        "ink": "#4A2F24",
+        "accent": "#C9A596",
+        "muted": "#553529"
+      },
+      "fonts": {
+        "display": "script",
+        "body": "sans"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "organic",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "single",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t12-paper-flowers",
+            "type": "ornament",
+            "ornament": "organic"
+          },
+          {
+            "id": "t12-families",
+            "type": "text",
+            "text": "As famílias convidam para o matrimónio dos seus filhos",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 11,
+              "align": "right"
+            }
+          },
+          {
+            "id": "t12-title",
+            "type": "title",
+            "text": "Ana & João",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 34
+            }
+          },
+          {
+            "id": "t12-month",
+            "type": "text",
+            "text": "ABRIL",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 16,
+              "align": "right"
+            }
+          },
+          {
+            "id": "t12-day",
+            "type": "text",
+            "text": "14",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "fontSize": 44,
+              "align": "right"
+            }
+          },
+          {
+            "id": "t12-datetime",
+            "type": "datetime",
+            "showDate": false,
+            "showTime": true,
+            "style": {
+              "align": "right"
+            }
+          },
+          {
+            "id": "t12-location",
+            "type": "location",
+            "showMap": true,
+            "style": {
+              "align": "right"
+            }
+          },
+          {
+            "id": "t12-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t12-rsvp",
+            "type": "text",
+            "text": "RSVP: 923 000 000 · 924 000 000",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 11,
+              "align": "right"
+            }
+          }
+        ]
+      },
+      "orientation": "card45",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t12-papel-recortado-rosa",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t14-cartao-creme-dourado",
+    "name": "Cartão creme dourado",
+    "description": "Cartão tipográfico creme e dourado, com nomes em serif-caps e dados bancários editáveis.",
+    "sortOrder": 140,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#F3EBDF",
+        "surface": "#FFFFFF",
+        "ink": "#1A1A1A",
+        "accent": "#A9741E",
+        "muted": "#6B5B48"
+      },
+      "fonts": {
+        "display": "cap",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "thin-gold",
+        "corners": "gold-corners",
+        "divider": "line"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "envelope",
+      "pdf": {
+        "frame": "double",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t14-name-1",
+            "type": "title",
+            "text": "ANA",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 36,
+              "color": "#A9741E",
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t14-name-2",
+            "type": "title",
+            "text": "e JOÃO",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 36,
+              "color": "#A9741E",
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t14-subtitle",
+            "type": "text",
+            "text": "Some things are meant to be.",
+            "style": {
+              "fontFamily": "serif",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "id": "t14-divider-1",
+            "type": "divider",
+            "variant": "line"
+          },
+          {
+            "id": "t14-invite",
+            "type": "text",
+            "text": "Convidamo-vos a celebrar o nosso casamento",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t14-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true,
+            "style": {
+              "color": "#A9741E",
+              "fontSize": 18
+            }
+          },
+          {
+            "id": "t14-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t14-gift-details",
+            "type": "text",
+            "text": "Presentes: Banco exemplo · Titular Ana · Referência 000 000",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t14-gifts",
+            "type": "gifts",
+            "text": "Dados bancários editáveis.",
+            "qr": true
+          },
+          {
+            "id": "t14-divider-2",
+            "type": "divider",
+            "variant": "line"
+          },
+          {
+            "id": "t14-confirm",
+            "type": "text",
+            "text": "Confirmar assistência em www.exemplo.ao",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t14-buttons",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "rsvp",
+                "label": "Confirmar"
+              }
+            ]
+          }
+        ]
+      },
+      "orientation": "a5",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t14-cartao-creme-dourado",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t15-digital-premium",
+    "name": "Convite digital premium",
+    "description": "Convite digital minimalista a preto e branco, com nomes empilhados e quatro botões 3D.",
+    "sortOrder": 150,
+    "supportedFields": [
+      "title",
+      "host_name",
+      "starts_at",
+      "timezone",
+      "location",
+      "message",
+      "dress_code"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#F7F6F2",
+        "surface": "#FFFFFF",
+        "ink": "#111111",
+        "accent": "#4A4A4A",
+        "muted": "#5F5F5F"
+      },
+      "fonts": {
+        "display": "cap",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "gradient-rings",
+        "divider": "line"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "hero",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "none",
+        "qr_position": "bottom-right",
+        "show_ornaments": false
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t15-photo",
+            "type": "image",
+            "alt": "Fotografia a preto e branco que dissolve em papel"
+          },
+          {
+            "id": "t15-monogram",
+            "type": "text",
+            "text": "A · J",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 20
+            }
+          },
+          {
+            "id": "t15-name-1",
+            "type": "title",
+            "text": "ANA",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 32,
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t15-amp",
+            "type": "text",
+            "text": "&",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 24
+            }
+          },
+          {
+            "id": "t15-name-2",
+            "type": "title",
+            "text": "JOÃO",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 32,
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t15-quote",
+            "type": "text",
+            "text": "Juntos, um capítulo novo.",
+            "style": {
+              "fontFamily": "serif",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "id": "t15-date-stack",
+            "type": "text",
+            "text": "14\n06\n26",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 28
+            }
+          },
+          {
+            "id": "t15-datetime",
+            "type": "datetime",
+            "showDate": false,
+            "showTime": true
+          },
+          {
+            "id": "t15-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t15-dress",
+            "type": "text",
+            "text": "Traje: esporte fino.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t15-branch",
+            "type": "ornament",
+            "ornament": "leaf"
+          },
+          {
+            "id": "t15-buttons",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "location",
+                "label": "Local da cerimónia"
+              },
+              {
+                "action": "location",
+                "label": "Local da receção"
+              },
+              {
+                "action": "site",
+                "label": "Site dos noivos"
+              },
+              {
+                "action": "rsvp",
+                "label": "Confirmar presença"
+              }
+            ]
+          },
+          {
+            "id": "t15-click",
+            "type": "text",
+            "text": "Clique nos ícones abaixo.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          }
+        ]
+      },
+      "orientation": "strip",
+      "previewData": {
+        "title": "Ana & João",
+        "hostName": "As famílias",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Quinta das Palmeiras",
+        "message": "Queridos familiares e amigos, esperamos-vos para celebrar connosco.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t15-digital-premium",
+        "type": "wedding"
+      }
+    }
+  },
+  {
+    "slug": "t16-envelope-corporativo",
+    "name": "Envelope corporativo",
+    "description": "Convite de gala corporativa com envelope azul-marinho, moldura em gradiente e barra de data.",
+    "sortOrder": 160,
+    "supportedFields": [
+      "title",
+      "starts_at",
+      "timezone",
+      "location",
+      "message"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#0B3A63",
+        "surface": "#FFFFFF",
+        "ink": "#F2F6FA",
+        "accent": "#F2C14E",
+        "muted": "#D9E5EE"
+      },
+      "fonts": {
+        "display": "serif",
+        "body": "sans"
+      },
+      "ornaments": {
+        "frame": "thin",
+        "corners": "gold-corners",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "envelope",
+      "pdf": {
+        "frame": "single",
+        "qr_position": "bottom-right",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t16-logo",
+            "type": "text",
+            "text": "A sua logo",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t16-save-date",
+            "type": "text",
+            "text": "Guarde a data",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 22,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t16-title",
+            "type": "title",
+            "text": "Convite",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 42,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t16-message",
+            "type": "message",
+            "text": "Celebremos juntos os anos que nos trouxeram até aqui.",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 14,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t16-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true
+          },
+          {
+            "id": "t16-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t16-program",
+            "type": "text",
+            "text": "Programa: receção, jantar e música ao vivo.",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 13,
+              "color": "#FFFFFF"
+            }
+          },
+          {
+            "id": "t16-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t16-bar",
+            "type": "text",
+            "text": "SÁBADO · 08 · 13:00",
+            "style": {
+              "fontFamily": "sans",
+              "fontWeight": "bold",
+              "letterSpacing": 2.4,
+              "fontSize": 10,
+              "color": "#F2C14E"
+            }
+          }
+        ]
+      },
+      "orientation": "card45",
+      "previewData": {
+        "title": "A sua empresa",
+        "hostName": "A equipa",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Salão Principal",
+        "message": "Convidamo-vos para a celebração do nosso aniversário.",
+        "dressCode": "Traje de gala",
+        "templateSlug": "t16-envelope-corporativo",
+        "type": "corporate"
+      }
+    }
+  },
+  {
+    "slug": "t18-gala-ouro-carvao",
+    "name": "Gala ouro e carvão",
+    "description": "Convite A4 de gala, com moldura dourada dupla, faixas diagonais e taça de champanhe em traço.",
+    "sortOrder": 180,
+    "supportedFields": [
+      "title",
+      "starts_at",
+      "timezone",
+      "location",
+      "message"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#FAFAFA",
+        "surface": "#FFFFFF",
+        "ink": "#333333",
+        "accent": "#C9A04D",
+        "muted": "#8C6A2D"
+      },
+      "fonts": {
+        "display": "cap",
+        "body": "serif"
+      },
+      "ornaments": {
+        "frame": "double",
+        "corners": "gold-corners",
+        "divider": "ornament"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "framed",
+      "open_style": "curtain",
+      "pdf": {
+        "frame": "double",
+        "qr_position": "bottom-center",
+        "show_ornaments": true
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t18-glass",
+            "type": "ornament",
+            "ornament": "gold-corners"
+          },
+          {
+            "id": "t18-script",
+            "type": "title",
+            "text": "confraternização",
+            "style": {
+              "fontFamily": "script",
+              "fontSize": 34,
+              "color": "#333333"
+            }
+          },
+          {
+            "id": "t18-company",
+            "type": "title",
+            "text": "A SUA EMPRESA",
+            "style": {
+              "fontFamily": "cap",
+              "fontSize": 26,
+              "color": "#C9A04D"
+            }
+          },
+          {
+            "id": "t18-divider-1",
+            "type": "divider",
+            "variant": "ornament"
+          },
+          {
+            "id": "t18-message",
+            "type": "message",
+            "text": "Tem o prazer de vos convidar para a sua gala anual.",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15
+            }
+          },
+          {
+            "id": "t18-day",
+            "type": "text",
+            "text": "SÁBADO",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t18-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true,
+            "style": {
+              "color": "#C9A04D",
+              "fontSize": 20
+            }
+          },
+          {
+            "id": "t18-hours",
+            "type": "text",
+            "text": "ÀS 20H00",
+            "style": {
+              "fontFamily": "cap",
+              "letterSpacing": 1.8,
+              "fontSize": 11
+            }
+          },
+          {
+            "id": "t18-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t18-closing",
+            "type": "text",
+            "text": "Contamos com a sua presença!",
+            "style": {
+              "fontFamily": "serif",
+              "fontSize": 15,
+              "fontStyle": "italic"
+            }
+          }
+        ]
+      },
+      "orientation": "a4",
+      "previewData": {
+        "title": "A sua empresa",
+        "hostName": "A direção",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Salão Nobre",
+        "message": "Tem o prazer de vos convidar para a sua gala anual.",
+        "dressCode": "Traje elegante",
+        "templateSlug": "t18-gala-ouro-carvao",
+        "type": "corporate"
+      }
+    }
+  },
+  {
+    "slug": "t19-conferencia-tecnologica",
+    "name": "Conferência tecnológica",
+    "description": "Convite horizontal azul-marinho para conferências e workshops, com cubos isométricos e oradores.",
+    "sortOrder": 190,
+    "supportedFields": [
+      "title",
+      "starts_at",
+      "timezone",
+      "location",
+      "message"
+    ],
+    "manifest": {
+      "version": 1,
+      "palette": {
+        "bg": "#0A1F5C",
+        "surface": "#12307F",
+        "ink": "#FFFFFF",
+        "accent": "#7FA0FF",
+        "muted": "#D7E0FF"
+      },
+      "fonts": {
+        "display": "anton",
+        "body": "sans"
+      },
+      "ornaments": {
+        "frame": "none",
+        "corners": "geo-dark",
+        "divider": "line"
+      },
+      "layout": {
+        "align": "center",
+        "blocks": [
+          "title",
+          "host",
+          "datetime",
+          "location",
+          "message"
+        ]
+      },
+      "cover": "none",
+      "open_style": "fade",
+      "pdf": {
+        "frame": "none",
+        "qr_position": "bottom-right",
+        "show_ornaments": false
+      },
+      "document": {
+        "version": 2,
+        "blocks": [
+          {
+            "id": "t19-logo",
+            "type": "text",
+            "text": "A sua logo",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 10,
+              "letterSpacing": 2
+            }
+          },
+          {
+            "id": "t19-subtitle",
+            "type": "text",
+            "text": "TECHNOLOGY",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 11,
+              "letterSpacing": 4
+            }
+          },
+          {
+            "id": "t19-title",
+            "type": "title",
+            "text": "CONFERENCE",
+            "style": {
+              "fontFamily": "anton",
+              "fontSize": 44,
+              "letterSpacing": 1
+            }
+          },
+          {
+            "id": "t19-speakers",
+            "type": "text",
+            "text": "Orador A · Oradora B · Orador C",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 13
+            }
+          },
+          {
+            "id": "t19-divider-1",
+            "type": "divider",
+            "variant": "line"
+          },
+          {
+            "id": "t19-info",
+            "type": "text",
+            "text": "Visitantes · Datas · Local",
+            "style": {
+              "fontFamily": "sans",
+              "fontSize": 12,
+              "letterSpacing": 1
+            }
+          },
+          {
+            "id": "t19-datetime",
+            "type": "datetime",
+            "showDate": true,
+            "showTime": true
+          },
+          {
+            "id": "t19-location",
+            "type": "location",
+            "showMap": true
+          },
+          {
+            "id": "t19-buttons",
+            "type": "buttons",
+            "buttons": [
+              {
+                "action": "site",
+                "label": "Mais informação em www.exemplo.ao"
+              }
+            ]
+          },
+          {
+            "id": "t19-cubes",
+            "type": "ornament",
+            "ornament": "geo-dark"
+          }
+        ]
+      },
+      "orientation": "landscape",
+      "previewData": {
+        "title": "Conference",
+        "hostName": "A equipa de tecnologia",
+        "startsAt": "2026-06-14T16:00:00.000Z",
+        "city": "Luanda",
+        "venue": "Auditório Principal",
+        "message": "Três oradores, uma tarde de ideias e práticas para levar à equipa.",
+        "dressCode": "Traje casual",
+        "templateSlug": "t19-conferencia-tecnologica",
+        "type": "other"
+      }
+    }
+  }
+]
