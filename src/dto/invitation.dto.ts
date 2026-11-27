@@ -229,6 +229,7 @@ export function toGuestInvitationDto(invitation: AccountInvitation): GuestInvita
         latitude: invitation.eventLocation.latitude ?? null,
         longitude: invitation.eventLocation.longitude ?? null,
         place_label: invitation.eventLocation.placeLabel ?? null,
+        place_name: invitation.eventLocation.placeName ?? null,
       },
     },
   };

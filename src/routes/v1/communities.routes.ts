@@ -5,15 +5,25 @@ import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
 import { writeLimiter } from '../../middlewares/rateLimiter';
 import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
 import { requireVerifiedEmail } from '../../middlewares/requireVerifiedEmail';
+import {
+  uploadCommunityAvatar,
+  uploadCommunityCover,
+} from '../../middlewares/uploadEntityImage';
 import { validate } from '../../middlewares/validate';
 import {
   answerInviteSchema,
   changeCommunityRoleSchema,
+  communityActivityBodySchema,
+  communityAvatarSchema,
+  communityCoverSchema,
   communityIdParamsSchema,
   communityListQuerySchema,
   communityMemberParamsSchema,
+  communityEventSuggestionBodySchema,
+  communityEventSuggestionParamsSchema,
   communityRequestParamsSchema,
   createCommunitySchema,
+  decideEventSuggestionSchema,
   decideJoinRequestSchema,
   deleteCommunitySchema,
   inviteCommunityMemberSchema,
@@ -71,6 +81,46 @@ router.patch(
   validate({ params: communityIdParamsSchema, body: updateCommunitySchema }),
   asyncHandler(communityController.update)
 );
+
+router.post(
+  '/:communityId/avatar',
+  ...write,
+  validate({ params: communityIdParamsSchema, body: communityAvatarSchema }),
+  asyncHandler(communityController.setAvatarUrl)
+);
+router.post(
+  '/:communityId/avatar/upload',
+  ...write,
+  validate({ params: communityIdParamsSchema }),
+  uploadCommunityAvatar,
+  asyncHandler(communityController.uploadAvatar)
+);
+router.delete(
+  '/:communityId/avatar',
+  ...write,
+  validate({ params: communityIdParamsSchema }),
+  asyncHandler(communityController.removeAvatar)
+);
+router.post(
+  '/:communityId/cover',
+  ...write,
+  validate({ params: communityIdParamsSchema, body: communityCoverSchema }),
+  asyncHandler(communityController.setCoverUrl)
+);
+router.post(
+  '/:communityId/cover/upload',
+  ...write,
+  validate({ params: communityIdParamsSchema }),
+  uploadCommunityCover,
+  asyncHandler(communityController.uploadCover)
+);
+router.delete(
+  '/:communityId/cover',
+  ...write,
+  validate({ params: communityIdParamsSchema }),
+  asyncHandler(communityController.removeCover)
+);
+
 router.delete(
   '/:communityId',
   ...write,
@@ -132,6 +182,55 @@ router.post(
   ...write,
   validate({ params: communityRequestParamsSchema, body: decideJoinRequestSchema }),
   asyncHandler(communityController.decideJoinRequest)
+);
+
+router.post(
+  '/:communityId/event-suggestions',
+  ...write,
+  validate({
+    params: communityIdParamsSchema,
+    body: communityEventSuggestionBodySchema,
+  }),
+  asyncHandler(communityController.suggestEvent)
+);
+// `/mine` antes de qualquer rota com `:suggestionId`.
+router.get(
+  '/:communityId/event-suggestions/mine',
+  ...read,
+  validate({ params: communityIdParamsSchema }),
+  asyncHandler(communityController.listMyEventSuggestions)
+);
+router.get(
+  '/:communityId/event-suggestions',
+  ...read,
+  validate({ params: communityIdParamsSchema }),
+  asyncHandler(communityController.listPendingEventSuggestions)
+);
+router.post(
+  '/:communityId/event-suggestions/:suggestionId/decision',
+  ...write,
+  validate({ params: communityEventSuggestionParamsSchema, body: decideEventSuggestionSchema }),
+  asyncHandler(communityController.decideEventSuggestion)
+);
+router.delete(
+  '/:communityId/event-suggestions/:suggestionId',
+  ...write,
+  validate({ params: communityEventSuggestionParamsSchema }),
+  asyncHandler(communityController.cancelEventSuggestion)
+);
+
+// Feed de actividade: acção "Partilhar" do feed de eventos.
+router.post(
+  '/:communityId/activity',
+  ...write,
+  validate({ params: communityIdParamsSchema, body: communityActivityBodySchema }),
+  asyncHandler(communityController.shareActivity)
+);
+router.get(
+  '/:communityId/activity',
+  ...read,
+  validate({ params: communityIdParamsSchema }),
+  asyncHandler(communityController.listActivity)
 );
 
 router.post(

@@ -28,6 +28,9 @@ export const updateInstitutionSchema = z
   .partial()
   .refine((value) => Object.keys(value).length > 0, { message: 'Indique pelo menos um campo para atualizar.' });
 
+export const institutionAvatarSchema = z.object({ avatar_url: z.url().max(2048) }).strict();
+export const institutionCoverSchema = z.object({ cover_url: z.url().max(2048) }).strict();
+
 export const deleteInstitutionSchema = z.object({ confirm_name: z.string().max(200) }).strict();
 export const communityRefSchema = z.object({ community_id: z.uuid('Comunidade inválida.') }).strict();
 export const otpCodeSchema = z.object({ code: z.string().trim().regex(/^\d{6}$/, 'Código inválido.') }).strict();

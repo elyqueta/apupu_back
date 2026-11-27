@@ -1,5 +1,6 @@
 import { toInvitationDto } from '../dto/invitation.dto';
 import { templateRepository } from '../repositories/template.repository';
+import { communityRepository } from '../repositories/community.repository';
 import { parseManifest } from '../types/templateManifest';
 import { renderInvitationPdf } from './pdf/invitationDocument';
 import { Readable } from 'node:stream';
@@ -170,11 +171,16 @@ export const reportExportService = {
       }
 
       const template = event.templateId ? await templateRepository.findById(event.templateId) : null;
+      // Num evento de comunidade quem convida é a comunidade, não o anfitrião individual.
+      const communityName = event.communityId
+        ? await communityRepository.findNameById(event.communityId)
+        : null;
       const body = await renderInvitationPdf(
         event,
         invitation,
         parseManifest(template?.manifest),
-        toInvitationDto(invitation).invitation_url
+        toInvitationDto(invitation).invitation_url,
+        communityName
       );
       return pdfExport(body, eventPdfFilename('convite', event, generatedAt));
     }

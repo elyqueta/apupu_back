@@ -4,7 +4,7 @@ export const EVENT_STATUSES = ['draft', 'scheduled', 'cancelled', 'completed'] a
 export type EventStatus = (typeof EVENT_STATUSES)[number];
 
 /** Papel de quem está a gerir o evento. */
-export const EVENT_ACCESS_ROLES = ['host', 'manager'] as const;
+export const EVENT_ACCESS_ROLES = ['host', 'manager', 'communityMember'] as const;
 export type EventAccessRole = (typeof EVENT_ACCESS_ROLES)[number];
 
 
@@ -36,6 +36,7 @@ export interface EventLocation {
   latitude?: number | null;
   longitude?: number | null;
   placeLabel?: string | null;
+  placeName?: string | null;
 }
 
 export interface EventTheme {

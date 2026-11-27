@@ -61,6 +61,7 @@ const locationSchema = z.discriminatedUnion('type', [
       latitude: z.number().min(-90).max(90).nullable().optional(),
       longitude: z.number().min(-180).max(180).nullable().optional(),
       place_label: optionalText(200),
+      place_name: optionalText(200),
     })
     .strict()
     .refine((value) => (value.latitude == null) === (value.longitude == null), {

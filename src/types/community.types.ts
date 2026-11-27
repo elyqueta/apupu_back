@@ -8,6 +8,7 @@ export type CommunityRole = (typeof COMMUNITY_ROLES)[number];
 
 export type CommunityMemberStatus = 'active' | 'invited' | 'left' | 'removed';
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type EventSuggestionStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export type TransferStatus =
   | 'pending_otp'
   | 'pending_accept'
@@ -24,6 +25,9 @@ export interface Community {
   ownerId: string;
   avatarUrl: string | null;
   coverUrl: string | null;
+  /** IDs do Cloudinary, usados apenas para limpar a imagem anterior. */
+  avatarPublicId?: string | null;
+  coverPublicId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -72,6 +76,29 @@ export interface CommunityJoinRequest {
   createdAt: Date;
 }
 
+/**
+ * Sugestão de evento: o payload guarda o corpo completo aceite por
+ * `createEventSchema` (evento + convidados) para recriar o evento na
+ * aprovação. Nunca é exposto nos DTOs de listagem.
+ */
+export interface CommunityEventSuggestion {
+  id: string;
+  communityId: string;
+  hostId: string;
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  title: string;
+  payload: Record<string, unknown>;
+  message: string | null;
+  status: EventSuggestionStatus;
+  decidedBy: string | null;
+  decidedAt: Date | null;
+  eventId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface CommunityTransfer {
   id: string;
   communityId: string;
@@ -102,6 +129,19 @@ export interface CommunityEventSummary {
   publicSlug: string | null;
   coverUrl: string | null;
   acceptedCount: number;
+}
+
+/** Entrada do feed da comunidade (acção "Partilhar"). */
+export interface CommunityActivity {
+  id: string;
+  communityId: string;
+  hostId: string;
+  hostName: string | null;
+  hostAvatarUrl: string | null;
+  eventId: string;
+  eventTitle: string;
+  eventSlug: string | null;
+  createdAt: Date;
 }
 
 export interface CommunityTeamSummary {

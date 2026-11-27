@@ -1,4 +1,4 @@
-import { Event, EventStats } from '../types/event.types';
+import { Event, EventAccessRole, EventStats } from '../types/event.types';
 import { HostPublicContact } from '../types/host.types';
 import { links } from '../utils/links.util';
 
@@ -27,6 +27,7 @@ export interface EventLocationDto {
   latitude: number | null;
   longitude: number | null;
   place_label: string | null;
+  place_name: string | null;
 }
 
 export interface EventThemeDto {
@@ -66,8 +67,8 @@ export interface EventDto {
   /** Bloco 14: vídeo (só o ID) e mesas. */
   youtube_video_id: string | null;
   use_tables: boolean;
-  /** Papel de quem consulta: `host` ou `manager`. */
-  access_role?: 'host' | 'manager';
+  /** Papel de quem consulta: `host`, `manager` ou membro da comunidade. */
+  access_role?: EventAccessRole;
   created_at: string;
   updated_at: string;
   stats?: {
@@ -121,7 +122,7 @@ function contributionDto(event: Event): ContributionDto {
 export function toEventDto(
   event: Event,
   stats?: EventStats,
-  accessRole?: 'host' | 'manager'
+  accessRole?: EventAccessRole
 ): EventDto {
   return {
     id: event.id,
@@ -140,6 +141,7 @@ export function toEventDto(
       latitude: event.location.latitude ?? null,
       longitude: event.location.longitude ?? null,
       place_label: event.location.placeLabel ?? null,
+      place_name: event.location.placeName ?? null,
     },
     message: event.message,
     rules: event.rules,
@@ -205,6 +207,7 @@ export function toPublicEventDto(
       latitude: event.location.latitude ?? null,
       longitude: event.location.longitude ?? null,
       place_label: event.location.placeLabel ?? null,
+      place_name: event.location.placeName ?? null,
     },
     message: event.message,
     rules: event.rules,

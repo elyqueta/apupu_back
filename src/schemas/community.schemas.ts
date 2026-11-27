@@ -42,6 +42,14 @@ export const updateCommunitySchema = z
     message: 'Indique pelo menos um campo para atualizar.',
   });
 
+export const communityAvatarSchema = z
+  .object({ avatar_url: z.url().max(2048) })
+  .strict();
+
+export const communityCoverSchema = z
+  .object({ cover_url: z.url().max(2048) })
+  .strict();
+
 export const deleteCommunitySchema = z
   .object({ confirm_name: z.string().max(200) })
   .strict();
@@ -68,6 +76,31 @@ export const joinRequestSchema = z
 
 export const decideJoinRequestSchema = z
   .object({ decision: z.enum(['approve', 'reject']) })
+  .strict();
+
+export const communityEventSuggestionParamsSchema = communityIdParamsSchema.extend({
+  suggestionId: z.uuid('Sugestão inválida.'),
+});
+
+/**
+ * O corpo completo do evento é validado no serviço com `createEventSchema`
+ * depois de fixar `event.community_id`; aqui apenas se garante a forma
+ * geral e o tamanho da mensagem.
+ */
+export const communityEventSuggestionBodySchema = z
+  .object({
+    event: z.looseObject({}),
+    guests: z.array(z.unknown()).optional(),
+    message: z.string().trim().max(500).nullable().optional(),
+  })
+  .strict();
+
+export const decideEventSuggestionSchema = z
+  .object({ decision: z.enum(['approve', 'reject']) })
+  .strict();
+
+export const communityActivityBodySchema = z
+  .object({ event_id: z.uuid('Evento inválido.') })
   .strict();
 
 export const answerInviteSchema = z.object({ accept: z.boolean() }).strict();

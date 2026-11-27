@@ -6,6 +6,7 @@ import { Invitation } from '../../types/invitation.types';
 import { TemplateManifest } from '../../types/templateManifest';
 import { formatDisplayDateTime } from '../../utils/exportFormat.util';
 import { links } from '../../utils/links.util';
+import { fitGratitudeTitle } from './gratitude-title';
 import { mm, registerFonts, resolveCatalogFont } from './pdfTheme';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -108,7 +109,7 @@ function drawBackground(doc: PDFKit.PDFDocument, manifest: TemplateManifest): vo
     }
   }
   if (manifest.pdf.show_ornaments && manifest.ornaments.corners !== 'none') {
-    drawCorners(doc, manifest, inset + mm(4));
+    drawOrnaments(doc, manifest, inset + mm(4));
   }
   doc.restore();
 }
@@ -138,14 +139,235 @@ function drawCorners(doc: PDFKit.PDFDocument, manifest: TemplateManifest, offset
 }
 
 function drawDivider(doc: PDFKit.PDFDocument, manifest: TemplateManifest, x: number, width: number): void {
-  if (manifest.ornaments.divider === 'none') return;
+  const kind = manifest.ornaments.divider;
+  if (kind === 'none') return;
   const y = doc.y + mm(2);
   const center = manifest.layout.align === 'center' ? x + width / 2 : x + mm(15);
   doc.save().strokeColor(manifest.palette.accent).fillColor(manifest.palette.accent).lineWidth(0.6);
-  doc.moveTo(center - mm(15), y).lineTo(center + mm(15), y).stroke();
-  if (manifest.ornaments.divider !== 'line') doc.circle(center, y, 1.8).fill();
+  if (kind === 'wave') {
+    const start = center - mm(18);
+    doc.moveTo(start, y);
+    for (let i = 0; i < 3; i += 1) {
+      const x0 = start + i * mm(12);
+      doc.quadraticCurveTo(x0 + mm(3), y - mm(2.2), x0 + mm(6), y);
+      doc.quadraticCurveTo(x0 + mm(9), y + mm(2.2), x0 + mm(12), y);
+    }
+    doc.stroke();
+  } else if (kind === 'leaf') {
+    doc.moveTo(center - mm(15), y).lineTo(center + mm(15), y).stroke();
+    for (const side of [-1, 1]) {
+      doc
+        .moveTo(center + side * mm(2), y)
+        .quadraticCurveTo(center + side * mm(8), y - mm(4), center + side * mm(14), y)
+        .quadraticCurveTo(center + side * mm(8), y + mm(4), center + side * mm(2), y)
+        .fill();
+    }
+  } else {
+    doc.moveTo(center - mm(15), y).lineTo(center + mm(15), y).stroke();
+    if (kind === 'ornament') {
+      doc
+        .moveTo(center, y - mm(3))
+        .lineTo(center + mm(3), y)
+        .lineTo(center, y + mm(3))
+        .lineTo(center - mm(3), y)
+        .closePath()
+        .fill();
+    }
+  }
   doc.restore();
   doc.y = y + mm(4);
+}
+
+/** Bordo de papel rasgado, usado quando o bloco o pede explicitamente. */
+function drawTornEdge(doc: PDFKit.PDFDocument, manifest: TemplateManifest, x: number, width: number): void {
+  const y = doc.y + mm(2);
+  doc.save().strokeColor(manifest.palette.accent).lineWidth(0.8);
+  doc.moveTo(x, y);
+  for (let i = 1; i <= 24; i += 1) {
+    doc.lineTo(x + (width * i) / 24, y + (i % 2 === 0 ? -mm(1.2) : mm(1.2)));
+  }
+  doc.stroke().restore();
+  doc.y = y + mm(4);
+}
+
+/** Pequeno motivo vetorial para um bloco de ornamento do documento v2. */
+function drawOrnamentMotif(
+  doc: PDFKit.PDFDocument,
+  manifest: TemplateManifest,
+  x: number,
+  width: number,
+  kind?: string,
+): void {
+  const y = doc.y + mm(2);
+  const center = manifest.layout.align === 'center' ? x + width / 2 : x + mm(8);
+  doc.save().strokeColor(manifest.palette.accent).fillColor(manifest.palette.accent).lineWidth(0.6);
+  if (kind === 'leaf') {
+    for (const side of [-1, 1]) {
+      doc
+        .moveTo(center, y)
+        .quadraticCurveTo(center + side * mm(6), y - mm(4), center + side * mm(11), y)
+        .quadraticCurveTo(center + side * mm(6), y + mm(4), center, y)
+        .fill();
+    }
+  } else if (kind === 'ribbons') {
+    doc.moveTo(center - mm(12), y).quadraticCurveTo(center - mm(6), y - mm(4), center, y);
+    doc.quadraticCurveTo(center + mm(6), y + mm(4), center + mm(12), y).stroke();
+  } else {
+    doc
+      .moveTo(center, y - mm(3))
+      .lineTo(center + mm(4), y)
+      .lineTo(center, y + mm(3))
+      .lineTo(center - mm(4), y)
+      .closePath()
+      .stroke();
+    doc.circle(center, y, 1.1).fill();
+  }
+  doc.restore();
+  doc.y = y + mm(5);
+}
+
+/** Placeholder vetorial para blocos de imagem/galeria/música sem URL no PDF. */
+function drawMediaPlaceholder(
+  doc: PDFKit.PDFDocument,
+  manifest: TemplateManifest,
+  x: number,
+  width: number,
+  kind: 'image' | 'gallery' | 'music',
+  caption?: string,
+): void {
+  const height = kind === 'gallery' ? mm(16) : mm(20);
+  const y = doc.y + mm(1);
+  doc.save().lineWidth(0.6).strokeColor(manifest.palette.muted);
+  if (kind === 'gallery') {
+    const gap = mm(2);
+    const cell = (width - gap * 2) / 3;
+    for (let i = 0; i < 3; i += 1) doc.rect(x + i * (cell + gap), y, cell, height).stroke();
+  } else {
+    doc.rect(x, y, width, height).stroke();
+    if (kind === 'music') {
+      const cx = x + width / 2;
+      const cy = y + height / 2;
+      doc.circle(cx, cy, mm(5)).stroke();
+      doc
+        .moveTo(cx - mm(1.2), cy - mm(2))
+        .lineTo(cx + mm(2.5), cy)
+        .lineTo(cx - mm(1.2), cy + mm(2))
+        .closePath()
+        .fill();
+    }
+  }
+  if (caption) {
+    doc.fillColor(manifest.palette.muted).font(fontFor('sans', 'regular')).fontSize(8);
+    doc.text(caption, x + mm(2), y + height - mm(6), { width: width - mm(4), align: 'center' });
+  }
+  doc.restore();
+  doc.y = y + height + mm(3);
+}
+
+/**
+ * Ornamentação vetorial usada no PDF para approximar os padrões do convite
+ * digital (T01–T19). São desenhados pelo mesmo manifesto, sem imagens externas.
+ */
+function drawOrnaments(doc: PDFKit.PDFDocument, manifest: TemplateManifest, offset: number): void {
+  const { width, height } = doc.page;
+  const accent = manifest.palette.accent;
+  const surface = manifest.palette.surface;
+  switch (manifest.ornaments.corners) {
+    case 'arch': {
+      const cx = width / 2;
+      const top = offset + mm(18);
+      const w = mm(72);
+      const h = mm(92);
+      doc.save().strokeColor(accent).lineWidth(0.8);
+      for (const inset of [0, mm(3)]) {
+        const aw = w - inset * 2;
+        const ah = h - inset;
+        doc
+          .moveTo(cx - aw / 2, top + ah)
+          .lineTo(cx - aw / 2, top + aw / 2)
+          .quadraticCurveTo(cx, top - aw / 2 + inset, cx + aw / 2, top + aw / 2)
+          .lineTo(cx + aw / 2, top + ah)
+          .stroke();
+      }
+      doc.restore();
+      break;
+    }
+    case 'organic': {
+      doc.save().opacity(0.3).fillColor(surface).strokeColor(accent).lineWidth(0.7);
+      doc
+        .moveTo(width - offset, offset + mm(18))
+        .bezierCurveTo(width - offset - mm(34), offset - mm(6), width - offset - mm(58), offset + mm(34), width - offset - mm(42), offset + mm(62))
+        .bezierCurveTo(width - offset - mm(30), offset + mm(82), width - offset + mm(4), offset + mm(72), width - offset, offset + mm(18))
+        .closePath()
+        .fillAndStroke(surface, accent);
+      doc.restore();
+      break;
+    }
+    case 'gold-corners': {
+      const size = mm(16);
+      doc.save().fillColor(accent).strokeColor(accent).lineWidth(0.7);
+      for (const [x, y, sx, sy] of [
+        [offset, offset, 1, 1],
+        [width - offset, offset, -1, 1],
+        [offset, height - offset, 1, -1],
+        [width - offset, height - offset, -1, -1],
+      ] as Array<[number, number, number, number]>) {
+        doc.moveTo(x, y).lineTo(x + sx * size, y).lineTo(x, y + sy * size).closePath().fill();
+        doc
+          .moveTo(x + sx * mm(3), y + sy * mm(12))
+          .quadraticCurveTo(x + sx * mm(4), y + sy * mm(4), x + sx * mm(12), y + sy * mm(3))
+          .stroke();
+      }
+      doc.restore();
+      break;
+    }
+    case 'ribbons': {
+      doc.save().strokeColor(accent).lineWidth(2.1);
+      for (const side of [-1, 1]) {
+        const x = side < 0 ? offset : width - offset;
+        doc.moveTo(x, offset + mm(12));
+        for (let y = offset + mm(12); y < height - offset - mm(12); y += mm(22)) {
+          doc.quadraticCurveTo(x + side * mm(7), y + mm(11), x, y + mm(22));
+        }
+        doc.stroke();
+      }
+      doc.restore();
+      break;
+    }
+    case 'geo-dark': {
+      const cube = (cx: number, cy: number, s: number) => {
+        doc
+          .moveTo(cx, cy - s)
+          .lineTo(cx + s, cy - s / 2)
+          .lineTo(cx + s, cy + s / 2)
+          .lineTo(cx, cy + s)
+          .lineTo(cx - s, cy + s / 2)
+          .lineTo(cx - s, cy - s / 2)
+          .closePath()
+          .stroke();
+        doc.moveTo(cx, cy - s).lineTo(cx, cy).lineTo(cx + s, cy - s / 2).moveTo(cx, cy).lineTo(cx - s, cy - s / 2).stroke();
+      };
+      doc.save().strokeColor(accent).lineWidth(0.7).opacity(0.65);
+      cube(offset + mm(18), offset + mm(18), mm(10));
+      cube(width - offset - mm(24), height - offset - mm(24), mm(13));
+      doc.restore();
+      break;
+    }
+    case 'gradient-rings': {
+      doc.save().opacity(0.14);
+      const gradient = doc.linearGradient(0, 0, 0, height);
+      gradient.stop(0, manifest.palette.bg).stop(1, surface);
+      doc.rect(0, 0, width, height).fill();
+      doc.restore();
+      doc.save().strokeColor(accent).lineWidth(0.5).opacity(0.45);
+      const cx = width - offset - mm(22);
+      for (let r = mm(7); r <= mm(37); r += mm(6)) doc.circle(cx, height / 2, r).stroke();
+      doc.restore();
+      break;
+    }
+    default:
+      drawCorners(doc, manifest, offset);
+  }
 }
 
 const WHATSAPP_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#1e8a3c"><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.4A10 10 0 1 0 12 2Zm5.2 13.6c-.2.6-1.3 1.1-1.8 1.2-.5 0-1 .3-3.3-.7-2.8-1.2-4.5-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.8s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.5c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.2 1.300 2.500 1.500.3.1.5.1.7-.1l.9-1.100c.2-.3.4-.2.7-.1l1.900.9c.3.1.5.2.6.3.1.2.1.8-.1 1.400Z"/></svg>`;
@@ -191,7 +413,7 @@ async function drawQrWithLogo(
   doc.lineWidth(Math.max(0.6, size * 0.018)).strokeColor(accent);
   doc.roundedRect(x, y, size, size, cardR).fillAndStroke('#FFFFFF', accent);
 
-  SVGtoPDF(doc, scalableSvg, x + quiet, y + quiet, { width: qrSize, height: qrSize, assumePt: true } as any);
+  SVGtoPDF(doc, scalableSvg, x + quiet, y + quiet, { width: qrSize, height: qrSize, assumePt: true });
 
   if (icon !== 'none') {
     const logo = qrSize * 0.22;
@@ -200,7 +422,7 @@ async function drawQrWithLogo(
     doc.roundedRect(lx - 2, ly - 2, logo + 4, logo + 4, 3).fill('#FFFFFF');
     const iconSvg = icon === 'whatsapp' ? WHATSAPP_SVG : symbolSvg();
     try {
-      SVGtoPDF(doc, iconSvg, lx + logo * 0.12, ly + logo * 0.12, { width: logo * 0.76, height: logo * 0.76, assumePt: true } as any);
+      SVGtoPDF(doc, iconSvg, lx + logo * 0.12, ly + logo * 0.12, { width: logo * 0.76, height: logo * 0.76, assumePt: true });
     } catch {
       // ignore icon rendering failure
     }
@@ -213,8 +435,11 @@ async function drawQrWithLogo(
   doc.restore();
 }
 
+/** O slug pode vir em manifestos crus (o schema v1 não o declara). */
+type ManifestWithSlug = TemplateManifest & { templateSlug?: unknown };
+
 function isGratitude(manifest: TemplateManifest): boolean {
-  return manifest.ornaments.frame === 'gratitude' || manifest.ornaments.corners === 'gratitude' || (manifest as any).templateSlug === 'gratitude';
+  return manifest.ornaments.frame === 'gratitude' || manifest.ornaments.corners === 'gratitude' || (manifest as ManifestWithSlug).templateSlug === 'gratitude';
 }
 
 interface GratitudeQrConfig {
@@ -233,7 +458,7 @@ function normalizeQrPhone(raw: string): string {
 }
 
 function resolveQrConfig(manifest: TemplateManifest, invitationUrl: string | null, eventPublicUrl: string | null): GratitudeQrConfig {
-  const pdf = manifest.pdf as any;
+  const pdf = manifest.pdf;
   const label = String(pdf.qr_label || 'Informação').trim() || 'Informação';
   const icon = (pdf.qr_icon === 'none' || pdf.qr_icon === 'whatsapp' || pdf.qr_icon === 'brand') ? pdf.qr_icon : 'brand';
   const size = pdf.qr_size === 'lg' ? 'lg' : 'md';
@@ -291,7 +516,7 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
 
 async function renderGratitudePdf(
   event: EventRecord,
-  _invitation: Invitation,
+  invitation: Invitation,
   manifest: TemplateManifest,
   invitationUrl: string | null
 ): Promise<Buffer> {
@@ -330,68 +555,76 @@ async function renderGratitudePdf(
     ? 'FESTIVAL DE ADOLESCENTES'
     : ({ wedding: 'CELEBRAÇÃO DE CASAMENTO', birthday: 'CELEBRAÇÃO DE ANIVERSÁRIO', corporate: 'EVENTO CORPORATIVO', baby: 'CELEBRAÇÃO FAMILIAR' } as Record<string, string>)[eventType] ?? 'CELEBRAÇÃO ESPECIAL';
   const title = (event.title || 'GRATITUDE').toUpperCase();
+  // A largura medida com a Anton (em pontos, para esse tamanho) é a largura em unidades do canvas:
+  // o SVGtoPDF escreve o Tf nas unidades do viewBox e escala tudo ao desenhar.
+  const titleFit = fitGratitudeTitle(title, (text, fontSize) => {
+    // O PDFKit mede com a fonte/tamanho correntes; as opções não alteram a medição.
+    doc.font('Anton', fontSize);
+    return doc.widthOfString(text);
+  });
   const dress = (event.dressCode || '').toUpperCase().trim();
+  const guestKind = invitation.guestKind ?? null;
+  const guestLabel =
+    guestKind === 'couple' || guestKind === 'family'
+      ? 'Convidados'
+      : guestKind === 'female'
+        ? 'Convidada'
+        : guestKind === 'male'
+          ? 'Convidado'
+          : 'Convidado(a)';
+  const guestName = (invitation.guestName || '').trim();
+  const guestText = guestName ? `${guestLabel}: ${guestName}` : '';
+  const hasGuest = Boolean(guestText);
+  const guestFont = guestText.length > 44 ? 20 : guestText.length > 32 ? 23 : 26;
   const eventPublicUrl = event.publicSlug ? links.publicEvent(event.publicSlug) : null;
   const qrConfig = resolveQrConfig(manifest, invitationUrl, eventPublicUrl);
-  const logoUrl = String((manifest.pdf as any).logo_url || '').trim();
-  const logoShape = (manifest.pdf as any).logo_shape === 'original' ? 'original' : 'circle';
-  const logoSizeKey = (manifest.pdf as any).logo_size === 'sm' ? 'sm' : (manifest.pdf as any).logo_size === 'lg' ? 'lg' : 'md';
+  const logoUrl = String(manifest.pdf.logo_url || '').trim();
+  const logoShape = manifest.pdf.logo_shape === 'original' ? 'original' : 'circle';
+  const logoSizeKey = manifest.pdf.logo_size === 'sm' ? 'sm' : manifest.pdf.logo_size === 'lg' ? 'lg' : 'md';
   const logoPx = { sm: W * 0.14, md: W * 0.16, lg: W * 0.22 }[logoSizeKey];
   const hasLogo = Boolean(logoUrl);
   const hasDress = Boolean(dress);
+  const hasQr = Boolean(qrConfig.url || qrConfig.imageUrl);
 
   // Proportional vertical layout in useful zone (between ribbons).
   const zoneTop = H * 0.10;
   const zoneBottom = H * 0.89;
   const zoneH = zoneBottom - zoneTop;
 
-  // Bottom ribbon curve: M540,1280 C700,1215 900,1110 1024,1000
-  const ribbonBez = (t: number) => {
-    const mt = 1 - t;
-    const x = mt * mt * mt * 540 + 3 * mt * mt * t * 700 + 3 * mt * t * t * 900 + t * t * t * 1024;
-    const y = mt * mt * mt * 1280 + 3 * mt * mt * t * 1215 + 3 * mt * t * t * 1110 + t * t * t * 1000;
-    return { x, y };
-  };
-  const ribbonYAtX = (px: number): number => {
-    // sample bezier; curve x is monotonic increasing here
-    let lo = 0, hi = 1;
-    for (let i = 0; i < 40; i++) {
-      const mid = (lo + hi) / 2;
-      const x = ribbonBez(mid).x;
-      if (x < px) lo = mid; else hi = mid;
-    }
-    return ribbonBez((lo + hi) / 2).y;
-  };
-
   // Group heights (content only; internal gaps fixed)
   const logoH = hasLogo ? logoPx : 0;
   const orgH = H * 0.032;
   const subH = H * 0.042;
   const orgSubGap = H * 0.012; // min 1.2%
-  const orgSubGroupH = orgH + orgSubGap + subH;
+  const guestH = hasGuest ? H * 0.032 : 0;
+  const guestGap = hasGuest ? H * 0.009 : 0;
+  const orgSubGroupH = orgH + orgSubGap + subH + guestGap + guestH;
   const titleH = H * 0.20;
   const yearH = H * 0.046;
   const titleYearGap = H * 0.03; // ~3%, max per spec
   const titleYearGroupH = titleH + titleYearGap + yearH;
   const infoH = H * 0.072;
+  const qrCardSize = hasQr ? (qrConfig.size === 'lg' ? W * 0.155 : W * 0.14) : 0;
+  const qrLegendH = qrCardSize ? 34 : 0; // ~24px font + spacing
+  const qrH = qrCardSize ? qrCardSize + qrLegendH : 0;
   const dressH = hasDress ? H * 0.09 : 0;
 
-  // Groups: [logo?] [org+sub] [title+year] [info] [dress?]
+  // Groups: [logo?] [org+sub] [title+year] [info] [qr?] [dress?]
+  // O QR fica entre a informação (data/hora/local) e o dress code, como no convite digital.
   const groups: number[] = [];
   if (hasLogo) groups.push(logoH);
   groups.push(orgSubGroupH, titleYearGroupH, infoH);
+  if (hasQr) groups.push(qrH);
   if (hasDress) groups.push(dressH);
   const contentH = groups.reduce((a, b) => a + b, 0);
   const gapsCount = Math.max(1, groups.length - 1);
-  let gapBetween = Math.max(H * 0.012, (zoneH - contentH) / gapsCount);
+  const gapBetween = Math.max(H * 0.012, (zoneH - contentH) / gapsCount);
 
-  // Compute info row center with constraints
-  const qrCardSize = (qrConfig.url || qrConfig.imageUrl) ? (qrConfig.size === 'lg' ? W * 0.155 : W * 0.14) : 0;
-  const qrLegendH = qrCardSize ? 34 : 0; // ~24px font + spacing
-  const qrCardH = qrCardSize;
-  const infoRowH = Math.max(infoH, qrCardH + qrLegendH);
+  // A linha de informação já não inclui o QR: três colunas com espaço igual.
+  const infoRowH = infoH;
   const infoCenterWithDress = H * 0.712;
   const infoCenterNoDressMax = H * 0.72;
+  const infoCenterWithQrMax = H * 0.62;
 
   // Place groups with space-evenly, then clamp info row
   const placeGroups = (g: number) => {
@@ -400,28 +633,17 @@ async function renderGratitudePdf(
     for (const gh of groups) { pos.push(yy); yy += gh + g; }
     return pos;
   };
-  let gPositions = placeGroups(gapBetween);
-  let infoGroupIdx = (hasLogo ? 3 : 2);
+  const gPositions = placeGroups(gapBetween);
+  const infoGroupIdx = (hasLogo ? 3 : 2);
   let infoTop = gPositions[infoGroupIdx] ?? 0;
   let infoCenter = infoTop + infoRowH / 2;
-  const desiredInfoCenter = hasDress ? infoCenterWithDress : Math.min(infoCenter, infoCenterNoDressMax);
-  // Clamp info: don't push below desired; but also ensure QR clears ribbon
-  if (hasDress) {
-    infoCenter = desiredInfoCenter;
+  // Clamp da linha de informação; com QR o grupo próprio ocupa a faixa abaixo dela.
+  if (hasQr) {
+    infoCenter = Math.min(infoCenter, infoCenterWithQrMax);
+  } else if (hasDress) {
+    infoCenter = infoCenterWithDress;
   } else {
     infoCenter = Math.min(Math.max(infoCenter, H * 0.62), infoCenterNoDressMax);
-  }
-  // QR ribbon clearance test
-  if (qrCardSize) {
-    const qrBottomMargin = H * 0.012;
-    const qrRight = W * 0.96;
-    for (let tries = 0; tries < 20; tries++) {
-      const qrTop = infoCenter - (qrCardH + qrLegendH) / 2 + qrLegendH;
-      const qrBottom = qrTop + qrCardH + qrBottomMargin;
-      const curveY = ribbonYAtX(qrRight);
-      if (qrBottom <= curveY) break;
-      infoCenter -= H * 0.005;
-    }
   }
   // Rebuild positions: distribute space above info and below info separately
   const infoGroupH = groups[infoGroupIdx] ?? infoH;
@@ -430,29 +652,15 @@ async function renderGratitudePdf(
   const before = groups.slice(0, infoGroupIdx);
   const beforeH = before.reduce((a, b) => a + b, 0);
   const gapsBefore = before.length;
-  let gapBefore = gapsBefore > 0 ? Math.max(H * 0.024, (infoTop - zoneTop - beforeH) / (gapsBefore + 1)) : 0;
+  const gapBefore = gapsBefore > 0 ? Math.max(H * 0.024, (infoTop - zoneTop - beforeH) / (gapsBefore + 1)) : 0;
   // Below info
   const after = groups.slice(infoGroupIdx + 1);
   const afterH = after.reduce((a, b) => a + b, 0);
   const gapsAfter = after.length;
-  let gapAfter = gapsAfter > 0 ? Math.max(H * 0.016, (zoneBottom - (infoTop + infoGroupH) - afterH) / (gapsAfter + 1)) : 0;
-  // If pushing info down violates QR ribbon, pull it up and reduce gapBefore
-  if (qrCardSize) {
-    const qrBottomMargin = H * 0.012;
-    const qrRight = W * 0.96;
-    for (let t = 0; t < 30; t++) {
-      const qrTop = infoCenter - (qrCardH + qrLegendH) / 2 + qrLegendH;
-      const qrBottom = qrTop + qrCardH + qrBottomMargin;
-      if (qrBottom <= ribbonYAtX(qrRight)) break;
-      infoCenter -= H * 0.004;
-      infoTop = infoCenter - infoRowH / 2;
-      gapBefore = gapsBefore > 0 ? Math.max(H * 0.012, (infoTop - zoneTop - beforeH) / (gapsBefore + 1)) : 0;
-      gapAfter = gapsAfter > 0 ? Math.max(H * 0.012, (zoneBottom - (infoTop + infoGroupH) - afterH) / (gapsAfter + 1)) : 0;
-    }
-  }
+  const gapAfter = gapsAfter > 0 ? Math.max(H * 0.016, (zoneBottom - (infoTop + infoGroupH) - afterH) / (gapsAfter + 1)) : 0;
   const infoBottom = infoTop + infoGroupH;
 
-  const finalPos: number[] = new Array(groups.length).fill(0);
+  const finalPos: number[] = new Array<number>(groups.length).fill(0);
   let cy2 = zoneTop + gapBefore;
   for (let i = 0; i < infoGroupIdx; i++) { finalPos[i] = cy2; cy2 += (groups[i] ?? 0) + gapBefore; }
   finalPos[infoGroupIdx] = infoTop;
@@ -466,14 +674,16 @@ async function renderGratitudePdf(
   const orgSubTop = finalPos[gi++] ?? 0;
   const orgYp = orgSubTop + orgH * 0.85;
   const subYp = orgSubTop + orgH + orgSubGap + subH * 0.82;
+  const guestYp = hasGuest ? orgSubTop + orgH + orgSubGap + subH + guestGap + guestH * 0.76 : 0;
   const titleYearTop = finalPos[gi++] ?? 0;
   const titleTopP = titleYearTop;
   const yearYp = titleYearTop + titleH + titleYearGap + yearH * 0.92;
   gi++; // info
-  const dressY = hasDress ? (finalPos[gi++] ?? 0) + dressH / 2 : 0;
+  const qrTop = hasQr ? (finalPos[gi++] ?? 0) : 0;
+  const dressY = hasDress ? (finalPos[gi] ?? 0) + dressH / 2 : 0;
   const infoYp = infoCenter;
 
-  // Info row: margins ~4%, space-between date/hour/local(flex)/QR
+  // Info row: três colunas de igual largura, data/hora/local distribuídas.
   const infoLeft = W * 0.04;
   const infoRight = W * 0.96;
   const iconW = W * 0.054; // ~5.4%
@@ -481,26 +691,20 @@ async function renderGratitudePdf(
   const dateIconW = iconW;
   const timeIconW = iconW;
   const locIconW = iconW;
-  const qrGap = qrCardSize ? W * 0.02 : 0;
-  const qrCardX = infoRight - qrCardSize;
-  const qrCardY = infoYp - (qrCardH + qrLegendH) / 2 + qrLegendH;
+  const qrCardX = (W - qrCardSize) / 2;
+  const qrCardY = qrTop + qrLegendH;
   const qrPad = qrCardSize * 0.08;
   const qrInner = Math.max(0, qrCardSize - qrPad * 2);
-  const colsRight = qrCardSize ? qrCardX - qrGap : infoRight;
-  const dateTextW = 132;
-  const timeTextW = 116;
-  const dateColW = dateIconW + iconTextGap + dateTextW;
-  const timeColW = timeIconW + iconTextGap + timeTextW;
+  const colW = (infoRight - infoLeft) / 3;
   const col1X = infoLeft;
-  const col2X = infoLeft + dateColW + W * 0.02;
-  const col3X = col2X + timeColW + W * 0.02;
-  const locColW = Math.max(W * 0.18, colsRight - col3X);
-  const sepH = Math.max(H * 0.05, qrCardSize ? (qrCardH - 10) : H * 0.07);
+  const col2X = infoLeft + colW;
+  const col3X = infoLeft + colW * 2;
+  const locColW = colW;
+  const sepH = H * 0.07;
   const sepY1 = infoYp - sepH / 2;
   const sepY2 = infoYp + sepH / 2;
   const sep1X = col2X - W * 0.01;
   const sep2X = col3X - W * 0.01;
-  const sep3X = qrCardSize ? colsRight + qrGap / 2 : 0;
 
   // Location: wrap 2-3 lines, auto-reduce font down to min 12px equivalent (20.6 canvas units)
   const locMinFont = 20.6;
@@ -584,16 +788,17 @@ async function renderGratitudePdf(
 
   <text x="${W / 2}" y="${orgYp}" text-anchor="middle" font-size="31" font-family="Montserrat-Medium" font-weight="500" letter-spacing="7.7" fill="#1B1B1B">${escapeXml(org)}</text>
   <text x="${W / 2}" y="${subYp}" text-anchor="middle" font-size="49" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${escapeXml(subtitle)}</text>
+  ${hasGuest ? `<text data-testid="gratitude-guest" x="${W / 2}" y="${guestYp}" text-anchor="middle" font-size="${guestFont}" font-family="Montserrat-Medium" font-weight="500" letter-spacing="1.1" fill="#6B4E12">${escapeXml(guestText)}</text>` : ''}
 
-  <text x="${W / 2}" y="${titleTopP + titleH * 0.80}" text-anchor="middle" font-size="195" font-family="Anton" font-weight="400" fill="url(#afro)" stroke="#161616" stroke-width="2.2" paint-order="stroke fill" stroke-linejoin="round">${escapeXml(title)}</text>
+  <svg x="0" y="${titleTopP}" width="${W}" height="${titleH}" viewBox="0 0 ${titleFit.viewBoxWidth} ${titleH}" preserveAspectRatio="xMidYMid meet">
+    <text x="${titleFit.viewBoxWidth / 2}" y="${titleH * 0.80}" text-anchor="middle" font-size="${titleFit.fontSize}" font-family="Anton" font-weight="400" fill="url(#afro)" stroke="#161616" stroke-width="2.2" paint-order="stroke fill" stroke-linejoin="round">${escapeXml(title)}</text>
+  </svg>
 
   <text text-anchor="middle" font-size="87" font-family="Montserrat-ExtraBoldItalic" font-style="italic" font-weight="800" fill="#B3121A" transform="translate(${W / 2},${yearYp}) skewX(-8)">${escapeXml(parts.year)}</text>
 
   <g font-family="Montserrat" fill="#111111">
     <line x1="${sep1X}" y1="${sepY1}" x2="${sep1X}" y2="${sepY2}" stroke="#D4A017" stroke-width="1.5"/>
     <line x1="${sep2X}" y1="${sepY1}" x2="${sep2X}" y2="${sepY2}" stroke="#D4A017" stroke-width="1.5"/>
-    ${qrCardBlock ? `<line x1="${sep3X}" y1="${sepY1}" x2="${sep3X}" y2="${sepY2}" stroke="#D4A017" stroke-width="1.5"/>` : ''}
-
     <g transform="translate(${col1X},${infoYp - (iconW * 43 / 44) / 2})">
       <g transform="scale(${iconW / 44})">
         <rect x="0" y="0" width="44" height="38" rx="5" fill="none" stroke="#111111" stroke-width="2.5"/>
@@ -621,8 +826,8 @@ async function renderGratitudePdf(
       <text x="${locIconW + iconTextGap}" y="46" font-size="${locFont}" font-family="Montserrat-Bold" font-weight="700" fill="#111111">${locTspans}</text>
     </g>
 
-    ${qrCardBlock}
   </g>
+  ${qrCardBlock}
   ${dressBlock}
   </svg>`;
 
@@ -676,22 +881,54 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
-type RenderableLine = { block: string; label?: string; text: string; style?: any };
+/** Estilos de bloco usados pelo documento v2 (um subconjunto das opções do PDFKit). */
+interface PdfBlockStyle {
+  align?: PDFKit.Mixins.TextOptions['align'];
+  color?: PDFKit.Mixins.ColorValue;
+  fontFamily?: string;
+  fontWeight?: string;
+  fontSize?: number;
+}
 
-function documentToLines(manifest: TemplateManifest, event: EventRecord, invitation: Invitation): RenderableLine[] | null {
-  const doc = (manifest as any).document;
+type RenderableLine = { block: string; label?: string; text: string; style?: PdfBlockStyle; decoration?: string };
+
+type PdfDocumentBlock = {
+  id?: unknown;
+  type?: unknown;
+  visible?: unknown;
+  text?: unknown;
+  label?: unknown;
+  style?: PdfBlockStyle;
+  items?: unknown;
+  buttons?: unknown;
+  ornament?: unknown;
+  alt?: unknown;
+  variant?: unknown;
+  urls?: unknown;
+  youtubeId?: unknown;
+};
+
+function asText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+export function documentToLines(manifest: TemplateManifest, event: EventRecord, invitation: Invitation): RenderableLine[] | null {
+  const doc = (manifest as { document?: { version?: unknown; blocks?: unknown } }).document;
   if (!doc || doc.version !== 2 || !Array.isArray(doc.blocks)) return null;
   const lines: RenderableLine[] = [];
-  for (const b of doc.blocks as any[]) {
-    if (!b || b.visible === false) continue;
+  for (const raw of doc.blocks) {
+    if (!raw || typeof raw !== 'object') continue;
+    const b = raw as PdfDocumentBlock;
+    if (b.visible === false) continue;
     const style = b.style;
+    const text = asText(b.text);
     switch (b.type) {
       case 'title':
-        lines.push({ block: 'title', text: String(b.text || event.title || ''), style });
+        lines.push({ block: 'title', text: text ?? String(event.title ?? ''), style });
         break;
       case 'text':
       case 'message':
-        if (b.text) lines.push({ block: b.type, label: b.label, text: String(b.text), style });
+        if (text) lines.push({ block: String(b.type), label: asText(b.label), text, style });
         break;
       case 'datetime':
         lines.push({ block: 'datetime', label: 'Quando', text: formatDisplayDateTime(event.startsAt), style });
@@ -702,25 +939,50 @@ function documentToLines(manifest: TemplateManifest, event: EventRecord, invitat
         break;
       }
       case 'dress_code':
-        if (b.text || event.dressCode) lines.push({ block: 'text', label: 'Dress code', text: String(b.text || event.dressCode || ''), style });
+        if (text || event.dressCode) lines.push({ block: 'text', label: 'Dress code', text: text ?? String(event.dressCode ?? ''), style });
         break;
       case 'divider':
-        lines.push({ block: 'divider', text: '', style });
+        lines.push({ block: 'divider', text: '', style, decoration: asText(b.variant) });
+        break;
+      case 'timeline':
+        // O PDF não desenha o eixo, mas preserva horas e etiquetas do documento v2.
+        for (const rawItem of Array.isArray(b.items) ? b.items : []) {
+          if (!rawItem || typeof rawItem !== 'object') continue;
+          const item = rawItem as { time?: unknown; label?: unknown };
+          const itemLabel = asText(item.label);
+          if (itemLabel) lines.push({ block: 'timeline', label: asText(item.time), text: itemLabel, style });
+        }
+        if (text) lines.push({ block: 'text', text, style });
+        break;
+      case 'buttons':
+        // Ações continuam legíveis no PDF (o PDFKit não tem botões interactivos).
+        for (const rawButton of Array.isArray(b.buttons) ? b.buttons : []) {
+          if (!rawButton || typeof rawButton !== 'object') continue;
+          const buttonLabel = asText((rawButton as { label?: unknown }).label);
+          if (buttonLabel) lines.push({ block: 'button', label: 'Ação', text: buttonLabel, style });
+        }
+        if (text) lines.push({ block: 'text', text, style });
+        break;
+      case 'qr':
+        if (text) lines.push({ block: 'text', label: 'QR', text, style });
+        break;
+      case 'gallery': {
+        const count = Array.isArray(b.urls) ? b.urls.length : 0;
+        lines.push({ block: 'gallery', text: text ?? '', decoration: String(count), style });
+        break;
+      }
+      case 'music_video':
+        lines.push({ block: 'music', text: text ?? '', decoration: asText(b.youtubeId), style });
+        break;
+      case 'image':
+        lines.push({ block: 'image', text: text ?? '', decoration: asText(b.alt), style });
+        break;
+      case 'ornament':
+        lines.push({ block: 'ornament', text: text ?? '', decoration: asText(b.ornament), style });
         break;
       case 'countdown':
-      case 'timeline':
-      case 'gifts':
-      case 'image':
-      case 'gallery':
-      case 'music_video':
-      case 'qr':
-      case 'buttons':
-      case 'ornament':
-        // Render simple placeholder/label for unsupported rich blocks in PDF for now
-        if (b.text) lines.push({ block: 'text', text: String(b.text), style });
-        break;
       default:
-        if (b.text) lines.push({ block: 'text', text: String(b.text), style });
+        if (text) lines.push({ block: 'text', text, style });
     }
   }
   // ensure guest/table present
@@ -736,11 +998,16 @@ function documentToLines(manifest: TemplateManifest, event: EventRecord, invitat
 }
 
 export function renderInvitationPdf(
-  event: EventRecord,
+  rawEvent: EventRecord,
   invitation: Invitation,
   manifest: TemplateManifest,
-  invitationUrl: string | null
+  invitationUrl: string | null,
+  /** Evento de comunidade: a comunidade substitui o anfitrião no convite. */
+  communityName?: string | null
 ): Promise<Buffer> {
+  const event: EventRecord = communityName?.trim()
+    ? { ...rawEvent, hostName: communityName.trim() }
+    : rawEvent;
   if (isGratitude(manifest)) {
     return renderGratitudePdf(event, invitation, manifest, invitationUrl);
   }
@@ -779,15 +1046,17 @@ export function renderInvitationPdf(
       doc.text(display === 'cap' ? 'CONVITE' : 'Convite', margin, margin, { width, align, characterSpacing: 2 });
       doc.moveDown(0.8);
 
-      const docLines = documentToLines(manifest, event, invitation) ?? invitationLines(event, invitation, manifest);
-      for (const line of docLines as any[]) {
+      const docLines: RenderableLine[] =
+        documentToLines(manifest, event, invitation) ?? invitationLines(event, invitation, manifest);
+      for (const line of docLines) {
         const st = line.style ?? {};
         const lineAlign = st.align || align;
         const lineColor = st.color || ink;
         const fontRole = st.fontFamily || (line.block === 'title' ? display : body);
         const fontWeight = st.fontWeight === 'bold' ? 'bold' : line.block === 'title' ? 'bold' : 'regular';
         if (line.block === 'divider') {
-          drawDivider(doc, manifest, margin, width);
+          if (line.decoration === 'torn-edge' || line.decoration === 'torn') drawTornEdge(doc, manifest, margin, width);
+          else drawDivider(doc, manifest, margin, width);
           continue;
         }
         if (line.block === 'title') {
@@ -806,14 +1075,48 @@ export function renderInvitationPdf(
           doc.moveDown(0.6);
           continue;
         }
+        if (line.block === 'button') {
+          const size = typeof st.fontSize === 'number' ? st.fontSize : 11.5;
+          doc.font(fontFor(fontRole, 'bold')).fontSize(size);
+          const pillWidth = Math.min(width, doc.widthOfString(line.text) + mm(12));
+          const pillHeight = mm(9);
+          const pillX = lineAlign === 'center' ? margin + (width - pillWidth) / 2 : margin;
+          const pillY = doc.y - mm(1);
+          doc.save().lineWidth(0.8).strokeColor(lineColor).roundedRect(pillX, pillY, pillWidth, pillHeight, mm(4)).stroke();
+          doc.font(fontFor(fontRole, 'bold')).fontSize(size).fillColor(lineColor).text(line.text, pillX, pillY + mm(2.6), {
+            width: pillWidth,
+            align: 'center',
+          });
+          doc.restore();
+          doc.y = pillY + pillHeight + mm(3);
+          continue;
+        }
+        if (line.block === 'ornament') {
+          drawOrnamentMotif(doc, manifest, margin, width, line.decoration);
+          continue;
+        }
+        if (line.block === 'image' || line.block === 'gallery' || line.block === 'music') {
+          const caption = line.decoration ?? line.text;
+          drawMediaPlaceholder(doc, manifest, margin, width, line.block, caption);
+          continue;
+        }
         if (line.block === 'guest') drawDivider(doc, manifest, margin, width);
         if (line.label) {
           doc.font(fontFor(body, 'bold')).fontSize(9).fillColor(accent);
           doc.text(String(line.label).toUpperCase(), margin, doc.y, { width, align: lineAlign, characterSpacing: 1.2 });
         }
+        const isTimeline = line.block === 'timeline';
+        if (isTimeline) {
+          doc.save().fillColor(accent).circle(margin + mm(1.5), doc.y + mm(4), 1.6).fill().restore();
+          doc.save().strokeColor(accent).lineWidth(0.5).moveTo(margin + mm(1.5), doc.y + mm(5.5)).lineTo(margin + mm(1.5), doc.y + mm(13)).stroke().restore();
+        }
         const size = typeof st.fontSize === 'number' ? st.fontSize : line.block === 'guest' ? 15 : 12.5;
         doc.font(fontFor(fontRole, fontWeight)).fontSize(size).fillColor(lineColor);
-        doc.text(line.text, margin, doc.y, { width, align: lineAlign, lineGap: 2 });
+        doc.text(line.text, isTimeline ? margin + mm(6) : margin, doc.y, {
+          width: isTimeline ? width - mm(6) : width,
+          align: lineAlign,
+          lineGap: 2,
+        });
         doc.moveDown(0.7);
       }
 

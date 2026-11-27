@@ -2,6 +2,8 @@ import { PoolClient } from 'pg';
 import { pool, query } from '../database/pool';
 import {
   Community,
+  CommunityActivity,
+  CommunityEventSuggestion,
   CommunityEventSummary,
   CommunityJoinRequest,
   CommunityMember,
@@ -12,6 +14,7 @@ import {
   CommunityTransfer,
   CommunityVisibility,
   CommunityWithStats,
+  EventSuggestionStatus,
   JoinRequestStatus,
   TransferStatus,
 } from '../types/community.types';
@@ -28,6 +31,8 @@ interface CommunityRow {
   owner_id: string;
   avatar_url: string | null;
   cover_url: string | null;
+  avatar_public_id?: string | null;
+  cover_public_id?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -45,7 +50,8 @@ interface CommunityStatsRow extends CommunityRow {
 
 const COMMUNITY_COLUMNS = `
   c.id, c.name, c.slug, c.description, c.visibility, c.owner_id,
-  c.avatar_url, c.cover_url, c.created_at, c.updated_at
+  c.avatar_url, c.cover_url, c.avatar_public_id, c.cover_public_id,
+  c.created_at, c.updated_at
 `;
 
 function toCommunity(row: CommunityRow): Community {
@@ -58,6 +64,8 @@ function toCommunity(row: CommunityRow): Community {
     ownerId: row.owner_id,
     avatarUrl: row.avatar_url,
     coverUrl: row.cover_url,
+    avatarPublicId: row.avatar_public_id ?? null,
+    coverPublicId: row.cover_public_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -182,6 +190,93 @@ function toJoinRequest(row: JoinRequestRow): CommunityJoinRequest {
   };
 }
 
+interface ActivityRow {
+  id: string;
+  community_id: string;
+  host_id: string;
+  host_name: string | null;
+  host_avatar_url: string | null;
+  event_id: string;
+  event_title: string;
+  event_slug: string | null;
+  created_at: Date;
+}
+
+const ACTIVITY_SELECT = `
+  SELECT a.id, a.community_id, a.host_id,
+         COALESCE(NULLIF(btrim(p.display_name), ''), split_part(h.email::text, '@', 1)) AS host_name,
+         p.avatar_url AS host_avatar_url,
+         a.event_id, e.title AS event_title, e.public_slug AS event_slug, a.created_at
+    FROM community_activity a
+    JOIN hosts h ON h.id = a.host_id
+    LEFT JOIN host_profiles p ON p.host_id = a.host_id
+    JOIN events e ON e.id = a.event_id
+`;
+
+function toActivity(row: ActivityRow): CommunityActivity {
+  return {
+    id: row.id,
+    communityId: row.community_id,
+    hostId: row.host_id,
+    hostName: row.host_name,
+    hostAvatarUrl: row.host_avatar_url,
+    eventId: row.event_id,
+    eventTitle: row.event_title,
+    eventSlug: row.event_slug,
+    createdAt: row.created_at,
+  };
+}
+
+interface EventSuggestionRow {
+  id: string;
+  community_id: string;
+  host_id: string;
+  email: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  title: string;
+  payload: Record<string, unknown>;
+  message: string | null;
+  status: EventSuggestionStatus;
+  decided_by: string | null;
+  decided_at: Date | null;
+  event_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+const EVENT_SUGGESTION_SELECT = `
+  SELECT s.id, s.community_id, s.host_id, h.email::text AS email,
+         COALESCE(p.display_name, m.display_name) AS display_name,
+         p.avatar_url, s.title, s.payload, s.message, s.status,
+         s.event_id, s.decided_by, s.decided_at, s.created_at, s.updated_at
+    FROM community_event_suggestions s
+    JOIN hosts h ON h.id = s.host_id
+    LEFT JOIN host_profiles p ON p.host_id = s.host_id
+    LEFT JOIN community_members m
+      ON m.community_id = s.community_id AND m.host_id = s.host_id AND m.status = 'active'
+`;
+
+function toEventSuggestion(row: EventSuggestionRow): CommunityEventSuggestion {
+  return {
+    id: row.id,
+    communityId: row.community_id,
+    hostId: row.host_id,
+    email: row.email,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    title: row.title,
+    payload: row.payload ?? {},
+    message: row.message,
+    status: row.status,
+    decidedBy: row.decided_by,
+    decidedAt: row.decided_at,
+    eventId: row.event_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 interface TransferRow {
   id: string;
   community_id: string;
@@ -256,6 +351,16 @@ export const communityRepository = {
     return row ? toCommunityWithStats(row) : null;
   },
 
+  /** Nome da comunidade para rotular convites de eventos de comunidade. */
+  async findNameById(id: string, client?: Runner): Promise<string | null> {
+    const runner: Runner = client ?? pool;
+    const result = await runner.query<{ name: string }>(
+      'SELECT name FROM communities WHERE id = $1 AND deleted_at IS NULL',
+      [id]
+    );
+    return result.rows[0]?.name ?? null;
+  },
+
   async findBySlug(slug: string, viewerId: string): Promise<CommunityWithStats | null> {
     const result = await query<CommunityStatsRow>(
       `SELECT ${STATS_SELECT} FROM communities c ${ME_JOIN}
@@ -303,7 +408,18 @@ export const communityRepository = {
 
   async update(
     id: string,
-    changes: Partial<Pick<Community, 'name' | 'description' | 'visibility' | 'avatarUrl' | 'coverUrl'>>,
+    changes: Partial<
+      Pick<
+        Community,
+        | 'name'
+        | 'description'
+        | 'visibility'
+        | 'avatarUrl'
+        | 'coverUrl'
+        | 'avatarPublicId'
+        | 'coverPublicId'
+      >
+    >,
     client?: PoolClient
   ): Promise<void> {
     const runner: Runner = client ?? pool;
@@ -313,6 +429,8 @@ export const communityRepository = {
       ['visibility', 'visibility'],
       ['avatarUrl', 'avatar_url'],
       ['coverUrl', 'cover_url'],
+      ['avatarPublicId', 'avatar_public_id'],
+      ['coverPublicId', 'cover_public_id'],
     ];
     const set: string[] = [];
     const values: unknown[] = [];
@@ -524,6 +642,81 @@ export const communityRepository = {
     return (result.rowCount ?? 0) > 0;
   },
 
+  /* ─────────────────────── Sugestões de eventos ─────────────────────────── */
+
+  async createEventSuggestion(
+    data: {
+      communityId: string;
+      hostId: string;
+      title: string;
+      payload: Record<string, unknown>;
+      message: string | null;
+    },
+    client?: PoolClient
+  ): Promise<CommunityEventSuggestion> {
+    const runner: Runner = client ?? pool;
+    const result = await runner.query<{ id: string }>(
+      `INSERT INTO community_event_suggestions (community_id, host_id, title, payload, message)
+       VALUES ($1, $2, $3, $4::jsonb, $5)
+       RETURNING id`,
+      [data.communityId, data.hostId, data.title, JSON.stringify(data.payload), data.message]
+    );
+    const created = await this.findEventSuggestion(result.rows[0]?.id ?? '', client);
+    if (!created) throw new Error('Falha ao criar sugestão de evento.');
+    return created;
+  },
+
+  /** Com `client`, bloqueia a linha para uma decisão atómica. */
+  async findEventSuggestion(id: string, client?: PoolClient): Promise<CommunityEventSuggestion | null> {
+    const runner: Runner = client ?? pool;
+    const result = await runner.query<EventSuggestionRow>(
+      `${EVENT_SUGGESTION_SELECT} WHERE s.id = $1 ${client ? 'FOR UPDATE OF s' : ''}`,
+      [id]
+    );
+    const row = result.rows[0];
+    return row ? toEventSuggestion(row) : null;
+  },
+
+  async listPendingEventSuggestions(communityId: string): Promise<CommunityEventSuggestion[]> {
+    const result = await query<EventSuggestionRow>(
+      `${EVENT_SUGGESTION_SELECT}
+        WHERE s.community_id = $1 AND s.status = 'pending'
+        ORDER BY s.created_at ASC`,
+      [communityId]
+    );
+    return result.rows.map(toEventSuggestion);
+  },
+
+  async listMyEventSuggestions(
+    communityId: string,
+    hostId: string
+  ): Promise<CommunityEventSuggestion[]> {
+    const result = await query<EventSuggestionRow>(
+      `${EVENT_SUGGESTION_SELECT}
+        WHERE s.community_id = $1 AND s.host_id = $2
+        ORDER BY s.created_at DESC`,
+      [communityId, hostId]
+    );
+    return result.rows.map(toEventSuggestion);
+  },
+
+  /** Só transita de `pending`; `eventId` fica ligado ao evento aprovado. */
+  async decideEventSuggestion(
+    id: string,
+    status: Exclude<EventSuggestionStatus, 'pending'>,
+    decidedBy: string,
+    eventId: string | null,
+    client: PoolClient
+  ): Promise<boolean> {
+    const result = await client.query(
+      `UPDATE community_event_suggestions
+          SET status = $2, decided_by = $3, decided_at = now(), updated_at = now(), event_id = $4
+        WHERE id = $1 AND status = 'pending'`,
+      [id, status, decidedBy, eventId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
   /* ─────────────────────── Transferência de responsabilidade ─────────────── */
 
   async createTransfer(
@@ -657,6 +850,74 @@ export const communityRepository = {
       memberCount: Number(row.member_count ?? 0),
       eventCount: Number(row.event_count ?? 0),
     }));
+  },
+
+  /* ──────────────────────────── Feed de actividade ──────────────────────── */
+
+  /** Insere ou devolve a entrada existente (o par é único). */
+  async createCommunityActivity(
+    data: { communityId: string; hostId: string; eventId: string },
+    client?: PoolClient
+  ): Promise<{ activity: CommunityActivity; created: boolean }> {
+    const runner: Runner = client ?? pool;
+    const result = await runner.query<{ id: string }>(
+      `INSERT INTO community_activity (community_id, host_id, event_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [data.communityId, data.hostId, data.eventId]
+    );
+    const id = result.rows[0]?.id;
+    if (id) {
+      const created = await this.findCommunityActivityById(id, client);
+      if (!created) throw new Error('Falha ao ler a partilha criada.');
+      return { activity: created, created: true };
+    }
+    const existing = await this.findCommunityActivityByTriple(
+      data.communityId,
+      data.hostId,
+      data.eventId,
+      client
+    );
+    if (!existing) throw new Error('Falha ao ler a partilha existente.');
+    return { activity: existing, created: false };
+  },
+
+  async findCommunityActivityById(id: string, client?: PoolClient): Promise<CommunityActivity | null> {
+    const runner: Runner = client ?? pool;
+    const result = await runner.query<ActivityRow>(
+      `${ACTIVITY_SELECT} WHERE a.id = $1`,
+      [id]
+    );
+    const row = result.rows[0];
+    return row ? toActivity(row) : null;
+  },
+
+  async findCommunityActivityByTriple(
+    communityId: string,
+    hostId: string,
+    eventId: string,
+    client?: PoolClient
+  ): Promise<CommunityActivity | null> {
+    const runner: Runner = client ?? pool;
+    const result = await runner.query<ActivityRow>(
+      `${ACTIVITY_SELECT}
+        WHERE a.community_id = $1 AND a.host_id = $2 AND a.event_id = $3`,
+      [communityId, hostId, eventId]
+    );
+    const row = result.rows[0];
+    return row ? toActivity(row) : null;
+  },
+
+  async listCommunityActivity(communityId: string, limit = 50): Promise<CommunityActivity[]> {
+    const result = await query<ActivityRow>(
+      `${ACTIVITY_SELECT}
+        WHERE a.community_id = $1
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT $2`,
+      [communityId, limit]
+    );
+    return result.rows.map(toActivity);
   },
 
   /* ─────────────────────────────── Partilhas ────────────────────────────── */

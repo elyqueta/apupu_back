@@ -11,6 +11,8 @@ export interface InstitutionRow {
   creator_id: string;
   avatar_url: string | null;
   cover_url: string | null;
+  avatar_public_id?: string | null;
+  cover_public_id?: string | null;
   created_at: Date;
   community_count: number;
 }
@@ -43,7 +45,7 @@ type Runner = PoolClient | typeof pool;
 
 const INSTITUTION_SELECT = `
   SELECT i.id, i.name, i.slug, i.description, i.visibility, i.creator_id,
-         i.avatar_url, i.cover_url, i.created_at,
+         i.avatar_url, i.cover_url, i.avatar_public_id, i.cover_public_id, i.created_at,
          (SELECT count(*)::int FROM communities c
            WHERE c.institution_id = i.id AND c.deleted_at IS NULL) AS community_count
     FROM institutions i
@@ -119,7 +121,15 @@ export const institutionRepository = {
 
   async update(
     id: string,
-    changes: { name?: string; description?: string | null; visibility?: 'public' | 'private'; avatar_url?: string | null; cover_url?: string | null }
+    changes: {
+      name?: string;
+      description?: string | null;
+      visibility?: 'public' | 'private';
+      avatar_url?: string | null;
+      cover_url?: string | null;
+      avatar_public_id?: string | null;
+      cover_public_id?: string | null;
+    }
   ): Promise<void> {
     const set: string[] = [];
     const values: unknown[] = [];

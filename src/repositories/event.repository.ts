@@ -63,6 +63,7 @@ interface EventRow {
   latitude: string | null;
   longitude: string | null;
   place_label: string | null;
+  place_name: string | null;
   use_tables: boolean;
   created_at: Date;
   updated_at: Date;
@@ -85,6 +86,7 @@ function toEvent(row: EventRow): EventRecord {
     latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
     longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
     placeLabel: row.place_label ?? null,
+    placeName: row.place_name ?? null,
   };
 
   const contribution: EventContribution = {
@@ -162,7 +164,7 @@ const SELECT_COLUMNS = `
   contribution_account_reference, cover_url, cover_hash, cover_public_id,
   rsvp_deadline, status, cancelled_at, cancelled_reason, cancelled_by,
   visibility, public_slug, show_attendee_count, min_age, max_age, deleted_at, community_id,
-  youtube_video_id, latitude, longitude, place_label, use_tables,
+  youtube_video_id, latitude, longitude, place_label, place_name, use_tables,
   created_at, updated_at
 `;
 
@@ -174,7 +176,8 @@ function columnsFor(alias: string): string {
 }
 
 /**
- * Condição de acesso partilhada: proprietário ou gestor activo.
+ * Condição de acesso partilhada: proprietário, gestor activo ou membro
+ * activo da comunidade do evento.
  *
  * Empurra os parâmetros para `values` e devolve a expressão SQL. O
  * `hostId` é sempre o primeiro parâmetro adicionado, pelo que a
@@ -202,29 +205,54 @@ function accessCondition(
     ))`;
   }
 
-  // Bloco 11: gestores e responsável da comunidade do evento.
+  // Bloco 11: responsável, gestores e membros activos da comunidade.
   condition = `(${condition} OR EXISTS (
     SELECT 1
       FROM community_members cm
      WHERE cm.community_id = ${alias}.community_id
        AND cm.host_id = $${hostParam}
        AND cm.status = 'active'
-       AND cm.role IN ('owner', 'manager')
   ))`;
 
   return `(${condition} AND ${notDeleted})`;
 }
 
-/** Papel de quem consulta: `host` quando é proprietário. */
-function accessRoleExpression(alias = 'e', hostParam = 1): string {
-  // O responsável da comunidade tem os mesmos poderes do anfitrião.
-  return `CASE WHEN ${alias}.host_id = $${hostParam} OR EXISTS (
-    SELECT 1 FROM community_members cmo
-     WHERE cmo.community_id = ${alias}.community_id
-       AND cmo.host_id = $${hostParam}
-       AND cmo.status = 'active'
-       AND cmo.role = 'owner'
-  ) THEN 'host' ELSE 'manager' END`;
+/**
+ * Papel efectivo da conta no evento.
+ *
+ * O responsável da comunidade equivale ao anfitrião; os gestores da
+ * comunidade e os gestores do evento equivalem a `manager`. Os restantes
+ * membros activos são `communityMember`: podem adicionar convidados e
+ * exportar documentos, mas não alterar o evento.
+ */
+function accessRoleExpression(
+  alias = 'e',
+  hostParam = 1,
+  managerEmailParam?: number
+): string {
+  const communityRole = (role: 'owner' | 'manager' | 'member'): string => `EXISTS (
+    SELECT 1 FROM community_members cm_${role}
+     WHERE cm_${role}.community_id = ${alias}.community_id
+       AND cm_${role}.host_id = $${hostParam}
+       AND cm_${role}.status = 'active'
+       AND cm_${role}.role = '${role}'
+  )`;
+
+  const eventManager = managerEmailParam
+    ? `WHEN EXISTS (
+        SELECT 1 FROM event_managers m
+         WHERE m.event_id = ${alias}.id
+           AND m.email = $${managerEmailParam}::citext
+           AND m.revoked_at IS NULL
+      ) THEN 'manager'`
+    : '';
+
+  return `CASE
+     WHEN ${alias}.host_id = $${hostParam} OR ${communityRole('owner')} THEN 'host'
+     ${eventManager}
+     WHEN ${communityRole('manager')} THEN 'manager'
+     WHEN ${communityRole('member')} THEN 'communityMember'
+     ELSE 'manager' END`;
 }
 
 const STATS_LATERAL = `
@@ -256,11 +284,11 @@ export const eventRepository = {
          contribution_account_holder, contribution_account_reference,
          rsvp_deadline, cover_url, status,
          visibility, public_slug, show_attendee_count, min_age, max_age, community_id,
-         youtube_video_id, latitude, longitude, place_label, use_tables
+         youtube_video_id, latitude, longitude, place_label, place_name, use_tables
        )
        VALUES (
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,'scheduled',
-         $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36
+         $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37
        )
        RETURNING ${SELECT_COLUMNS}`,
       [
@@ -299,6 +327,7 @@ export const eventRepository = {
         data.location.latitude ?? null,
         data.location.longitude ?? null,
         data.location.placeLabel ?? null,
+        data.location.placeName ?? null,
         data.useTables ?? false,
       ]
     );
@@ -342,10 +371,10 @@ export const eventRepository = {
   /**
    * Lê o evento com o papel de acesso da conta.
    *
-   * O acesso é concedido ao proprietário ou a um gestor activo cujo
-   * email coincide com o da conta (comparação `citext`). Devolve `null`
-   * para qualquer outra conta, para não revelar a existência do
-   * recurso.
+   * O acesso é concedido ao proprietário, a um gestor activo cujo email
+   * coincide com o da conta (comparação `citext`) e a qualquer membro
+   * activo da comunidade do evento. Devolve `null` para qualquer outra
+   * conta, para não revelar a existência do recurso.
    */
   async findByIdForAccess(
     id: string,
@@ -371,12 +400,11 @@ export const eventRepository = {
        WHERE cm.community_id = e.community_id
          AND cm.host_id = $2
          AND cm.status = 'active'
-         AND cm.role IN ('owner', 'manager')
     ))`;
 
     const result = await runner.query<EventRow & { access_role: EventAccessRole }>(
       `SELECT ${columnsFor('e')},
-              ${accessRoleExpression('e', 2)} AS access_role
+              ${accessRoleExpression('e', 2, scope.managerEmail ? 3 : undefined)} AS access_role
          FROM events e
         WHERE e.id = $1 AND e.deleted_at IS NULL AND ${condition}`,
       values
@@ -464,6 +492,8 @@ export const eventRepository = {
       set.push(`longitude = $${values.length}`);
       values.push(changes.location.placeLabel ?? null);
       set.push(`place_label = $${values.length}`);
+      values.push(changes.location.placeName ?? null);
+      set.push(`place_name = $${values.length}`);
     }
 
     if ('theme' in changes && changes.theme) {
@@ -689,7 +719,7 @@ export const eventRepository = {
     const listResult = await query<EventWithStatsRow>(
       `SELECT ${columnsFor('e')},
               stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending,
-              ${accessRoleExpression()} AS access_role
+              ${accessRoleExpression('e', 1, filters.managerEmail ? 2 : undefined)} AS access_role
          FROM events e
          ${STATS_LATERAL}
         WHERE ${where}
@@ -711,7 +741,7 @@ export const eventRepository = {
     const result = await query<EventWithStatsRow>(
       `SELECT ${columnsFor('e')},
               stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending,
-              ${accessRoleExpression()} AS access_role
+              ${accessRoleExpression('e', 1, scope.managerEmail ? 2 : undefined)} AS access_role
          FROM events e
          ${STATS_LATERAL}
         WHERE ${access} AND e.status = 'scheduled' AND e.starts_at > now()
@@ -731,7 +761,7 @@ export const eventRepository = {
     const result = await query<EventWithStatsRow>(
       `SELECT ${columnsFor('e')},
               stats.stat_total, stats.stat_accepted, stats.stat_declined, stats.stat_pending,
-              ${accessRoleExpression()} AS access_role
+              ${accessRoleExpression('e', 1, scope.managerEmail ? 2 : undefined)} AS access_role
          FROM events e
          ${STATS_LATERAL}
         WHERE ${access} AND e.status = 'scheduled' AND e.starts_at > now()

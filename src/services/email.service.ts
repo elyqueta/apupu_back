@@ -428,6 +428,7 @@ function buildDeliveryEmail(context: DeliveryContext): DeliveryEmail {
           nome: payloadString(context, 'recipientName'),
           comunidade: payloadString(context, 'communityName'),
           autor: payloadString(context, 'actorName'),
+          evento: payloadString(context, 'eventTitle'),
           aviso: payloadString(context, 'kind') as EmailVars['aviso'],
           url: slug ? links.community(slug) : links.settings(),
         },

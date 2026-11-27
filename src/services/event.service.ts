@@ -1,3 +1,4 @@
+import { PoolClient } from 'pg';
 import { NotFoundError, ValidationError } from '../errors';
 import { withTransaction } from '../database/pool';
 import { activityRepository } from '../repositories/activity.repository';
@@ -169,13 +170,19 @@ function mergeContribution(
 
 export interface CreatedEventResult {
   event: Event;
-  manageEmailStatus: 'queued' | 'failed';
+  manageEmailStatus: 'queued' | 'failed' | 'pending';
   deliveries: Array<{ email: string; status: 'queued' }>;
+  /** Só quando a entrega é adiada: material em memória para depois do COMMIT. */
+  pendingManageLink?: { token: string; idempotencyKey: string };
 }
 
 export interface CreateEventOptions {
   /** Conta proprietária; ausente no fluxo legado por link secreto. */
   hostId?: string | null;
+  /** Reutiliza a transacção aberta pelo chamador (sugestão aprovada). */
+  client?: PoolClient;
+  /** Adia o email de gestão para depois do COMMIT da transacção externa. */
+  deferManageLink?: boolean;
 }
 
 export const eventService = {
@@ -235,7 +242,7 @@ export const eventService = {
       rsvpDeadline: data.rsvpDeadline,
     });
 
-    const created = await withTransaction(async (client) => {
+    const createInTransaction = async (client: PoolClient) => {
       const event = await eventRepository.create(data, client);
       const invitations: Invitation[] = [];
       const linkExpiresAt = await linkValidityService.maximumFor(event);
@@ -274,22 +281,47 @@ export const eventService = {
       );
 
       return { event, invitations };
-    });
+    };
 
-    const manageEmailStatus = await manageLinkService.deliver(
-      created.event,
-      manageToken.token,
-      `manage_link:${created.event.id}`
-    );
+    const created = options.client
+      ? await createInTransaction(options.client)
+      : await withTransaction(createInTransaction);
+
+    const deliveries = created.invitations.map((invitation) => ({
+      email: invitation.guestEmail ?? '',
+      status: 'queued' as const,
+    }));
+
+    if (options.client && options.deferManageLink) {
+      return {
+        event: created.event,
+        manageEmailStatus: 'pending',
+        deliveries,
+        pendingManageLink: {
+          token: manageToken.token,
+          idempotencyKey: `manage_link:${created.event.id}`,
+        },
+      };
+    }
+
+    const manageEmailStatus = await eventService.deliverManageLink(created.event, {
+      token: manageToken.token,
+      idempotencyKey: `manage_link:${created.event.id}`,
+    });
 
     return {
       event: created.event,
       manageEmailStatus,
-      deliveries: created.invitations.map((invitation) => ({
-        email: invitation.guestEmail ?? '',
-        status: 'queued' as const,
-      })),
+      deliveries,
     };
+  },
+
+  /** Entrega o link de gestão depois do COMMIT de uma transacção externa. */
+  async deliverManageLink(
+    event: Event,
+    pending: { token: string; idempotencyKey: string }
+  ): Promise<'queued' | 'failed'> {
+    return manageLinkService.deliver(event, pending.token, pending.idempotencyKey);
   },
 
   async statsFor(event: Event): Promise<EventStats> {

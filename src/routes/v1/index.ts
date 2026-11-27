@@ -16,6 +16,7 @@ import publicRoutes from './public.routes';
 import publicFormsRoutes from './publicForms.routes';
 import teamInvitePublicRoutes from './teamInvitePublic.routes';
 import templatesRoutes from './templates.routes';
+import geocodeRoutes from './geocode.routes';
 
 /**
  * Router agregador da v1.
@@ -38,6 +39,7 @@ router.use('/events', eventsRoutes);
 router.use('/host/communities', communitiesRoutes);
 router.use('/host/institutions', institutionsRoutes);
 router.use('/host/event-drafts', eventDraftsRoutes);
+router.use('/host/geocode', geocodeRoutes);
 router.use('/host', hostSocialRouter);
 router.use('/host', hostRoutes);
 router.use('/host', hostWorkspaceRoutes);

@@ -7,6 +7,7 @@ import { invitationController } from '../../controllers/invitation.controller';
 import { asyncHandler } from '../../middlewares/asyncHandler';
 import { hostAuth } from '../../middlewares/hostAuth';
 import { hostSessionLimiter, writeLimiter } from '../../middlewares/rateLimiter';
+import { requireEventEditor } from '../../middlewares/requireEventEditor';
 import { requireEventHost } from '../../middlewares/requireEventHost';
 import { requireHostCsrf } from '../../middlewares/requireHostCsrf';
 import { uploadEventCover } from '../../middlewares/uploadEventCover';
@@ -161,6 +162,7 @@ router.patch(
   '/events/:eventId',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(hostAuth),
+  requireEventEditor,
   writeLimiter,
   requireHostCsrf,
   validate({ body: updateEventSchema }),
@@ -272,6 +274,7 @@ router.put(
   '/events/:eventId/cover',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(hostAuth),
+  requireEventEditor,
   writeLimiter,
   requireHostCsrf,
   validate({ body: coverUrlSchema }),
@@ -282,6 +285,7 @@ router.post(
   '/events/:eventId/cover/upload',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(hostAuth),
+  requireEventEditor,
   writeLimiter,
   requireHostCsrf,
   uploadEventCover,
@@ -292,6 +296,7 @@ router.delete(
   '/events/:eventId/cover',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(hostAuth),
+  requireEventEditor,
   writeLimiter,
   requireHostCsrf,
   asyncHandler(eventCoverController.remove)

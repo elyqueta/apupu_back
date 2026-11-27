@@ -700,6 +700,15 @@ export const invitationRepository = {
       ];
     }
 
+    // Membros activos da comunidade acompanham os convidados do evento.
+    conditions[0] = `(${conditions[0]} OR EXISTS (
+      SELECT 1
+        FROM community_members cm
+       WHERE cm.community_id = e.community_id
+         AND cm.host_id = $1
+         AND cm.status = 'active'
+    ))`;
+
     if (filters.eventId) {
       values.push(filters.eventId);
       conditions.push(`i.event_id = $${values.length}`);

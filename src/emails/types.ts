@@ -124,7 +124,10 @@ export interface EmailVars {
     | 'join_request_rejected'
     | 'member_invited'
     | 'transfer_started'
-    | 'transfer_completed';
+    | 'transfer_completed'
+    | 'event_suggestion_received'
+    | 'event_suggestion_approved'
+    | 'event_suggestion_rejected';
 }
 
 export type EmailTone = 'default' | 'danger';

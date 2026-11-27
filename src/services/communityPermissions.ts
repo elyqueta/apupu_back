@@ -36,6 +36,10 @@ export const communityPermissions = {
   /** O responsável não sai sem transferir antes. */
   canLeave: (actor: CommunityActor): boolean => isActive(actor) && actor.role !== 'owner',
   canCreateEvent: (actor: CommunityActor): boolean => isStaff(actor) && actor.isHostAccount,
+  /** Sugerir evento: qualquer membro activo, incluindo responsável/gestores. */
+  canSuggestEvent: isActive,
+  /** Decidir sugestões: responsável e gestores activos. */
+  canDecideEventSuggestions: isStaff,
   canEditEvents: isStaff,
   /** Eventos sem confirmados: gestores e responsável; com confirmados: só o responsável. */
   canDeleteEvent: (actor: CommunityActor, acceptedCount: number): boolean =>
