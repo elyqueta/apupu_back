@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { PoolClient } from 'pg';
+import { ZodError } from 'zod';
 import { env } from '../config/env';
 import { withTransaction } from '../database/pool';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { communityRepository } from '../repositories/community.repository';
 import { emailDeliveryRepository } from '../repositories/emailDelivery.repository';
+import { eventRepository } from '../repositories/event.repository';
 import { hostRepository } from '../repositories/host.repository';
+import { createEventSchema } from '../schemas/event.schemas';
 import {
+  CommunityActivity,
+  CommunityEventSuggestion,
   CommunityEventSummary,
   CommunityJoinRequest,
   CommunityMember,
@@ -16,12 +21,14 @@ import {
   CommunityTransfer,
   CommunityVisibility,
   CommunityWithStats,
+  EventSuggestionStatus,
 } from '../types/community.types';
 import { isUniqueViolation } from '../utils/db.util';
 import { normalizeAngolanPhone } from '../utils/phone.util';
 import { generateToken } from '../utils/token.util';
 import { destroyImage, uploadImage } from './cloudinary.service';
 import { CommunityActor, communityPermissions } from './communityPermissions';
+import { CreatedEventResult, eventService } from './event.service';
 import { assertPurposeOtp, requestPurposeOtp } from './purposeOtp.service';
 
 /** Mesmo 404 para comunidade inexistente, removida ou privada sem acesso. */
@@ -40,7 +47,24 @@ export interface CommunityDetail {
   teams: CommunityTeamSummary[];
   members: CommunityMember[];
   pendingRequests: number;
+  pendingEventSuggestions: number;
   transfer: CommunityTransfer | null;
+}
+
+/** Corpo aceite na sugestão: o evento é validado por `createEventSchema`. */
+export interface EventSuggestionInput {
+  event: Record<string, unknown>;
+  guests?: unknown[];
+  message?: string | null;
+}
+
+function zodFields(error: ZodError): Record<string, string[]> {
+  const fields: Record<string, string[]> = {};
+  for (const issue of error.issues) {
+    const key = issue.path.length > 0 ? issue.path.join('.') : '_';
+    (fields[key] ??= []).push(issue.message);
+  }
+  return fields;
 }
 
 /** Slug a partir do nome: minúsculas, sem acentos, hífenes. */
@@ -129,15 +153,26 @@ async function enqueueNotice(
       | 'join_request_rejected'
       | 'member_invited'
       | 'transfer_started'
-      | 'transfer_completed';
+      | 'transfer_completed'
+      | 'event_suggestion_received'
+      | 'event_suggestion_approved'
+      | 'event_suggestion_rejected';
     communityName: string;
     communitySlug: string;
     actorName?: string | null;
     recipientName?: string | null;
+    /** Identificador do destinatário, para chaves idempotentes estáveis. */
+    recipientHostId?: string | null;
+    /** Identifica a sugestão num aviso: uma chave por destinatário/sugestão. */
+    referenceId?: string;
+    eventTitle?: string | null;
   },
   client?: PoolClient
 ): Promise<void> {
   if (!data.recipientEmail) return;
+  const idempotencyKey = data.referenceId
+    ? `community_notice:${data.kind}:${data.recipientHostId ?? data.recipientEmail}:${data.referenceId}`
+    : `community_notice:${data.kind}:${data.communitySlug}:${randomUUID()}`;
   await emailDeliveryRepository.enqueue(
     {
       eventId: null,
@@ -147,13 +182,14 @@ async function enqueueNotice(
       reminderKind: null,
       recipientEmail: data.recipientEmail,
       scheduledFor: new Date(),
-      idempotencyKey: `community_notice:${data.kind}:${data.communitySlug}:${randomUUID()}`,
+      idempotencyKey,
       payload: {
         kind: data.kind,
         communityName: data.communityName,
         communitySlug: data.communitySlug,
         ...(data.actorName ? { actorName: data.actorName } : {}),
         ...(data.recipientName ? { recipientName: data.recipientName } : {}),
+        ...(data.eventTitle ? { eventTitle: data.eventTitle } : {}),
       },
     },
     client
@@ -201,11 +237,12 @@ export const communityService = {
     const isMember = communityPermissions.canViewMembers(actor);
     const staff = communityPermissions.canDecideJoinRequests(actor);
 
-    const [events, teams, members, requests, transfer] = await Promise.all([
+    const [events, teams, members, requests, suggestions, transfer] = await Promise.all([
       communityRepository.listEvents(community.id, isMember),
       isMember ? communityRepository.listTeams(community.id) : Promise.resolve([]),
       isMember ? communityRepository.listMembers(community.id) : Promise.resolve([]),
       staff ? communityRepository.listPendingJoinRequests(community.id) : Promise.resolve([]),
+      staff ? communityRepository.listPendingEventSuggestions(community.id) : Promise.resolve([]),
       isMember ? communityRepository.findOpenTransfer(community.id) : Promise.resolve(null),
     ]);
 
@@ -219,6 +256,8 @@ export const communityService = {
         canChangeRoles: communityPermissions.canChangeRole(actor),
         canLeave: communityPermissions.canLeave(actor),
         canCreateEvent: communityPermissions.canCreateEvent(actor),
+        canSuggestEvent: communityPermissions.canSuggestEvent(actor),
+        canDecideEventSuggestions: staff,
         canCreateTeam: communityPermissions.canCreateTeam(actor),
         canShare: communityPermissions.canShareEvents(actor),
         canViewAllReferrals: communityPermissions.canViewAllReferrals(actor),
@@ -234,6 +273,7 @@ export const communityService = {
       teams,
       members,
       pendingRequests: requests.length,
+      pendingEventSuggestions: suggestions.length,
       transfer:
         transfer && (transfer.fromHostId === viewer.hostId || transfer.toHostId === viewer.hostId)
           ? transfer
@@ -593,6 +633,249 @@ export const communityService = {
     });
 
     return { ...request, status: approve ? 'approved' : 'rejected', decidedBy: viewer.hostId };
+  },
+
+  /* ─────────────────────── Sugestões de eventos ─────────────────────────── */
+
+  async suggestEvent(
+    viewer: Viewer,
+    id: string,
+    input: EventSuggestionInput
+  ): Promise<CommunityEventSuggestion> {
+    const community = await this.load(viewer, id);
+    const { actor } = await this.actor(community.id, viewer.hostId);
+    if (!communityPermissions.canSuggestEvent(actor)) deny();
+
+    // `message` é da sugestão, não do evento: `createEventSchema` é strict.
+    const { message, ...eventPayload } = input;
+    const parsed = createEventSchema.safeParse({
+      ...eventPayload,
+      event: { ...input.event, community_id: community.id },
+    });
+    if (!parsed.success) {
+      throw new ValidationError('Verifique os campos indicados.', zodFields(parsed.error));
+    }
+
+    const suggestion = await communityRepository.createEventSuggestion({
+      communityId: community.id,
+      hostId: viewer.hostId,
+      title: parsed.data.event.title,
+      payload: { event: parsed.data.event, guests: parsed.data.guests },
+      message: message?.trim() || null,
+    });
+
+    const staff = (await communityRepository.listMembers(community.id)).filter(
+      (item) => item.status === 'active' && (item.role === 'owner' || item.role === 'manager')
+    );
+    const actorName = await displayNameOf(viewer.hostId);
+    for (const person of staff) {
+      await enqueueNotice({
+        recipientEmail: person.email,
+        recipientHostId: person.hostId,
+        referenceId: suggestion.id,
+        kind: 'event_suggestion_received',
+        communityName: community.name,
+        communitySlug: community.slug,
+        actorName,
+        recipientName: person.displayName,
+        eventTitle: suggestion.title,
+      });
+    }
+    return suggestion;
+  },
+
+  async listPendingEventSuggestions(
+    viewer: Viewer,
+    id: string
+  ): Promise<CommunityEventSuggestion[]> {
+    const community = await this.load(viewer, id);
+    const { actor } = await this.actor(community.id, viewer.hostId);
+    if (!communityPermissions.canDecideEventSuggestions(actor)) deny();
+    return communityRepository.listPendingEventSuggestions(community.id);
+  },
+
+  async listMyEventSuggestions(
+    viewer: Viewer,
+    id: string
+  ): Promise<CommunityEventSuggestion[]> {
+    const community = await this.load(viewer, id);
+    const { actor } = await this.actor(community.id, viewer.hostId);
+    if (!communityPermissions.canSuggestEvent(actor)) deny();
+    return communityRepository.listMyEventSuggestions(community.id, viewer.hostId);
+  },
+
+  async decideEventSuggestion(
+    viewer: Viewer,
+    id: string,
+    suggestionId: string,
+    approve: boolean
+  ): Promise<CommunityEventSuggestion> {
+    const community = await this.load(viewer, id);
+    const { actor } = await this.actor(community.id, viewer.hostId);
+    if (!communityPermissions.canDecideEventSuggestions(actor)) deny();
+
+    const suggestion = await communityRepository.findEventSuggestion(suggestionId);
+    if (!suggestion || suggestion.communityId !== community.id) {
+      throw new NotFoundError('Sugestão não encontrada.', 'community_suggestion_not_found');
+    }
+    if (suggestion.status !== 'pending') {
+      throw new ConflictError('A sugestão já foi decidida.', 'community_suggestion_decided');
+    }
+
+    const actorName = await displayNameOf(viewer.hostId);
+    const outcome = await withTransaction(async (client) => {
+      const locked = await communityRepository.findEventSuggestion(suggestionId, client);
+      if (!locked || locked.communityId !== community.id) {
+        throw new NotFoundError('Sugestão não encontrada.', 'community_suggestion_not_found');
+      }
+      if (locked.status !== 'pending') {
+        throw new ConflictError('A sugestão já foi decidida.', 'community_suggestion_decided');
+      }
+
+      let created: CreatedEventResult | null = null;
+      if (approve) {
+        // O payload voltou do JSONB: datas são strings e `createEventSchema`
+        // volta a coercioná-las. A comunidade é fixada de novo para que um
+        // payload antigo/adulterado não crie o evento noutro contexto.
+        const payload = locked.payload as {
+          event?: Record<string, unknown>;
+          guests?: unknown[];
+        };
+        const parsed = createEventSchema.safeParse({
+          ...payload,
+          event: { ...(payload.event ?? {}), community_id: community.id },
+        });
+        if (!parsed.success) {
+          throw new ValidationError('A sugestão já não é válida.', zodFields(parsed.error));
+        }
+        created = await eventService.create(parsed.data, {
+          hostId: locked.hostId,
+          client,
+          deferManageLink: true,
+        });
+      }
+
+      const decided = await communityRepository.decideEventSuggestion(
+        suggestionId,
+        approve ? 'approved' : 'rejected',
+        viewer.hostId,
+        created?.event.id ?? null,
+        client
+      );
+      if (!decided) {
+        throw new ConflictError('A sugestão já foi decidida.', 'community_suggestion_decided');
+      }
+
+      await enqueueNotice(
+        {
+          recipientEmail: suggestion.email,
+          recipientHostId: suggestion.hostId,
+          referenceId: suggestion.id,
+          kind: approve ? 'event_suggestion_approved' : 'event_suggestion_rejected',
+          communityName: community.name,
+          communitySlug: community.slug,
+          actorName,
+          recipientName: suggestion.displayName,
+          eventTitle: suggestion.title,
+        },
+        client
+      );
+
+      const status: EventSuggestionStatus = approve ? 'approved' : 'rejected';
+      return {
+        suggestion: {
+          ...locked,
+          status,
+          decidedBy: viewer.hostId,
+          decidedAt: new Date(),
+          eventId: created?.event.id ?? null,
+        },
+        event: created?.event ?? null,
+        pendingManageLink: created?.pendingManageLink ?? null,
+      };
+    });
+
+    if (outcome.event && outcome.pendingManageLink) {
+      await eventService.deliverManageLink(outcome.event, outcome.pendingManageLink);
+    }
+    return outcome.suggestion;
+  },
+
+  async cancelEventSuggestion(viewer: Viewer, id: string, suggestionId: string): Promise<void> {
+    const community = await this.load(viewer, id);
+    const { actor } = await this.actor(community.id, viewer.hostId);
+    if (!communityPermissions.canSuggestEvent(actor)) deny();
+
+    const suggestion = await communityRepository.findEventSuggestion(suggestionId);
+    if (
+      !suggestion ||
+      suggestion.communityId !== community.id ||
+      suggestion.hostId !== viewer.hostId
+    ) {
+      throw new NotFoundError('Sugestão não encontrada.', 'community_suggestion_not_found');
+    }
+    if (suggestion.status !== 'pending') {
+      throw new ConflictError('A sugestão já foi decidida.', 'community_suggestion_decided');
+    }
+
+    await withTransaction(async (client) => {
+      const decided = await communityRepository.decideEventSuggestion(
+        suggestionId,
+        'cancelled',
+        viewer.hostId,
+        null,
+        client
+      );
+      if (!decided) {
+        throw new ConflictError('A sugestão já foi decidida.', 'community_suggestion_decided');
+      }
+    });
+  },
+
+  /* ─────────────────────── Feed de actividade ───────────────────────────── */
+
+  /**
+   * Acção "Partilhar" do feed. Só membros activos partilham. Um evento
+   * público pode ser partilhado em qualquer comunidade; um evento privado
+   * apenas na comunidade a que pertence.
+   */
+  async shareActivity(
+    viewer: Viewer,
+    id: string,
+    eventId: string
+  ): Promise<{ activity: CommunityActivity; created: boolean }> {
+    const community = await this.load(viewer, id);
+    const { actor } = await this.actor(community.id, viewer.hostId);
+    if (!communityPermissions.canShareEvents(actor)) {
+      deny('Só membros activos podem partilhar eventos na comunidade.');
+    }
+
+    // `findById` já exclui eventos apagados (`deleted_at IS NOT NULL`).
+    const event = await eventRepository.findById(eventId);
+    if (!event) {
+      throw new NotFoundError('Evento não encontrado.', 'community_activity_event_not_found');
+    }
+    if (event.visibility !== 'public' && event.communityId !== community.id) {
+      throw new ForbiddenError(
+        'Este evento não pode ser partilhado nesta comunidade.',
+        'community_activity_forbidden'
+      );
+    }
+
+    return communityRepository.createCommunityActivity({
+      communityId: community.id,
+      hostId: viewer.hostId,
+      eventId,
+    });
+  },
+
+  async listActivity(viewer: Viewer, id: string): Promise<CommunityActivity[]> {
+    const community = await this.load(viewer, id);
+    const { actor } = await this.actor(community.id, viewer.hostId);
+    if (!communityPermissions.canShareEvents(actor)) {
+      deny('Só membros activos podem ver a actividade da comunidade.');
+    }
+    return communityRepository.listCommunityActivity(community.id, 50);
   },
 
   /* ─────────────────────── Transferência de responsabilidade ─────────────── */

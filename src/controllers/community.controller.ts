@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import {
+  toCommunityActivityDto,
   toCommunityDetailDto,
   toCommunityDto,
   toCommunityMemberDto,
+  toEventSuggestionDto,
   toJoinRequestDto,
   toReferralDto,
   toTransferDto,
@@ -13,7 +15,7 @@ import {
   UpdateCommunityBody,
 } from '../schemas/community.schemas';
 import { auditService } from '../services/audit.service';
-import { communityService, Viewer } from '../services/community.service';
+import { communityService, EventSuggestionInput, Viewer } from '../services/community.service';
 
 function viewer(req: Request): Viewer {
   if (!req.hostAccount) {
@@ -236,6 +238,86 @@ export const communityController = {
       metadata: { community_id: request.communityId, decision: approve ? 'approved' : 'rejected' },
     });
     res.status(200).json({ data: toJoinRequestDto(request) });
+  },
+
+  suggestEvent: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const suggestion = await communityService.suggestEvent(
+      me,
+      id(req),
+      req.body as EventSuggestionInput
+    );
+    await auditService.recordRequest(req, {
+      action: 'community_event_suggested',
+      hostId: me.hostId,
+      metadata: { community_id: suggestion.communityId, suggestion_id: suggestion.id },
+    });
+    res.status(201).json({ data: toEventSuggestionDto(suggestion) });
+  },
+
+  listPendingEventSuggestions: async (req: Request, res: Response): Promise<void> => {
+    const items = await communityService.listPendingEventSuggestions(viewer(req), id(req));
+    res.status(200).json({ data: items.map(toEventSuggestionDto) });
+  },
+
+  listMyEventSuggestions: async (req: Request, res: Response): Promise<void> => {
+    const items = await communityService.listMyEventSuggestions(viewer(req), id(req));
+    res.status(200).json({ data: items.map(toEventSuggestionDto) });
+  },
+
+  decideEventSuggestion: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const approve = (req.body as { decision: 'approve' | 'reject' }).decision === 'approve';
+    const suggestion = await communityService.decideEventSuggestion(
+      me,
+      id(req),
+      req.params.suggestionId ?? '',
+      approve
+    );
+    await auditService.recordRequest(req, {
+      action: 'community_event_suggestion_decided',
+      hostId: me.hostId,
+      metadata: {
+        community_id: suggestion.communityId,
+        suggestion_id: suggestion.id,
+        decision: approve ? 'approved' : 'rejected',
+      },
+    });
+    res.status(200).json({ data: toEventSuggestionDto(suggestion) });
+  },
+
+  cancelEventSuggestion: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    await communityService.cancelEventSuggestion(me, id(req), req.params.suggestionId ?? '');
+    await auditService.recordRequest(req, {
+      action: 'community_event_suggestion_cancelled',
+      hostId: me.hostId,
+      metadata: { community: id(req), suggestion_id: req.params.suggestionId ?? '' },
+    });
+    res.status(204).send();
+  },
+
+  shareActivity: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const result = await communityService.shareActivity(
+      me,
+      id(req),
+      (req.body as { event_id: string }).event_id
+    );
+    await auditService.recordRequest(req, {
+      action: 'community_activity_shared',
+      hostId: me.hostId,
+      metadata: {
+        community_id: result.activity.communityId,
+        event_id: result.activity.eventId,
+      },
+    });
+    res.status(result.created ? 201 : 200).json({ data: toCommunityActivityDto(result.activity) });
+  },
+
+  listActivity: async (req: Request, res: Response): Promise<void> => {
+    const items = await communityService.listActivity(viewer(req), id(req));
+    res.status(200).json({ data: items.map(toCommunityActivityDto) });
   },
 
   startTransfer: async (req: Request, res: Response): Promise<void> => {

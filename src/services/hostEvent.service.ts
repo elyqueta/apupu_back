@@ -74,19 +74,13 @@ export const hostEventService = {
   },
 
   async create(hostId: string, input: CreateEventBody): Promise<CreatedEventResult> {
+    // Eventos de comunidade passam sempre por sugestão + aprovação.
     if (input.event.community_id) {
-      const member = await communityRepository.findMemberByHost(input.event.community_id, hostId);
-      const allowed = communityPermissions.canCreateEvent({
-        role: member?.role ?? null,
-        status: member?.status ?? null,
-        isHostAccount: member?.hasHostAccount ?? false,
-      });
-      if (!allowed) {
-        throw new ForbiddenError(
-          'Só gestores e o responsável criam eventos na comunidade.',
-          'community_forbidden'
-        );
-      }
+      throw new ValidationError(
+        'Os eventos da comunidade têm de ser sugeridos e aprovados.',
+        { 'event.community_id': ['Use a sugestão de evento da comunidade.'] },
+        'community_event_must_be_suggested'
+      );
     }
     return eventService.create(input, { hostId });
   },
