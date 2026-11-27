@@ -149,10 +149,27 @@ describe('Bloco 11 — permissões por papel', () => {
   });
 
   it('partilha: membros activos partilham; só staff vê todas as estatísticas', () => {
+    expect(communityPermissions.canShareEvents(owner)).toBe(true);
+    expect(communityPermissions.canShareEvents(manager)).toBe(true);
     expect(communityPermissions.canShareEvents(member)).toBe(true);
     expect(communityPermissions.canShareEvents(outsider)).toBe(false);
+    expect(communityPermissions.canShareEvents(invited)).toBe(false);
     expect(communityPermissions.canViewAllReferrals(member)).toBe(false);
     expect(communityPermissions.canViewAllReferrals(manager)).toBe(true);
+  });
+
+  it('sugestões de eventos: qualquer membro activo sugere; só staff decide', () => {
+    expect(communityPermissions.canSuggestEvent(owner)).toBe(true);
+    expect(communityPermissions.canSuggestEvent(manager)).toBe(true);
+    expect(communityPermissions.canSuggestEvent(member)).toBe(true);
+    expect(communityPermissions.canSuggestEvent(outsider)).toBe(false);
+    expect(communityPermissions.canSuggestEvent(invited)).toBe(false);
+
+    expect(communityPermissions.canDecideEventSuggestions(owner)).toBe(true);
+    expect(communityPermissions.canDecideEventSuggestions(manager)).toBe(true);
+    expect(communityPermissions.canDecideEventSuggestions(member)).toBe(false);
+    expect(communityPermissions.canDecideEventSuggestions(outsider)).toBe(false);
+    expect(communityPermissions.canDecideEventSuggestions(invited)).toBe(false);
   });
 
   it('pedir adesão: só a comunidades públicas e quem não é membro', () => {
