@@ -107,9 +107,10 @@ Há três tipos de capacidade:
    - Cookie `apupu_host_<eventId>`: `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/host`.
    - Cookie `apupu_csrf_host_<eventId>`: legível por JS, `Path=/api/v1`.
    - O segredo nunca é devolvido em JSON nem escrito em logs.
-   - A sessão tem um papel (`host` ou `manager`). O link do anfitrião
-     roda ao ser usado; o link de um gestor não roda e pode ser
-     reutilizado enquanto não for removido ou expirar.
+   - A sessão por link tem um papel (`host` ou `manager`). O link do
+     anfitrião roda ao ser usado; o link de um gestor não roda e pode
+     ser reutilizado enquanto não for removido ou expirar. Acessos por
+     conta de comunidade resolvem `host`, `manager` ou `communityMember`.
 3. **Capacidade do convidado** — emitida no primeiro claim:
    - Cookie `apupu_guest`: `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/public/invitations`.
    - Cookie `apupu_csrf_guest`: legível por JS, `Path=/api/v1`.
@@ -529,9 +530,11 @@ remover a imagem depois.
 }
 ```
 
-Cada evento traz `access_role`: `host` quando a conta é proprietária,
-`manager` quando participa como gestora. O cliente usa este campo para
-esconder as ações reservadas ao anfitrião.
+Cada evento traz `access_role`: `host` quando a conta é proprietária ou
+responsável pela comunidade, `manager` quando é gestora do evento ou da
+comunidade, e `communityMember` quando é membro activo da comunidade. O
+cliente usa este campo para esconder as ações reservadas ao anfitrião;
+`communityMember` pode adicionar convidados e exportar documentos.
 
 `POST /api/v1/host/events` — `201`:
 
@@ -1746,7 +1749,7 @@ contrário.
 | `location.type` | string | `venue` ou `online` |
 | `contribution` | object | Com `enabled=false` só este campo é devolvido |
 | `status` | string | `draft`, `scheduled`, `cancelled`, `completed` |
-| `access_role` | string | `host` ou `manager`; presente nas vistas de gestão e na sessão |
+| `access_role` | string | `host`, `manager` ou `communityMember`; presente nas vistas de gestão e na sessão |
 | `cover_url` | string \| null | Imagem de capa (upload ou URL); `null` usa a arte do template |
 | `stats` | object | Só nas listas de gestão, `dashboard` e detalhe por sessão de evento |
 

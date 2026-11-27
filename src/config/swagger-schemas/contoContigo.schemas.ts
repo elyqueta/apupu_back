@@ -129,9 +129,9 @@ export const contoContigoSchemas = {
       },
       access_role: {
         type: 'string',
-        enum: ['host', 'manager'],
+        enum: ['host', 'manager', 'communityMember'],
         description:
-          'Papel de quem consulta o evento. `manager` esconde ações reservadas ao anfitrião.',
+          'Papel de quem consulta o evento. `communityMember` permite adicionar convidados e exportar documentos, sem editar o evento.',
       },
       stats: {
         type: 'object',

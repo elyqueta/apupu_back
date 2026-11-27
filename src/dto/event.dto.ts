@@ -1,4 +1,4 @@
-import { Event, EventStats } from '../types/event.types';
+import { Event, EventAccessRole, EventStats } from '../types/event.types';
 import { HostPublicContact } from '../types/host.types';
 import { links } from '../utils/links.util';
 
@@ -67,8 +67,8 @@ export interface EventDto {
   /** Bloco 14: vídeo (só o ID) e mesas. */
   youtube_video_id: string | null;
   use_tables: boolean;
-  /** Papel de quem consulta: `host` ou `manager`. */
-  access_role?: 'host' | 'manager';
+  /** Papel de quem consulta: `host`, `manager` ou membro da comunidade. */
+  access_role?: EventAccessRole;
   created_at: string;
   updated_at: string;
   stats?: {
@@ -122,7 +122,7 @@ function contributionDto(event: Event): ContributionDto {
 export function toEventDto(
   event: Event,
   stats?: EventStats,
-  accessRole?: 'host' | 'manager'
+  accessRole?: EventAccessRole
 ): EventDto {
   return {
     id: event.id,

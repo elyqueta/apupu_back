@@ -37,7 +37,9 @@ export async function resolveEventRole(
   scope: EventAccessScope
 ): Promise<ResourceRole | null> {
   const access = await eventRepository.findByIdForAccess(eventId, scope);
-  if (access) return access.accessRole;
+  // Membro da comunidade participa nas equipas como membro, sem poderes
+  // de gestão (os votos de equipa continuam reservados a anfitrião/gestor).
+  if (access) return access.accessRole === 'communityMember' ? 'member' : access.accessRole;
 
   if (!scope.managerEmail) return null;
 
