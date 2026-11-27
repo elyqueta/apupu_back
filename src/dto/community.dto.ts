@@ -1,5 +1,7 @@
 import { CommunityDetail } from '../services/community.service';
 import {
+  CommunityActivity,
+  CommunityEventSuggestion,
   CommunityEventSummary,
   CommunityJoinRequest,
   CommunityMember,
@@ -64,6 +66,38 @@ export function toJoinRequestDto(request: CommunityJoinRequest) {
   };
 }
 
+/** Entrada do feed da comunidade, no formato consumido pelo frontend. */
+export function toCommunityActivityDto(activity: CommunityActivity) {
+  return {
+    id: activity.id,
+    community_id: activity.communityId,
+    host_id: activity.hostId,
+    host_name: activity.hostName,
+    host_avatar_url: activity.hostAvatarUrl,
+    event_id: activity.eventId,
+    event_title: activity.eventTitle,
+    event_slug: activity.eventSlug,
+    created_at: activity.createdAt.toISOString(),
+  };
+}
+
+/** Nunca inclui o payload completo: a listagem não expõe convidados. */
+export function toEventSuggestionDto(suggestion: CommunityEventSuggestion) {
+  return {
+    id: suggestion.id,
+    host_id: suggestion.hostId,
+    display_name: suggestion.displayName,
+    avatar_url: suggestion.avatarUrl,
+    title: suggestion.title,
+    message: suggestion.message,
+    status: suggestion.status,
+    event_id: suggestion.eventId,
+    decided_at: iso(suggestion.decidedAt),
+    created_at: suggestion.createdAt.toISOString(),
+    updated_at: suggestion.updatedAt.toISOString(),
+  };
+}
+
 export function toTransferDto(transfer: CommunityTransfer, viewerId: string) {
   return {
     id: transfer.id,
@@ -116,6 +150,7 @@ export function toCommunityDetailDto(detail: CommunityDetail, viewerId: string) 
     teams: detail.teams.map(toTeamSummaryDto),
     members: detail.members.map((member) => toCommunityMemberDto(member, staff)),
     pending_requests: detail.pendingRequests,
+    pending_event_suggestions: detail.pendingEventSuggestions,
     transfer: detail.transfer ? toTransferDto(detail.transfer, viewerId) : null,
   };
 }

@@ -279,6 +279,24 @@ export const catalog: Record<EmailTemplateCode, CatalogEntry> = {
           body: `A responsabilidade da comunidade ${community} foi transferida.`,
           cta: 'Abrir a comunidade',
         },
+        event_suggestion_received: {
+          subject: `Nova sugestão de evento em ${community}`,
+          title: 'Nova sugestão de evento',
+          body: `${actor} sugeriu "${eventName(vars)}" para a comunidade ${community}.`,
+          cta: 'Ver sugestões',
+        },
+        event_suggestion_approved: {
+          subject: `Sugestão aprovada em ${community}`,
+          title: 'Sugestão aprovada',
+          body: `A tua sugestão "${eventName(vars)}" para a comunidade ${community} foi aprovada. O evento foi criado e és o anfitrião.`,
+          cta: 'Abrir a comunidade',
+        },
+        event_suggestion_rejected: {
+          subject: `Sugestão de evento em ${community}`,
+          title: 'Sugestão não aprovada',
+          body: `A tua sugestão "${eventName(vars)}" para a comunidade ${community} não foi aprovada.`,
+          cta: 'Abrir a comunidade',
+        },
       };
       const text = texts[vars.aviso ?? 'member_invited'];
       return {
