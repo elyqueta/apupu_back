@@ -5,10 +5,16 @@ import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
 import { writeLimiter } from '../../middlewares/rateLimiter';
 import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
 import { requireVerifiedEmail } from '../../middlewares/requireVerifiedEmail';
+import {
+  uploadCommunityAvatar,
+  uploadCommunityCover,
+} from '../../middlewares/uploadEntityImage';
 import { validate } from '../../middlewares/validate';
 import {
   answerInviteSchema,
   changeCommunityRoleSchema,
+  communityAvatarSchema,
+  communityCoverSchema,
   communityIdParamsSchema,
   communityListQuerySchema,
   communityMemberParamsSchema,
@@ -71,6 +77,46 @@ router.patch(
   validate({ params: communityIdParamsSchema, body: updateCommunitySchema }),
   asyncHandler(communityController.update)
 );
+
+router.post(
+  '/:communityId/avatar',
+  ...write,
+  validate({ params: communityIdParamsSchema, body: communityAvatarSchema }),
+  asyncHandler(communityController.setAvatarUrl)
+);
+router.post(
+  '/:communityId/avatar/upload',
+  ...write,
+  validate({ params: communityIdParamsSchema }),
+  uploadCommunityAvatar,
+  asyncHandler(communityController.uploadAvatar)
+);
+router.delete(
+  '/:communityId/avatar',
+  ...write,
+  validate({ params: communityIdParamsSchema }),
+  asyncHandler(communityController.removeAvatar)
+);
+router.post(
+  '/:communityId/cover',
+  ...write,
+  validate({ params: communityIdParamsSchema, body: communityCoverSchema }),
+  asyncHandler(communityController.setCoverUrl)
+);
+router.post(
+  '/:communityId/cover/upload',
+  ...write,
+  validate({ params: communityIdParamsSchema }),
+  uploadCommunityCover,
+  asyncHandler(communityController.uploadCover)
+);
+router.delete(
+  '/:communityId/cover',
+  ...write,
+  validate({ params: communityIdParamsSchema }),
+  asyncHandler(communityController.removeCover)
+);
+
 router.delete(
   '/:communityId',
   ...write,

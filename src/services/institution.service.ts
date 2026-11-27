@@ -1,3 +1,4 @@
+import { env } from '../config/env';
 import { withTransaction } from '../database/pool';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import {
@@ -8,6 +9,7 @@ import {
 import { links } from '../utils/links.util';
 import { generateToken } from '../utils/token.util';
 import { slugify } from './community.service';
+import { destroyImage, uploadImage } from './cloudinary.service';
 import { assertPurposeOtp, requestPurposeOtp } from './purposeOtp.service';
 
 export interface InstitutionViewer {
@@ -27,6 +29,53 @@ export const institutionPermissions = {
 
 function deny(message = 'Não tem permissão para esta ação.'): never {
   throw new ForbiddenError(message, 'institution_forbidden');
+}
+
+type InstitutionImageKind = 'avatar' | 'cover';
+
+interface StoredImage {
+  url: string | null;
+  publicId: string | null;
+}
+
+/** Só o criador administra a instituição. */
+async function requireEditor(idOrSlug: string, viewer: InstitutionViewer): Promise<InstitutionRow> {
+  const institution = await institutionService.load(idOrSlug, viewer);
+  if (!institutionPermissions.canAdminister(institution, viewer.hostId)) deny();
+  return institution;
+}
+
+async function applyImage(
+  viewer: InstitutionViewer,
+  institution: InstitutionRow,
+  kind: InstitutionImageKind,
+  image: StoredImage
+) {
+  const previousPublicId =
+    kind === 'avatar' ? institution.avatar_public_id : institution.cover_public_id;
+
+  await institutionRepository.update(
+    institution.id,
+    kind === 'avatar'
+      ? { avatar_url: image.url, avatar_public_id: image.publicId }
+      : { cover_url: image.url, cover_public_id: image.publicId }
+  );
+
+  if (previousPublicId && previousPublicId !== image.publicId) {
+    await destroyImage(previousPublicId);
+  }
+
+  const updated = await institutionRepository.find(institution.id);
+  if (!updated) throw new NotFoundError(NOT_FOUND, 'institution_not_found');
+  return toInstitutionDto(updated, viewer.hostId);
+}
+
+function uploadOptions() {
+  return {
+    folder: env.CLOUDINARY_INSTITUTION_FOLDER,
+    unavailableMessage: 'O upload da imagem da instituição não está configurado.',
+    unavailableCode: 'institution_image_upload_unavailable',
+  };
 }
 
 function toInstitutionDto(row: InstitutionRow, viewerId: string) {
@@ -144,10 +193,72 @@ export const institutionService = {
       visibility: input.visibility,
       avatar_url: 'avatar_url' in input ? input.avatar_url ?? null : undefined,
       cover_url: 'cover_url' in input ? input.cover_url ?? null : undefined,
+      avatar_public_id: 'avatar_url' in input ? null : undefined,
+      cover_public_id: 'cover_url' in input ? null : undefined,
     });
+    if ('avatar_url' in input && institution.avatar_public_id) {
+      await destroyImage(institution.avatar_public_id);
+    }
+    if ('cover_url' in input && institution.cover_public_id) {
+      await destroyImage(institution.cover_public_id);
+    }
     const updated = await institutionRepository.find(institution.id);
     if (!updated) throw new NotFoundError(NOT_FOUND, 'institution_not_found');
     return toInstitutionDto(updated, viewer.hostId);
+  },
+
+  async setAvatarFromUrl(idOrSlug: string, viewer: InstitutionViewer, url: string) {
+    const institution = await requireEditor(idOrSlug, viewer);
+    if (institution.avatar_url === url && !institution.avatar_public_id) {
+      return toInstitutionDto(institution, viewer.hostId);
+    }
+    return applyImage(viewer, institution, 'avatar', { url, publicId: null });
+  },
+
+  async uploadAvatar(
+    idOrSlug: string,
+    viewer: InstitutionViewer,
+    buffer: Buffer,
+    contentType: string
+  ) {
+    const institution = await requireEditor(idOrSlug, viewer);
+    const uploaded = await uploadImage(buffer, contentType, uploadOptions());
+    return applyImage(viewer, institution, 'avatar', uploaded);
+  },
+
+  async removeAvatar(idOrSlug: string, viewer: InstitutionViewer) {
+    const institution = await requireEditor(idOrSlug, viewer);
+    if (!institution.avatar_url && !institution.avatar_public_id) {
+      return toInstitutionDto(institution, viewer.hostId);
+    }
+    return applyImage(viewer, institution, 'avatar', { url: null, publicId: null });
+  },
+
+  async setCoverFromUrl(idOrSlug: string, viewer: InstitutionViewer, url: string) {
+    const institution = await requireEditor(idOrSlug, viewer);
+    if (institution.cover_url === url && !institution.cover_public_id) {
+      return toInstitutionDto(institution, viewer.hostId);
+    }
+    return applyImage(viewer, institution, 'cover', { url, publicId: null });
+  },
+
+  async uploadCover(
+    idOrSlug: string,
+    viewer: InstitutionViewer,
+    buffer: Buffer,
+    contentType: string
+  ) {
+    const institution = await requireEditor(idOrSlug, viewer);
+    const uploaded = await uploadImage(buffer, contentType, uploadOptions());
+    return applyImage(viewer, institution, 'cover', uploaded);
+  },
+
+  async removeCover(idOrSlug: string, viewer: InstitutionViewer) {
+    const institution = await requireEditor(idOrSlug, viewer);
+    if (!institution.cover_url && !institution.cover_public_id) {
+      return toInstitutionDto(institution, viewer.hostId);
+    }
+    return applyImage(viewer, institution, 'cover', { url: null, publicId: null });
   },
 
   async remove(idOrSlug: string, viewer: InstitutionViewer, confirmName: string): Promise<void> {

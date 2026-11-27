@@ -51,6 +51,7 @@ export interface FeedEventRow {
   location_type: 'venue' | 'online';
   location_name: string | null;
   cover_url: string | null;
+  youtube_video_id: string | null;
   template_id: string | null;
   theme: { mode?: string; palette?: string } | null;
   public_slug: string;
@@ -83,7 +84,7 @@ export interface FeedPersonRow {
 
 const EVENT_SELECT = `
   SELECT e.id, e.title, e.category, e.starts_at, e.ends_at, e.timezone, e.status,
-         e.location_type, e.location_name, e.cover_url, e.template_id, e.theme,
+         e.location_type, e.location_name, e.cover_url, e.youtube_video_id, e.template_id, e.theme,
          e.public_slug, e.host_name, e.show_attendee_count,
          (SELECT count(*)::int FROM invitations i
            WHERE i.event_id = e.id AND i.rsvp_status = 'accepted') AS attendee_count,

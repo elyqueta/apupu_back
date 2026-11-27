@@ -5,11 +5,17 @@ import { hostAccountAuth } from '../../middlewares/hostAccountAuth';
 import { writeLimiter } from '../../middlewares/rateLimiter';
 import { requireAuthCsrf } from '../../middlewares/requireAuthCsrf';
 import { requireVerifiedEmail } from '../../middlewares/requireVerifiedEmail';
+import {
+  uploadInstitutionAvatar,
+  uploadInstitutionCover,
+} from '../../middlewares/uploadEntityImage';
 import { validate } from '../../middlewares/validate';
 import {
   communityRefSchema,
   createInstitutionSchema,
   deleteInstitutionSchema,
+  institutionAvatarSchema,
+  institutionCoverSchema,
   institutionListQuerySchema,
   institutionParamsSchema,
   institutionRequestParamsSchema,
@@ -73,6 +79,44 @@ router.patch(
   ...write,
   validate({ params: institutionParamsSchema, body: updateInstitutionSchema }),
   asyncHandler(institutionController.update)
+);
+router.post(
+  '/:institutionId/avatar',
+  ...write,
+  validate({ params: institutionParamsSchema, body: institutionAvatarSchema }),
+  asyncHandler(institutionController.setAvatarUrl)
+);
+router.post(
+  '/:institutionId/avatar/upload',
+  ...write,
+  validate({ params: institutionParamsSchema }),
+  uploadInstitutionAvatar,
+  asyncHandler(institutionController.uploadAvatar)
+);
+router.delete(
+  '/:institutionId/avatar',
+  ...write,
+  validate({ params: institutionParamsSchema }),
+  asyncHandler(institutionController.removeAvatar)
+);
+router.post(
+  '/:institutionId/cover',
+  ...write,
+  validate({ params: institutionParamsSchema, body: institutionCoverSchema }),
+  asyncHandler(institutionController.setCoverUrl)
+);
+router.post(
+  '/:institutionId/cover/upload',
+  ...write,
+  validate({ params: institutionParamsSchema }),
+  uploadInstitutionCover,
+  asyncHandler(institutionController.uploadCover)
+);
+router.delete(
+  '/:institutionId/cover',
+  ...write,
+  validate({ params: institutionParamsSchema }),
+  asyncHandler(institutionController.removeCover)
 );
 router.delete(
   '/:institutionId',

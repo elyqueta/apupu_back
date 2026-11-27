@@ -28,6 +28,8 @@ interface CommunityRow {
   owner_id: string;
   avatar_url: string | null;
   cover_url: string | null;
+  avatar_public_id?: string | null;
+  cover_public_id?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -45,7 +47,8 @@ interface CommunityStatsRow extends CommunityRow {
 
 const COMMUNITY_COLUMNS = `
   c.id, c.name, c.slug, c.description, c.visibility, c.owner_id,
-  c.avatar_url, c.cover_url, c.created_at, c.updated_at
+  c.avatar_url, c.cover_url, c.avatar_public_id, c.cover_public_id,
+  c.created_at, c.updated_at
 `;
 
 function toCommunity(row: CommunityRow): Community {
@@ -58,6 +61,8 @@ function toCommunity(row: CommunityRow): Community {
     ownerId: row.owner_id,
     avatarUrl: row.avatar_url,
     coverUrl: row.cover_url,
+    avatarPublicId: row.avatar_public_id ?? null,
+    coverPublicId: row.cover_public_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -303,7 +308,18 @@ export const communityRepository = {
 
   async update(
     id: string,
-    changes: Partial<Pick<Community, 'name' | 'description' | 'visibility' | 'avatarUrl' | 'coverUrl'>>,
+    changes: Partial<
+      Pick<
+        Community,
+        | 'name'
+        | 'description'
+        | 'visibility'
+        | 'avatarUrl'
+        | 'coverUrl'
+        | 'avatarPublicId'
+        | 'coverPublicId'
+      >
+    >,
     client?: PoolClient
   ): Promise<void> {
     const runner: Runner = client ?? pool;
@@ -313,6 +329,8 @@ export const communityRepository = {
       ['visibility', 'visibility'],
       ['avatarUrl', 'avatar_url'],
       ['coverUrl', 'cover_url'],
+      ['avatarPublicId', 'avatar_public_id'],
+      ['coverPublicId', 'cover_public_id'],
     ];
     const set: string[] = [];
     const values: unknown[] = [];

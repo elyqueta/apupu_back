@@ -63,6 +63,84 @@ export const communityController = {
     res.status(200).json({ data: toCommunityDto(community) });
   },
 
+  setAvatarUrl: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const community = await communityService.setAvatarFromUrl(
+      me,
+      id(req),
+      (req.body as { avatar_url: string }).avatar_url
+    );
+    await auditService.recordRequest(req, {
+      action: 'community_updated',
+      hostId: me.hostId,
+      metadata: { community_id: community.id, fields: ['avatar_url'], source: 'url' },
+    });
+    res.status(200).json({ data: toCommunityDto(community) });
+  },
+
+  uploadAvatar: async (req: Request, res: Response): Promise<void> => {
+    const file = req.file;
+    if (!file) throw new Error('Ficheiro não resolvido: falta o middleware uploadCommunityAvatar.');
+    const me = viewer(req);
+    const community = await communityService.uploadAvatar(me, id(req), file.buffer, file.mimetype);
+    await auditService.recordRequest(req, {
+      action: 'community_updated',
+      hostId: me.hostId,
+      metadata: { community_id: community.id, fields: ['avatar_url'], source: 'upload' },
+    });
+    res.status(200).json({ data: toCommunityDto(community) });
+  },
+
+  removeAvatar: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const community = await communityService.removeAvatar(me, id(req));
+    await auditService.recordRequest(req, {
+      action: 'community_updated',
+      hostId: me.hostId,
+      metadata: { community_id: community.id, fields: ['avatar_url'], source: 'remove' },
+    });
+    res.status(200).json({ data: toCommunityDto(community) });
+  },
+
+  setCoverUrl: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const community = await communityService.setCoverFromUrl(
+      me,
+      id(req),
+      (req.body as { cover_url: string }).cover_url
+    );
+    await auditService.recordRequest(req, {
+      action: 'community_updated',
+      hostId: me.hostId,
+      metadata: { community_id: community.id, fields: ['cover_url'], source: 'url' },
+    });
+    res.status(200).json({ data: toCommunityDto(community) });
+  },
+
+  uploadCover: async (req: Request, res: Response): Promise<void> => {
+    const file = req.file;
+    if (!file) throw new Error('Ficheiro não resolvido: falta o middleware uploadCommunityCover.');
+    const me = viewer(req);
+    const community = await communityService.uploadCover(me, id(req), file.buffer, file.mimetype);
+    await auditService.recordRequest(req, {
+      action: 'community_updated',
+      hostId: me.hostId,
+      metadata: { community_id: community.id, fields: ['cover_url'], source: 'upload' },
+    });
+    res.status(200).json({ data: toCommunityDto(community) });
+  },
+
+  removeCover: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const community = await communityService.removeCover(me, id(req));
+    await auditService.recordRequest(req, {
+      action: 'community_updated',
+      hostId: me.hostId,
+      metadata: { community_id: community.id, fields: ['cover_url'], source: 'remove' },
+    });
+    res.status(200).json({ data: toCommunityDto(community) });
+  },
+
   remove: async (req: Request, res: Response): Promise<void> => {
     const me = viewer(req);
     const community = await communityService.remove(

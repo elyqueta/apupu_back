@@ -42,6 +42,94 @@ export const institutionController = {
     res.status(200).json({ data: institution });
   },
 
+  setAvatarUrl: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const institution = await institutionService.setAvatarFromUrl(
+      id(req),
+      me,
+      (req.body as { avatar_url: string }).avatar_url
+    );
+    await auditService.recordRequest(req, {
+      action: 'institution_updated',
+      hostId: me.hostId,
+      metadata: { institution_id: institution.id, fields: ['avatar_url'], source: 'url' },
+    });
+    res.status(200).json({ data: institution });
+  },
+
+  uploadAvatar: async (req: Request, res: Response): Promise<void> => {
+    const file = req.file;
+    if (!file) throw new Error('Ficheiro não resolvido: falta o middleware uploadInstitutionAvatar.');
+    const me = viewer(req);
+    const institution = await institutionService.uploadAvatar(
+      id(req),
+      me,
+      file.buffer,
+      file.mimetype
+    );
+    await auditService.recordRequest(req, {
+      action: 'institution_updated',
+      hostId: me.hostId,
+      metadata: { institution_id: institution.id, fields: ['avatar_url'], source: 'upload' },
+    });
+    res.status(200).json({ data: institution });
+  },
+
+  removeAvatar: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const institution = await institutionService.removeAvatar(id(req), me);
+    await auditService.recordRequest(req, {
+      action: 'institution_updated',
+      hostId: me.hostId,
+      metadata: { institution_id: institution.id, fields: ['avatar_url'], source: 'remove' },
+    });
+    res.status(200).json({ data: institution });
+  },
+
+  setCoverUrl: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const institution = await institutionService.setCoverFromUrl(
+      id(req),
+      me,
+      (req.body as { cover_url: string }).cover_url
+    );
+    await auditService.recordRequest(req, {
+      action: 'institution_updated',
+      hostId: me.hostId,
+      metadata: { institution_id: institution.id, fields: ['cover_url'], source: 'url' },
+    });
+    res.status(200).json({ data: institution });
+  },
+
+  uploadCover: async (req: Request, res: Response): Promise<void> => {
+    const file = req.file;
+    if (!file) throw new Error('Ficheiro não resolvido: falta o middleware uploadInstitutionCover.');
+    const me = viewer(req);
+    const institution = await institutionService.uploadCover(
+      id(req),
+      me,
+      file.buffer,
+      file.mimetype
+    );
+    await auditService.recordRequest(req, {
+      action: 'institution_updated',
+      hostId: me.hostId,
+      metadata: { institution_id: institution.id, fields: ['cover_url'], source: 'upload' },
+    });
+    res.status(200).json({ data: institution });
+  },
+
+  removeCover: async (req: Request, res: Response): Promise<void> => {
+    const me = viewer(req);
+    const institution = await institutionService.removeCover(id(req), me);
+    await auditService.recordRequest(req, {
+      action: 'institution_updated',
+      hostId: me.hostId,
+      metadata: { institution_id: institution.id, fields: ['cover_url'], source: 'remove' },
+    });
+    res.status(200).json({ data: institution });
+  },
+
   remove: async (req: Request, res: Response): Promise<void> => {
     const me = viewer(req);
     await institutionService.remove(id(req), me, (req.body as { confirm_name: string }).confirm_name);

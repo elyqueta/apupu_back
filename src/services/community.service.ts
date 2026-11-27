@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { PoolClient } from 'pg';
+import { env } from '../config/env';
 import { withTransaction } from '../database/pool';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { communityRepository } from '../repositories/community.repository';
@@ -19,6 +20,7 @@ import {
 import { isUniqueViolation } from '../utils/db.util';
 import { normalizeAngolanPhone } from '../utils/phone.util';
 import { generateToken } from '../utils/token.util';
+import { destroyImage, uploadImage } from './cloudinary.service';
 import { CommunityActor, communityPermissions } from './communityPermissions';
 import { assertPurposeOtp, requestPurposeOtp } from './purposeOtp.service';
 
@@ -68,6 +70,54 @@ function actorFrom(member: CommunityMember | null): CommunityActor {
 
 function deny(message = 'Não tem permissão para esta ação.'): never {
   throw new ForbiddenError(message, 'community_forbidden');
+}
+
+type CommunityImageKind = 'avatar' | 'cover';
+
+interface StoredImage {
+  url: string | null;
+  publicId: string | null;
+}
+
+/** Só responsável e gestores activos alteram a identidade visual. */
+async function requireEditor(viewer: Viewer, idOrSlug: string): Promise<CommunityWithStats> {
+  const community = await communityService.load(viewer, idOrSlug);
+  const { actor } = await communityService.actor(community.id, viewer.hostId);
+  if (!communityPermissions.canEditSettings(actor)) deny();
+  return community;
+}
+
+async function applyImage(
+  viewer: Viewer,
+  community: CommunityWithStats,
+  kind: CommunityImageKind,
+  image: StoredImage
+): Promise<CommunityWithStats> {
+  const previousPublicId =
+    kind === 'avatar' ? community.avatarPublicId : community.coverPublicId;
+
+  await communityRepository.update(
+    community.id,
+    kind === 'avatar'
+      ? { avatarUrl: image.url, avatarPublicId: image.publicId }
+      : { coverUrl: image.url, coverPublicId: image.publicId }
+  );
+
+  if (previousPublicId && previousPublicId !== image.publicId) {
+    await destroyImage(previousPublicId);
+  }
+
+  const updated = await communityRepository.findById(community.id, viewer.hostId);
+  if (!updated) throw new NotFoundError(NOT_FOUND, 'community_not_found');
+  return updated;
+}
+
+function uploadOptions() {
+  return {
+    folder: env.CLOUDINARY_COMMUNITY_FOLDER,
+    unavailableMessage: 'O upload da imagem da comunidade não está configurado.',
+    unavailableCode: 'community_image_upload_unavailable',
+  };
 }
 
 async function enqueueNotice(
@@ -237,12 +287,71 @@ export const communityService = {
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
       ...('description' in input ? { description: input.description?.trim() || null } : {}),
       ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
-      ...('avatar_url' in input ? { avatarUrl: input.avatar_url ?? null } : {}),
-      ...('cover_url' in input ? { coverUrl: input.cover_url ?? null } : {}),
+      ...('avatar_url' in input
+        ? { avatarUrl: input.avatar_url ?? null, avatarPublicId: null }
+        : {}),
+      ...('cover_url' in input
+        ? { coverUrl: input.cover_url ?? null, coverPublicId: null }
+        : {}),
     });
+
+    if ('avatar_url' in input && community.avatarPublicId) {
+      await destroyImage(community.avatarPublicId);
+    }
+    if ('cover_url' in input && community.coverPublicId) {
+      await destroyImage(community.coverPublicId);
+    }
+
     const updated = await communityRepository.findById(community.id, viewer.hostId);
     if (!updated) throw new NotFoundError(NOT_FOUND, 'community_not_found');
     return updated;
+  },
+
+  async setAvatarFromUrl(viewer: Viewer, id: string, url: string): Promise<CommunityWithStats> {
+    const community = await requireEditor(viewer, id);
+    if (community.avatarUrl === url && !community.avatarPublicId) return community;
+    return applyImage(viewer, community, 'avatar', { url, publicId: null });
+  },
+
+  /** Envia o ficheiro para o Cloudinary e guarda URL + public_id. */
+  async uploadAvatar(
+    viewer: Viewer,
+    id: string,
+    buffer: Buffer,
+    contentType: string
+  ): Promise<CommunityWithStats> {
+    const community = await requireEditor(viewer, id);
+    const uploaded = await uploadImage(buffer, contentType, uploadOptions());
+    return applyImage(viewer, community, 'avatar', uploaded);
+  },
+
+  async removeAvatar(viewer: Viewer, id: string): Promise<CommunityWithStats> {
+    const community = await requireEditor(viewer, id);
+    if (!community.avatarUrl && !community.avatarPublicId) return community;
+    return applyImage(viewer, community, 'avatar', { url: null, publicId: null });
+  },
+
+  async setCoverFromUrl(viewer: Viewer, id: string, url: string): Promise<CommunityWithStats> {
+    const community = await requireEditor(viewer, id);
+    if (community.coverUrl === url && !community.coverPublicId) return community;
+    return applyImage(viewer, community, 'cover', { url, publicId: null });
+  },
+
+  async uploadCover(
+    viewer: Viewer,
+    id: string,
+    buffer: Buffer,
+    contentType: string
+  ): Promise<CommunityWithStats> {
+    const community = await requireEditor(viewer, id);
+    const uploaded = await uploadImage(buffer, contentType, uploadOptions());
+    return applyImage(viewer, community, 'cover', uploaded);
+  },
+
+  async removeCover(viewer: Viewer, id: string): Promise<CommunityWithStats> {
+    const community = await requireEditor(viewer, id);
+    if (!community.coverUrl && !community.coverPublicId) return community;
+    return applyImage(viewer, community, 'cover', { url: null, publicId: null });
   },
 
   async remove(viewer: Viewer, id: string, confirmName: string): Promise<CommunityWithStats> {

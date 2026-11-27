@@ -24,6 +24,9 @@ export interface Community {
   ownerId: string;
   avatarUrl: string | null;
   coverUrl: string | null;
+  /** IDs do Cloudinary, usados apenas para limpar a imagem anterior. */
+  avatarPublicId?: string | null;
+  coverPublicId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

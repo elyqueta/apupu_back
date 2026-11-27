@@ -50,6 +50,7 @@ export function toFeedEventDto(row: FeedEventRow) {
     location: row.location_type === 'online' ? null : row.location_name,
     online: row.location_type === 'online',
     cover_url: row.cover_url,
+    youtube_video_id: row.youtube_video_id,
     /** Estilo do template para pré-visualizar sem capa (sem dados privados). */
     template: { id: row.template_id, palette: row.theme?.palette ?? 'default', mode: row.theme?.mode ?? 'light' },
     host_name: row.host_name,
